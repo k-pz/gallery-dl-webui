@@ -1,13 +1,13 @@
 from fastapi import APIRouter, HTTPException
 
-from backend.api.deps import GalleryDep, SettingsDep, StorageDep, WorkerDep
+from backend.api.deps import GalleryDep, LiveProgressDep, SettingsDep, StorageDep, WorkerDep
 from backend.api.schemas import (
     ChapterProgress,
     DownloadCreate,
     DownloadOut,
     ProgressOut,
 )
-from backend.progress import chapter_progress
+from backend.progress import chapter_progress, chapter_progress_from_completed
 
 router = APIRouter(tags=["downloads"])
 
@@ -52,13 +52,18 @@ async def get_progress(
     download_id: int,
     storage: StorageDep,
     settings: SettingsDep,
+    live: LiveProgressDep,
 ) -> ProgressOut:
     download = await storage.get(download_id)
     if download is None:
         raise HTTPException(status_code=404, detail="download not found")
 
     manifest = await storage.get_manifest(download_id)
-    chapters = chapter_progress(manifest, settings.downloads_dir)
+    completed = live.snapshot(download_id)
+    if completed is not None:
+        chapters = chapter_progress_from_completed(manifest, completed)
+    else:
+        chapters = chapter_progress(manifest, settings.downloads_dir)
     files_present = sum(c.files_present for c in chapters)
 
     return ProgressOut(

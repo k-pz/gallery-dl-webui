@@ -1,5 +1,6 @@
 import logging
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,43 @@ class _ManifestSimulationJob(SimulationJob):
         self._manifest.append(pathfmt.directory + filename)
 
 
+class _ProgressDownloadJob(DownloadJob):
+    """DownloadJob variant that notifies a callback after each file completes.
+
+    Child jobs spawned for nested extractors share the same callback so a
+    single run reports every downloaded file.
+    """
+
+    _on_file_complete: Callable[[str], None]
+    _downloads_base: str
+
+    def __init__(
+        self,
+        url: Any,
+        parent: DownloadJob | None = None,
+        *,
+        on_file_complete: Callable[[str], None] | None = None,
+        downloads_base: str | None = None,
+    ) -> None:
+        super().__init__(url, parent)
+        if isinstance(parent, _ProgressDownloadJob):
+            self._on_file_complete = parent._on_file_complete
+            self._downloads_base = parent._downloads_base
+        else:
+            assert on_file_complete is not None and downloads_base is not None
+            self._on_file_complete = on_file_complete
+            self._downloads_base = downloads_base
+
+    def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
+        super().handle_url(url, kwdict)
+        pathfmt = self.pathfmt
+        if pathfmt is None:
+            return
+        full = pathfmt.directory + pathfmt.filename
+        rel = full[len(self._downloads_base) :] if full.startswith(self._downloads_base) else full
+        self._on_file_complete(rel)
+
+
 class Gallery:
     """Thin wrapper around gallery-dl, scoped to one Settings instance.
 
@@ -88,6 +126,17 @@ class Gallery:
             out.append(full[len(base) :] if full.startswith(base) else full)
         return out
 
-    @staticmethod
-    def run_download(url: str) -> int:
-        return DownloadJob(url).run()
+    def run_download(
+        self,
+        url: str,
+        on_file_complete: Callable[[str], None] | None = None,
+    ) -> int:
+        if on_file_complete is None:
+            return DownloadJob(url).run()
+        base = str(self._downloads_dir).rstrip(os.sep) + os.sep
+        job = _ProgressDownloadJob(
+            url,
+            on_file_complete=on_file_complete,
+            downloads_base=base,
+        )
+        return job.run()

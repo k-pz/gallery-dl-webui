@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from backend.gallery import Gallery
+from backend.live_progress import LiveProgress
 from backend.progress import count_present
 from backend.storage import Download, Storage
 
@@ -9,9 +10,10 @@ logger = logging.getLogger(__name__)
 
 
 class Worker:
-    def __init__(self, storage: Storage, gallery: Gallery) -> None:
+    def __init__(self, storage: Storage, gallery: Gallery, live: LiveProgress) -> None:
         self._storage = storage
         self._gallery = gallery
+        self._live = live
         self._wakeup = asyncio.Event()
         self._stop = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -47,9 +49,17 @@ class Worker:
             relpaths = await asyncio.to_thread(self._gallery.extract_manifest, job.url)
             await self._storage.save_manifest(job.id, relpaths)
             await self._storage.mark_running(job.id)
-            exit_code = await asyncio.to_thread(self._gallery.run_download, job.url)
-            present = await asyncio.to_thread(count_present, relpaths, downloads_dir)
-            await self._storage.finish_job(job.id, exit_code, present)
+            self._live.start(job.id)
+            try:
+                exit_code = await asyncio.to_thread(
+                    self._gallery.run_download,
+                    job.url,
+                    lambda rel: self._live.record(job.id, rel),
+                )
+                present = await asyncio.to_thread(count_present, relpaths, downloads_dir)
+                await self._storage.finish_job(job.id, exit_code, present)
+            finally:
+                self._live.clear(job.id)
         except Exception as exc:
             logger.exception("download %d failed", job.id)
             present = 0

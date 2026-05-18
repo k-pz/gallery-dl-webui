@@ -324,3 +324,4 @@ frontend/dist/
 
 # Runtime data
 data/
+backend/data-e2e/
