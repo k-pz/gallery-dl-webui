@@ -13,6 +13,13 @@ from settings import Settings
 _configured = False
 
 
+class _HookInheritingDownloadJob(DownloadJob):
+    def __init__(self, url: Any, parent: DownloadJob | None = None) -> None:
+        super().__init__(url, parent)
+        if parent is not None and parent.hooks:
+            self.hooks = parent.hooks
+
+
 def configure(settings: Settings) -> None:
     global _configured
     if _configured:
@@ -33,9 +40,9 @@ def find_extractor(url: str) -> str | None:
     return getattr(found, "category", None)
 
 
-def run_download(url: str, on_file: Callable[[], None]) -> int:
-    job = DownloadJob(url)
+def run_download(url: str, on_file: Callable[[Any], None]) -> int:
+    job = _HookInheritingDownloadJob(url)
     hooks: defaultdict[str, list[Callable[[Any], None]]] = defaultdict(list)
-    hooks["file"].append(lambda _pathfmt: on_file())
+    hooks["file"].append(on_file)
     job.hooks = hooks
     return job.run()
