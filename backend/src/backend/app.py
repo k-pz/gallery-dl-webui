@@ -1,24 +1,20 @@
-from __future__ import annotations
-
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-import gallery_runtime
-from routers import downloads, health
-from settings import load_settings
-from storage import Storage
-from worker import Worker
+from backend.api.routes import downloads, health
+from backend.gallery import Gallery
+from backend.settings import REPO_ROOT, load_settings
+from backend.storage import Storage
+from backend.worker import Worker
 
 logger = logging.getLogger(__name__)
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 
 
@@ -29,17 +25,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings.downloads_dir.mkdir(parents=True, exist_ok=True)
 
     storage = await Storage.open(settings.jobs_db_path)
-    gallery_runtime.configure(settings)
+    gallery = Gallery(settings)
 
     interrupted = await storage.mark_interrupted_on_boot()
     if interrupted:
         logger.warning("marked %d in-flight job(s) as failed on boot", interrupted)
 
-    worker = Worker(storage, settings)
+    worker = Worker(storage, gallery)
     worker.start()
 
     app.state.settings = settings
     app.state.storage = storage
+    app.state.gallery = gallery
     app.state.worker = worker
 
     try:

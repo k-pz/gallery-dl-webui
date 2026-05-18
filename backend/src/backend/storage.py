@@ -1,8 +1,7 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Self
 
 import aiosqlite
 
@@ -74,7 +73,7 @@ class Storage:
         self._db = db
 
     @classmethod
-    async def open(cls, path: Path) -> Storage:
+    async def open(cls, path: Path) -> Self:
         db = await aiosqlite.connect(path)
         db.row_factory = aiosqlite.Row
         await db.executescript(SCHEMA)
@@ -94,16 +93,27 @@ class Storage:
         await self._db.close()
 
     async def insert_pending(self, url: str, extractor: str | None) -> Download:
+        created_at = _now()
         cursor = await self._db.execute(
             "INSERT INTO downloads(url, extractor, status, created_at) VALUES(?, ?, ?, ?)",
-            (url, extractor, "pending", _now()),
+            (url, extractor, "pending", created_at),
         )
         await self._db.commit()
         new_id = cursor.lastrowid
         assert new_id is not None
-        got = await self.get(new_id)
-        assert got is not None
-        return got
+        return Download(
+            id=new_id,
+            url=url,
+            extractor=extractor,
+            status="pending",
+            created_at=created_at,
+            started_at=None,
+            finished_at=None,
+            exit_code=None,
+            files_downloaded=0,
+            files_expected=None,
+            error=None,
+        )
 
     async def get(self, id_: int) -> Download | None:
         async with self._db.execute("SELECT * FROM downloads WHERE id = ?", (id_,)) as cur:
