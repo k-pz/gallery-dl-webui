@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 from gallery_runtime import run_download
 from log_hub import LogHub
+from settings import Settings
 from storage import Download, Storage
 
 logger = logging.getLogger(__name__)
 
 
 class Worker:
-    def __init__(self, storage: Storage, hub: LogHub) -> None:
+    def __init__(self, storage: Storage, hub: LogHub, settings: Settings) -> None:
         self._storage = storage
         self._hub = hub
+        self._settings = settings
         self._wakeup = asyncio.Event()
         self._stop = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -44,13 +47,22 @@ class Worker:
 
     async def _process(self, job: Download) -> None:
         counter = [0]
+        base_dir = str(self._settings.downloads_dir)
 
-        def inc() -> None:
+        def on_file(pathfmt: Any) -> None:
             counter[0] += 1
+            try:
+                full = str(getattr(pathfmt, "path", "") or "")
+                rel = full
+                if full.startswith(base_dir):
+                    rel = full[len(base_dir):].lstrip("/")
+                self._hub.emit_from_thread(f"[file {counter[0]}] {rel or full or '?'}")
+            except Exception:
+                pass
 
         self._hub.begin(job.id)
         try:
-            exit_code = await asyncio.to_thread(run_download, job.url, inc)
+            exit_code = await asyncio.to_thread(run_download, job.url, on_file)
             await self._storage.finish_job(job.id, exit_code, counter[0])
         except Exception as exc:
             logger.exception("download %d failed", job.id)

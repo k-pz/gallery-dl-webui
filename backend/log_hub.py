@@ -4,6 +4,27 @@ import asyncio
 import collections
 import logging
 
+from gallery_dl.output import Logger as GalleryDlLogger
+
+GALLERY_DL_LOGGER_NAMES: frozenset[str] = frozenset(
+    {
+        "gallery-dl",
+        "download",
+        "postprocessor",
+        "extractor",
+        "archive",
+        "config",
+        "cache",
+        "cookies",
+        "formatter",
+        "server",
+        "aes",
+        "inputfile",
+        "unsupported",
+        "errorfile",
+    }
+)
+
 
 class LogHub:
     SENTINEL: object = object()
@@ -77,8 +98,16 @@ class _HubHandler(logging.Handler):
         self._hub.emit_from_thread(line)
 
 
+class _GalleryDlOnlyFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name in GALLERY_DL_LOGGER_NAMES:
+            return True
+        return isinstance(logging.getLogger(record.name), GalleryDlLogger)
+
+
 def attach_handler(hub: LogHub) -> logging.Handler:
     handler = _HubHandler(hub)
     handler.setFormatter(logging.Formatter("[%(name)s] %(levelname)s: %(message)s"))
-    logging.getLogger("gallery-dl").addHandler(handler)
+    handler.addFilter(_GalleryDlOnlyFilter())
+    logging.getLogger().addHandler(handler)
     return handler

@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     hub.start()
     handler = attach_handler(hub)
 
-    worker = Worker(storage, hub)
+    worker = Worker(storage, hub, settings)
     worker.start()
 
     app.state.settings = settings
@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await worker.stop()
-        logging.getLogger("gallery-dl").removeHandler(handler)
+        logging.getLogger().removeHandler(handler)
         await storage.close()
 
 
