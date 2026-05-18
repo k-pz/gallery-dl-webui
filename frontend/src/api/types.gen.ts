@@ -4,6 +4,100 @@ export type ClientOptions = {
     baseUrl: 'http://localhost:8000' | (string & {});
 };
 
+/**
+ * DownloadCreate
+ */
+export type DownloadCreate = {
+    /**
+     * Url
+     */
+    url: string;
+};
+
+/**
+ * DownloadOut
+ */
+export type DownloadOut = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Url
+     */
+    url: string;
+    /**
+     * Extractor
+     */
+    extractor: string | null;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Started At
+     */
+    started_at: string | null;
+    /**
+     * Finished At
+     */
+    finished_at: string | null;
+    /**
+     * Exit Code
+     */
+    exit_code: number | null;
+    /**
+     * Files Downloaded
+     */
+    files_downloaded: number;
+    /**
+     * Error
+     */
+    error: string | null;
+};
+
+/**
+ * HTTPValidationError
+ */
+export type HttpValidationError = {
+    /**
+     * Detail
+     */
+    detail?: Array<ValidationError>;
+};
+
+/**
+ * ValidationError
+ */
+export type ValidationError = {
+    /**
+     * Location
+     */
+    loc: Array<string | number>;
+    /**
+     * Message
+     */
+    msg: string;
+    /**
+     * Error Type
+     */
+    type: string;
+    /**
+     * Input
+     */
+    input?: unknown;
+    /**
+     * Context
+     */
+    ctx?: {
+        [key: string]: unknown;
+    };
+};
+
 export type GetHealthData = {
     body?: never;
     path?: never;
@@ -23,3 +117,76 @@ export type GetHealthResponses = {
 };
 
 export type GetHealthResponse = GetHealthResponses[keyof GetHealthResponses];
+
+export type ListDownloadsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/downloads';
+};
+
+export type ListDownloadsResponses = {
+    /**
+     * Response Listdownloads
+     *
+     * Successful Response
+     */
+    200: Array<DownloadOut>;
+};
+
+export type ListDownloadsResponse = ListDownloadsResponses[keyof ListDownloadsResponses];
+
+export type CreateDownloadData = {
+    body: DownloadCreate;
+    path?: never;
+    query?: never;
+    url: '/api/downloads';
+};
+
+export type CreateDownloadErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateDownloadError = CreateDownloadErrors[keyof CreateDownloadErrors];
+
+export type CreateDownloadResponses = {
+    /**
+     * Successful Response
+     */
+    200: DownloadOut;
+};
+
+export type CreateDownloadResponse = CreateDownloadResponses[keyof CreateDownloadResponses];
+
+export type GetDownloadData = {
+    body?: never;
+    path: {
+        /**
+         * Download Id
+         */
+        download_id: number;
+    };
+    query?: never;
+    url: '/api/downloads/{download_id}';
+};
+
+export type GetDownloadErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetDownloadError = GetDownloadErrors[keyof GetDownloadErrors];
+
+export type GetDownloadResponses = {
+    /**
+     * Successful Response
+     */
+    200: DownloadOut;
+};
+
+export type GetDownloadResponse = GetDownloadResponses[keyof GetDownloadResponses];
