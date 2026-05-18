@@ -1,19 +1,17 @@
-from __future__ import annotations
-
 import asyncio
 import logging
 
-from gallery_runtime import count_present, extract_manifest, run_download
-from settings import Settings
-from storage import Download, Storage
+from backend.gallery import Gallery
+from backend.progress import count_present
+from backend.storage import Download, Storage
 
 logger = logging.getLogger(__name__)
 
 
 class Worker:
-    def __init__(self, storage: Storage, settings: Settings) -> None:
+    def __init__(self, storage: Storage, gallery: Gallery) -> None:
         self._storage = storage
-        self._settings = settings
+        self._gallery = gallery
         self._wakeup = asyncio.Event()
         self._stop = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -43,20 +41,21 @@ class Worker:
             await self._process(job)
 
     async def _process(self, job: Download) -> None:
+        downloads_dir = self._gallery.downloads_dir
         relpaths: list[str] = []
         try:
-            relpaths = await asyncio.to_thread(extract_manifest, job.url)
+            relpaths = await asyncio.to_thread(self._gallery.extract_manifest, job.url)
             await self._storage.save_manifest(job.id, relpaths)
             await self._storage.mark_running(job.id)
-            exit_code = await asyncio.to_thread(run_download, job.url)
-            present = await asyncio.to_thread(count_present, relpaths)
+            exit_code = await asyncio.to_thread(self._gallery.run_download, job.url)
+            present = await asyncio.to_thread(count_present, relpaths, downloads_dir)
             await self._storage.finish_job(job.id, exit_code, present)
         except Exception as exc:
             logger.exception("download %d failed", job.id)
             present = 0
             if relpaths:
                 try:
-                    present = await asyncio.to_thread(count_present, relpaths)
+                    present = await asyncio.to_thread(count_present, relpaths, downloads_dir)
                 except Exception:
                     present = 0
             await self._storage.mark_failed(job.id, repr(exc), present)

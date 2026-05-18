@@ -42,6 +42,37 @@ wheels = [
 ]
 
 [[package]]
+name = "backend"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "fastapi", extra = ["standard"] },
+    { name = "gallery-dl" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "poethepoet" },
+    { name = "ruff" },
+    { name = "ty" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.21" },
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.136.1" },
+    { name = "gallery-dl", specifier = ">=1.32" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "poethepoet", specifier = ">=0.46.0" },
+    { name = "ruff", specifier = ">=0.15.13" },
+    { name = "ty", specifier = ">=0.0.37" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.4.22"
 source = { registry = "https://pypi.org/simple" }
@@ -252,37 +283,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a2/fc/a65a29335aa618a90bcde6289e8bc9e87f4c706fd38a37a859a3b2603185/gallery_dl-1.32.1.tar.gz", hash = "sha256:b59f1c3b58783c9c904d38ba24cb64e2004341c84100903564913340fb97767f", size = 717737, upload-time = "2026-05-03T08:59:51.091Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/02/c3/00b03e16de51ab461ba7373412ca240e6a4ad8be23e8f3681a05a89f5dbf/gallery_dl-1.32.1-py3-none-any.whl", hash = "sha256:a43b65e1a94fea279593772c89d15724ad92f5cfe1482e9bb4f2e093dbe96512", size = 886960, upload-time = "2026-05-03T08:59:47.247Z" },
-]
-
-[[package]]
-name = "gallery-dl-webui"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "aiosqlite" },
-    { name = "fastapi", extra = ["standard"] },
-    { name = "gallery-dl" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "poethepoet" },
-    { name = "ruff" },
-    { name = "ty" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiosqlite", specifier = ">=0.21" },
-    { name = "fastapi", extras = ["standard"], specifier = ">=0.136.1" },
-    { name = "gallery-dl", specifier = ">=1.32" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "poethepoet", specifier = ">=0.46.0" },
-    { name = "ruff", specifier = ">=0.15.13" },
-    { name = "ty", specifier = ">=0.0.37" },
 ]
 
 [[package]]
