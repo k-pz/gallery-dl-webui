@@ -8,7 +8,10 @@ export function ProgressCard({ jobId, status }: { jobId: number; status: Status 
   const terminal = isTerminal(status);
   const { data, isLoading } = useQuery({
     ...getDownloadProgressOptions({ path: { download_id: jobId } }),
-    refetchInterval: terminal ? false : REFETCH_ACTIVE_MS,
+    refetchInterval: (q) => {
+      const s = q.state.data?.status;
+      return s && isTerminal(s) ? false : REFETCH_ACTIVE_MS;
+    },
   });
 
   if (isLoading || !data) {

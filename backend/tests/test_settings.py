@@ -1,0 +1,39 @@
+from pathlib import Path
+
+import pytest
+
+from backend.settings import DEFAULT_DATA_DIR, load_settings
+
+
+def test_load_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("WEBUI_DATA_DIR", raising=False)
+    monkeypatch.delenv("WEBUI_HOST", raising=False)
+    monkeypatch.delenv("WEBUI_PORT", raising=False)
+
+    s = load_settings()
+
+    assert s.data_dir == DEFAULT_DATA_DIR.resolve()
+    assert s.host == "0.0.0.0"
+    assert s.port == 8000
+
+
+def test_load_settings_reads_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("WEBUI_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("WEBUI_HOST", "127.0.0.1")
+    monkeypatch.setenv("WEBUI_PORT", "9001")
+
+    s = load_settings()
+
+    assert s.data_dir == tmp_path.resolve()
+    assert s.host == "127.0.0.1"
+    assert s.port == 9001
+
+
+def test_settings_derived_paths(tmp_path: Path) -> None:
+    from backend.settings import Settings
+
+    s = Settings(data_dir=tmp_path)
+
+    assert s.downloads_dir == tmp_path / "downloads"
+    assert s.archive_db_path == tmp_path / "archive.db"
+    assert s.jobs_db_path == tmp_path / "jobs.db"

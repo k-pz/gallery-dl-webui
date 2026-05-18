@@ -19,7 +19,10 @@ packages = ["src/backend"]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28",
     "poethepoet>=0.46.0",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
     "ruff>=0.15.13",
     "ty>=0.0.37",
 ]
@@ -35,19 +38,25 @@ select = ["E", "F", "I", "B", "UP", "RUF"]
 [tool.ty.src]
 include = ["src/backend"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra"
+
 [tool.poe.tasks]
 dev = "uvicorn backend.app:app --reload"
 lint = "ruff check ."
 format = "ruff format ."
 format-check = "ruff format --check ."
 typecheck = "ty check"
+test = "pytest"
 
 [tool.poe.tasks.frontend-dev]
 shell = "cd ../frontend && pnpm dev"
 help = "Run the Vite dev server (proxies /api to :8000)"
 
 [tool.poe.tasks.check]
-sequence = ["lint", "format-check", "typecheck"]
+sequence = ["lint", "format-check", "typecheck", "test"]
 help = "Run all read-only checks (CI-safe)"
 
 [tool.poe.tasks.fix]

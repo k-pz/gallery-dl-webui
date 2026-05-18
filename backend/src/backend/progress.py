@@ -43,3 +43,23 @@ def chapter_progress(relpaths: list[str], downloads_dir: Path) -> list[ChapterPr
 
 def count_present(relpaths: list[str], downloads_dir: Path) -> int:
     return sum(c.files_present for c in chapter_progress(relpaths, downloads_dir))
+
+
+def chapter_progress_from_completed(
+    relpaths: list[str], completed: list[str]
+) -> list[ChapterProgress]:
+    """Like chapter_progress, but counts matches against an in-memory set of
+    completed relpaths instead of scanning the filesystem. Stem matching is
+    preserved so a real-extension/simulated-extension mismatch still resolves.
+    """
+    completed_by_dir: dict[Path, set[str]] = {}
+    for rel in completed:
+        p = Path(rel)
+        completed_by_dir.setdefault(p.parent, set()).add(p.stem)
+    out: list[ChapterProgress] = []
+    for parent, expected in _group_stems_by_dir(relpaths).items():
+        present_set = completed_by_dir.get(parent, set())
+        present = sum(1 for s in expected if s in present_set)
+        name = parent.name if str(parent) != "." else ""
+        out.append(ChapterProgress(name=name, files_total=len(expected), files_present=present))
+    return out
