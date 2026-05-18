@@ -23,14 +23,18 @@ target-version = "py314"
 select = ["E", "F", "I", "B", "UP", "RUF"]
 
 [tool.ty.src]
-include = ["api"]
+include = ["main.py", "routers"]
 
 [tool.poe.tasks]
-dev = "fastapi dev api/main.py"
+dev = "fastapi dev main.py"
 lint = "ruff check ."
 format = "ruff format ."
 format-check = "ruff format --check ."
 typecheck = "ty check"
+
+[tool.poe.tasks.frontend-dev]
+shell = "cd ../frontend && pnpm dev"
+help = "Run the Vite dev server (proxies /api to :8000)"
 
 [tool.poe.tasks.check]
 sequence = ["lint", "format-check", "typecheck"]
