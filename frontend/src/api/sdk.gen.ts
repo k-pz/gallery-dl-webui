@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, GetDownloadData, GetDownloadErrors, GetDownloadResponses, GetHealthData, GetHealthResponses, ListDownloadsData, ListDownloadsResponses } from './types.gen';
+import type { CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, ListDownloadsData, ListDownloadsResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -44,3 +44,8 @@ export const createDownload = <ThrowOnError extends boolean = false>(options: Op
  * Get Download
  */
 export const getDownload = <ThrowOnError extends boolean = false>(options: Options<GetDownloadData, ThrowOnError>) => (options.client ?? client).get<GetDownloadResponses, GetDownloadErrors, ThrowOnError>({ url: '/api/downloads/{download_id}', ...options });
+
+/**
+ * Get Progress
+ */
+export const getDownloadProgress = <ThrowOnError extends boolean = false>(options: Options<GetDownloadProgressData, ThrowOnError>) => (options.client ?? client).get<GetDownloadProgressResponses, GetDownloadProgressErrors, ThrowOnError>({ url: '/api/downloads/{download_id}/progress', ...options });

@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { createDownload, getDownload, getHealth, listDownloads, type Options } from '../sdk.gen';
-import type { CreateDownloadData, CreateDownloadError, CreateDownloadResponse, GetDownloadData, GetDownloadError, GetDownloadResponse, GetHealthData, GetHealthResponse, ListDownloadsData, ListDownloadsResponse } from '../types.gen';
+import { createDownload, getDownload, getDownloadProgress, getHealth, listDownloads, type Options } from '../sdk.gen';
+import type { CreateDownloadData, CreateDownloadError, CreateDownloadResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, ListDownloadsData, ListDownloadsResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -108,4 +108,22 @@ export const getDownloadOptions = (options: Options<GetDownloadData>) => queryOp
         return data;
     },
     queryKey: getDownloadQueryKey(options)
+});
+
+export const getDownloadProgressQueryKey = (options: Options<GetDownloadProgressData>) => createQueryKey('getDownloadProgress', options);
+
+/**
+ * Get Progress
+ */
+export const getDownloadProgressOptions = (options: Options<GetDownloadProgressData>) => queryOptions<GetDownloadProgressResponse, GetDownloadProgressError, GetDownloadProgressResponse, ReturnType<typeof getDownloadProgressQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getDownloadProgress({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getDownloadProgressQueryKey(options)
 });

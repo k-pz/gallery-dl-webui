@@ -11,11 +11,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 import gallery_runtime
-from log_hub import LogHub, attach_handler
 from routers import downloads, health
 from settings import load_settings
 from storage import Storage
 from worker import Worker
+
+logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
@@ -30,23 +31,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     storage = await Storage.open(settings.jobs_db_path)
     gallery_runtime.configure(settings)
 
-    hub = LogHub()
-    hub.start()
-    handler = attach_handler(hub)
+    interrupted = await storage.mark_interrupted_on_boot()
+    if interrupted:
+        logger.warning("marked %d in-flight job(s) as failed on boot", interrupted)
 
-    worker = Worker(storage, hub, settings)
+    worker = Worker(storage, settings)
     worker.start()
 
     app.state.settings = settings
     app.state.storage = storage
-    app.state.hub = hub
     app.state.worker = worker
 
     try:
         yield
     finally:
         await worker.stop()
-        logging.getLogger().removeHandler(handler)
         await storage.close()
 
 

@@ -5,6 +5,24 @@ export type ClientOptions = {
 };
 
 /**
+ * ChapterProgress
+ */
+export type ChapterProgress = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Files Total
+     */
+    files_total: number;
+    /**
+     * Files Present
+     */
+    files_present: number;
+};
+
+/**
  * DownloadCreate
  */
 export type DownloadCreate = {
@@ -55,6 +73,10 @@ export type DownloadOut = {
      */
     files_downloaded: number;
     /**
+     * Files Expected
+     */
+    files_expected: number | null;
+    /**
      * Error
      */
     error: string | null;
@@ -68,6 +90,28 @@ export type HttpValidationError = {
      * Detail
      */
     detail?: Array<ValidationError>;
+};
+
+/**
+ * ProgressOut
+ */
+export type ProgressOut = {
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Files Expected
+     */
+    files_expected: number | null;
+    /**
+     * Files Present
+     */
+    files_present: number;
+    /**
+     * Chapters
+     */
+    chapters: Array<ChapterProgress>;
 };
 
 /**
@@ -190,3 +234,33 @@ export type GetDownloadResponses = {
 };
 
 export type GetDownloadResponse = GetDownloadResponses[keyof GetDownloadResponses];
+
+export type GetDownloadProgressData = {
+    body?: never;
+    path: {
+        /**
+         * Download Id
+         */
+        download_id: number;
+    };
+    query?: never;
+    url: '/api/downloads/{download_id}/progress';
+};
+
+export type GetDownloadProgressErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetDownloadProgressError = GetDownloadProgressErrors[keyof GetDownloadProgressErrors];
+
+export type GetDownloadProgressResponses = {
+    /**
+     * Successful Response
+     */
+    200: ProgressOut;
+};
+
+export type GetDownloadProgressResponse = GetDownloadProgressResponses[keyof GetDownloadProgressResponses];

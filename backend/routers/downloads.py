@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from gallery_runtime import find_extractor
-from log_hub import LogHub
+from settings import Settings
 from storage import Download, Storage
 from worker import Worker
 
@@ -28,6 +30,7 @@ class DownloadOut(BaseModel):
     finished_at: str | None
     exit_code: int | None
     files_downloaded: int
+    files_expected: int | None
     error: str | None
 
     @classmethod
@@ -42,8 +45,22 @@ class DownloadOut(BaseModel):
             finished_at=d.finished_at,
             exit_code=d.exit_code,
             files_downloaded=d.files_downloaded,
+            files_expected=d.files_expected,
             error=d.error,
         )
+
+
+class ChapterProgress(BaseModel):
+    name: str
+    files_total: int
+    files_present: int
+
+
+class ProgressOut(BaseModel):
+    status: str
+    files_expected: int | None
+    files_present: int
+    chapters: list[ChapterProgress]
 
 
 def _storage(request: Request) -> Storage:
@@ -52,6 +69,10 @@ def _storage(request: Request) -> Storage:
 
 def _worker(request: Request) -> Worker:
     return request.app.state.worker
+
+
+def _settings(request: Request) -> Settings:
+    return request.app.state.settings
 
 
 @router.post("/downloads", operation_id="createDownload")
@@ -84,33 +105,42 @@ async def get_download(download_id: int, request: Request) -> DownloadOut:
     return DownloadOut.from_download(d)
 
 
-@router.websocket("/downloads/{download_id}/logs")
-async def stream_logs(ws: WebSocket, download_id: int) -> None:
-    storage: Storage = ws.app.state.storage
-    hub: LogHub = ws.app.state.hub
-
+@router.get("/downloads/{download_id}/progress", operation_id="getDownloadProgress")
+async def get_progress(download_id: int, request: Request) -> ProgressOut:
+    storage = _storage(request)
     download = await storage.get(download_id)
     if download is None:
-        await ws.close(code=4404)
-        return
+        raise HTTPException(status_code=404, detail="download not found")
 
-    await ws.accept()
-    queue = hub.subscribe(download_id)
-    try:
-        if download.status in ("completed", "failed"):
-            await ws.send_text(f"[job already finished with status: {download.status}]")
-            return
-        while True:
-            msg = await queue.get()
-            if msg is LogHub.SENTINEL:
-                break
-            assert isinstance(msg, str)
-            await ws.send_text(msg)
-    except WebSocketDisconnect:
-        pass
-    finally:
-        hub.unsubscribe(download_id, queue)
+    manifest = await storage.get_manifest(download_id)
+    base = _settings(request).downloads_dir
+
+    # Group expected files by parent directory, keeping stems only. Stems are
+    # used (not full filenames) because SimulationJob may predict a different
+    # extension than the actual download writes.
+    groups: OrderedDict[Path, list[str]] = OrderedDict()
+    for rel in manifest:
+        p = Path(rel)
+        groups.setdefault(p.parent, []).append(p.stem)
+
+    chapters: list[ChapterProgress] = []
+    total_present = 0
+    for parent, expected_stems in groups.items():
+        directory = base / parent
         try:
-            await ws.close()
-        except Exception:
-            pass
+            present_stems = {child.stem for child in directory.iterdir() if child.is_file()}
+        except FileNotFoundError:
+            present_stems = set()
+        present = sum(1 for s in expected_stems if s in present_stems)
+        total_present += present
+        name = parent.name if str(parent) != "." else ""
+        chapters.append(
+            ChapterProgress(name=name, files_total=len(expected_stems), files_present=present)
+        )
+
+    return ProgressOut(
+        status=download.status,
+        files_expected=download.files_expected,
+        files_present=total_present,
+        chapters=chapters,
+    )
