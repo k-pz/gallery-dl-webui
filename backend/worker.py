@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
 
-from gallery_runtime import run_download
-from log_hub import LogHub
+from gallery_runtime import count_present, extract_manifest, run_download
 from settings import Settings
 from storage import Download, Storage
 
@@ -13,9 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 class Worker:
-    def __init__(self, storage: Storage, hub: LogHub, settings: Settings) -> None:
+    def __init__(self, storage: Storage, settings: Settings) -> None:
         self._storage = storage
-        self._hub = hub
         self._settings = settings
         self._wakeup = asyncio.Event()
         self._stop = asyncio.Event()
@@ -46,26 +43,20 @@ class Worker:
             await self._process(job)
 
     async def _process(self, job: Download) -> None:
-        counter = [0]
-        base_dir = str(self._settings.downloads_dir)
-
-        def on_file(pathfmt: Any) -> None:
-            counter[0] += 1
-            try:
-                full = str(getattr(pathfmt, "path", "") or "")
-                rel = full
-                if full.startswith(base_dir):
-                    rel = full[len(base_dir):].lstrip("/")
-                self._hub.emit_from_thread(f"[file {counter[0]}] {rel or full or '?'}")
-            except Exception:
-                pass
-
-        self._hub.begin(job.id)
+        relpaths: list[str] = []
         try:
-            exit_code = await asyncio.to_thread(run_download, job.url, on_file)
-            await self._storage.finish_job(job.id, exit_code, counter[0])
+            relpaths = await asyncio.to_thread(extract_manifest, job.url)
+            await self._storage.save_manifest(job.id, relpaths)
+            await self._storage.mark_running(job.id)
+            exit_code = await asyncio.to_thread(run_download, job.url)
+            present = await asyncio.to_thread(count_present, relpaths)
+            await self._storage.finish_job(job.id, exit_code, present)
         except Exception as exc:
             logger.exception("download %d failed", job.id)
-            await self._storage.mark_failed(job.id, repr(exc), counter[0])
-        finally:
-            self._hub.end(job.id)
+            present = 0
+            if relpaths:
+                try:
+                    present = await asyncio.to_thread(count_present, relpaths)
+                except Exception:
+                    present = 0
+            await self._storage.mark_failed(job.id, repr(exc), present)

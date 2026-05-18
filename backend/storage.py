@@ -17,10 +17,20 @@ CREATE TABLE IF NOT EXISTS downloads (
     finished_at TEXT,
     exit_code INTEGER,
     files_downloaded INTEGER NOT NULL DEFAULT 0,
+    files_expected INTEGER,
     error TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS download_files (
+    download_id INTEGER NOT NULL REFERENCES downloads(id) ON DELETE CASCADE,
+    idx INTEGER NOT NULL,
+    relpath TEXT NOT NULL,
+    PRIMARY KEY (download_id, idx)
+);
+CREATE INDEX IF NOT EXISTS idx_download_files_download_id
+    ON download_files(download_id);
 """
 
 
@@ -35,6 +45,7 @@ class Download:
     finished_at: str | None
     exit_code: int | None
     files_downloaded: int
+    files_expected: int | None
     error: str | None
 
 
@@ -53,6 +64,7 @@ def _row_to_download(row: aiosqlite.Row) -> Download:
         finished_at=row["finished_at"],
         exit_code=row["exit_code"],
         files_downloaded=row["files_downloaded"],
+        files_expected=row["files_expected"],
         error=row["error"],
     )
 
@@ -66,8 +78,17 @@ class Storage:
         db = await aiosqlite.connect(path)
         db.row_factory = aiosqlite.Row
         await db.executescript(SCHEMA)
+        await cls._migrate(db)
         await db.commit()
         return cls(db)
+
+    @staticmethod
+    async def _migrate(db: aiosqlite.Connection) -> None:
+        # files_expected was added after the initial schema; add it if missing.
+        async with db.execute("PRAGMA table_info(downloads)") as cur:
+            cols = {row["name"] for row in await cur.fetchall()}
+        if "files_expected" not in cols:
+            await db.execute("ALTER TABLE downloads ADD COLUMN files_expected INTEGER")
 
     async def close(self) -> None:
         await self._db.close()
@@ -105,11 +126,38 @@ class Storage:
         if row is None:
             return None
         await self._db.execute(
-            "UPDATE downloads SET status = 'running', started_at = ? WHERE id = ?",
+            "UPDATE downloads SET status = 'extracting', started_at = ? WHERE id = ?",
             (_now(), row["id"]),
         )
         await self._db.commit()
         return await self.get(row["id"])
+
+    async def save_manifest(self, download_id: int, relpaths: list[str]) -> None:
+        await self._db.execute("DELETE FROM download_files WHERE download_id = ?", (download_id,))
+        await self._db.executemany(
+            "INSERT INTO download_files(download_id, idx, relpath) VALUES(?, ?, ?)",
+            [(download_id, i, p) for i, p in enumerate(relpaths)],
+        )
+        await self._db.execute(
+            "UPDATE downloads SET files_expected = ? WHERE id = ?",
+            (len(relpaths), download_id),
+        )
+        await self._db.commit()
+
+    async def get_manifest(self, download_id: int) -> list[str]:
+        async with self._db.execute(
+            "SELECT relpath FROM download_files WHERE download_id = ? ORDER BY idx ASC",
+            (download_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [r["relpath"] for r in rows]
+
+    async def mark_running(self, id_: int) -> None:
+        await self._db.execute(
+            "UPDATE downloads SET status = 'running' WHERE id = ?",
+            (id_,),
+        )
+        await self._db.commit()
 
     async def finish_job(self, id_: int, exit_code: int, files_downloaded: int) -> None:
         status = "completed" if exit_code == 0 else "failed"
@@ -127,3 +175,13 @@ class Storage:
             (_now(), error, files_downloaded, id_),
         )
         await self._db.commit()
+
+    async def mark_interrupted_on_boot(self) -> int:
+        cursor = await self._db.execute(
+            "UPDATE downloads SET status = 'failed', finished_at = ?, "
+            "error = COALESCE(error, 'interrupted: backend restarted') "
+            "WHERE status IN ('extracting', 'running')",
+            (_now(),),
+        )
+        await self._db.commit()
+        return cursor.rowcount or 0

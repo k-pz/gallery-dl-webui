@@ -3,11 +3,11 @@ import {
   Box,
   Button,
   Card,
-  Code,
   Container,
   Group,
   List,
   Loader,
+  Progress,
   ScrollArea,
   Stack,
   Text,
@@ -15,10 +15,11 @@ import {
   Title,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   createDownloadMutation,
   getDownloadOptions,
+  getDownloadProgressOptions,
   getHealthOptions,
   listDownloadsOptions,
   listDownloadsQueryKey,
@@ -31,6 +32,7 @@ const TERMINAL_STATUSES: ReadonlyArray<Status> = ["completed", "failed"];
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "gray",
+  extracting: "yellow",
   running: "blue",
   completed: "green",
   failed: "red",
@@ -38,26 +40,6 @@ const STATUS_COLORS: Record<string, string> = {
 
 function statusColor(status: string): string {
   return STATUS_COLORS[status] ?? "gray";
-}
-
-function useDownloadLogs(downloadId: number | null): string[] {
-  const [lines, setLines] = useState<string[]>([]);
-  useEffect(() => {
-    setLines([]);
-    if (downloadId === null) {
-      return;
-    }
-    const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${scheme}//${window.location.host}/api/downloads/${downloadId}/logs`;
-    const ws = new WebSocket(url);
-    ws.onmessage = (event) => {
-      setLines((prev) => [...prev, String(event.data)]);
-    };
-    return () => {
-      ws.close();
-    };
-  }, [downloadId]);
-  return lines;
 }
 
 function SubmitForm({ onCreated }: { onCreated: (id: number) => void }) {
@@ -121,6 +103,71 @@ function SubmitForm({ onCreated }: { onCreated: (id: number) => void }) {
   );
 }
 
+function ProgressCard({ jobId, status }: { jobId: number; status: Status }) {
+  const isTerminal = TERMINAL_STATUSES.includes(status);
+  const { data, isLoading } = useQuery({
+    ...getDownloadProgressOptions({ path: { download_id: jobId } }),
+    refetchInterval: isTerminal ? false : 1000,
+  });
+
+  if (isLoading || !data) {
+    return (
+      <Box>
+        <Text size="xs" c="dimmed" mb={4}>
+          progress
+        </Text>
+        <Loader size="sm" />
+      </Box>
+    );
+  }
+
+  const expected = data.files_expected ?? 0;
+  const present = data.files_present;
+  const pct = expected > 0 ? (present / expected) * 100 : 0;
+  const manifestReady = expected > 0 && data.chapters.length > 0;
+
+  return (
+    <Box>
+      <Group justify="space-between" mb={4}>
+        <Text size="xs" c="dimmed">
+          progress
+        </Text>
+        <Text size="xs" c="dimmed">
+          {manifestReady ? `${present} / ${expected} files` : "preparing…"}
+        </Text>
+      </Group>
+      <Progress value={pct} size="md" striped={!isTerminal} animated={!isTerminal} />
+      {manifestReady && (
+        <ScrollArea h={220} mt="sm" type="auto">
+          <Stack gap={4}>
+            {data.chapters.map((ch) => {
+              const done = ch.files_present === ch.files_total;
+              return (
+                <Group key={ch.name || "(root)"} justify="space-between" gap="xs" wrap="nowrap">
+                  <Text
+                    size="sm"
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={ch.name || "(root)"}
+                  >
+                    {ch.name || "(root)"}
+                  </Text>
+                  <Badge size="sm" color={done ? "green" : "blue"} variant="light">
+                    {ch.files_present}/{ch.files_total}
+                  </Badge>
+                </Group>
+              );
+            })}
+          </Stack>
+        </ScrollArea>
+      )}
+    </Box>
+  );
+}
+
 function ActiveJobCard({ jobId }: { jobId: number }) {
   const { data: job, isLoading } = useQuery({
     ...getDownloadOptions({ path: { download_id: jobId } }),
@@ -132,15 +179,6 @@ function ActiveJobCard({ jobId }: { jobId: number }) {
       return 1000;
     },
   });
-  const logs = useDownloadLogs(jobId);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el && logs.length > 0) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [logs]);
 
   if (isLoading || !job) {
     return (
@@ -172,6 +210,7 @@ function ActiveJobCard({ jobId }: { jobId: number }) {
               files:{" "}
             </Text>
             {job.files_downloaded}
+            {job.files_expected !== null && ` / ${job.files_expected}`}
           </Text>
           {job.exit_code !== null && (
             <Text size="sm">
@@ -187,16 +226,7 @@ function ActiveJobCard({ jobId }: { jobId: number }) {
             {job.error}
           </Text>
         )}
-        <Box>
-          <Text size="xs" c="dimmed" mb={4}>
-            live log
-          </Text>
-          <ScrollArea h={260} viewportRef={scrollRef} type="auto">
-            <Code block style={{ fontSize: 12, minHeight: 240, whiteSpace: "pre-wrap" }}>
-              {logs.length === 0 ? "(waiting for output…)" : logs.join("\n")}
-            </Code>
-          </ScrollArea>
-        </Box>
+        <ProgressCard jobId={jobId} status={job.status} />
       </Stack>
     </Card>
   );
@@ -253,7 +283,7 @@ function RecentList({
                     #{item.id} {item.url}
                   </Text>
                   <Text size="xs" c="dimmed">
-                    {item.files_downloaded}f
+                    {item.files_downloaded}/{item.files_expected ?? "?"}
                   </Text>
                 </Group>
               </List.Item>

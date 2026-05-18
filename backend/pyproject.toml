@@ -28,7 +28,6 @@ select = ["E", "F", "I", "B", "UP", "RUF"]
 include = [
     "main.py",
     "gallery_runtime.py",
-    "log_hub.py",
     "routers",
     "settings.py",
     "storage.py",
