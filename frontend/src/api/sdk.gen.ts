@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, ListDownloadsData, ListDownloadsResponses } from './types.gen';
+import type { CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, ListDownloadsData, ListDownloadsResponses, PutConfigData, PutConfigErrors, PutConfigResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -49,3 +49,20 @@ export const getDownload = <ThrowOnError extends boolean = false>(options: Optio
  * Get Progress
  */
 export const getDownloadProgress = <ThrowOnError extends boolean = false>(options: Options<GetDownloadProgressData, ThrowOnError>) => (options.client ?? client).get<GetDownloadProgressResponses, GetDownloadProgressErrors, ThrowOnError>({ url: '/api/downloads/{download_id}/progress', ...options });
+
+/**
+ * Get Config
+ */
+export const getConfig = <ThrowOnError extends boolean = false>(options?: Options<GetConfigData, ThrowOnError>) => (options?.client ?? client).get<GetConfigResponses, unknown, ThrowOnError>({ url: '/api/config', ...options });
+
+/**
+ * Put Config
+ */
+export const putConfig = <ThrowOnError extends boolean = false>(options: Options<PutConfigData, ThrowOnError>) => (options.client ?? client).put<PutConfigResponses, PutConfigErrors, ThrowOnError>({
+    url: '/api/config',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});

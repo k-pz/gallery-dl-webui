@@ -17,6 +17,11 @@
 # already be configured on the host (`pct set <CTID> -mp0 /host/path,mp=/ct/path`):
 #   EXTRA_RW_PATHS=/mnt/nas/manga bash scripts/proxmox-install.sh
 #   EXTRA_RW_PATHS=/mnt/nas/manga:/mnt/nas/comics bash scripts/proxmox-install.sh
+#
+# The Config page in the UI lets you set a "postprocessed output directory" for
+# Komga-friendly CBZ output. If that path is outside DATA_DIR, it must appear
+# in EXTRA_RW_PATHS — otherwise the systemd sandbox will refuse writes (the UI
+# surfaces this as a 400 from a save-time write-probe).
 
 set -euo pipefail
 

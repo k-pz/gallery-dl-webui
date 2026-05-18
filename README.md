@@ -76,6 +76,31 @@ cd frontend && pnpm build
 | `WEBUI_HOST`     | `0.0.0.0`     | Bind host for `python -m backend`      |
 | `WEBUI_PORT`     | `8000`        | Bind port for `python -m backend`      |
 
+### CBZ postprocessing (Komga)
+
+Open the **Config** tab in the UI to set a postprocessing output directory.
+When configured, every finished manga download is packed into a CBZ archive
+with a Komga-compatible `ComicInfo.xml`, placed at:
+
+```
+<output_dir>/<Series>/<Series> - cNNN[ - Title].cbz
+```
+
+The toggle "Delete raw images after packing" (on by default) removes the raw
+download directory once a chapter's CBZ is written.
+
+**Deployment note.** The systemd unit installed by `scripts/proxmox-install.sh`
+runs with `ProtectSystem=strict` and only `WEBUI_DATA_DIR` is writable. If the
+postprocessing output dir lives outside `WEBUI_DATA_DIR` (e.g. a NAS mount),
+pass `EXTRA_RW_PATHS=/that/path` to the install script so it gets added to the
+service's `ReadWritePaths`. The UI runs a write-probe when you save the Config,
+so a missing whitelist surfaces immediately as a 400.
+
+**Re-pack caveat.** `gallery-dl` tracks completed downloads in `archive.db`, so
+toggling the delete-raw setting and resubmitting the same URL will not re-pack
+a chapter — `gallery-dl` will short-circuit. To force a re-pack, wipe the
+matching archive row first.
+
 ## Deployment
 
 Production runs on an unprivileged Debian LXC on Proxmox with a `systemd` unit

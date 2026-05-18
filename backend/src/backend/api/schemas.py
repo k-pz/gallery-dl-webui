@@ -21,6 +21,9 @@ class DownloadOut(BaseModel):
     files_downloaded: int
     files_expected: int | None
     error: str | None
+    postprocess_status: str | None
+    postprocess_chapters_packed: int | None
+    postprocess_error: str | None
 
     @classmethod
     def from_download(cls, d: Download) -> DownloadOut:
@@ -36,6 +39,9 @@ class DownloadOut(BaseModel):
             files_downloaded=d.files_downloaded,
             files_expected=d.files_expected,
             error=d.error,
+            postprocess_status=d.postprocess_status,
+            postprocess_chapters_packed=d.postprocess_chapters_packed,
+            postprocess_error=d.postprocess_error,
         )
 
 
@@ -50,3 +56,13 @@ class ProgressOut(BaseModel):
     files_expected: int | None
     files_present: int
     chapters: list[ChapterProgress]
+
+
+class AppConfigOut(BaseModel):
+    postprocess_output_dir: str | None
+    delete_raw_after_pack: bool
+
+
+class AppConfigIn(BaseModel):
+    postprocess_output_dir: str | None
+    delete_raw_after_pack: bool
