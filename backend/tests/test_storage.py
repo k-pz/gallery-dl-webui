@@ -177,6 +177,70 @@ async def test_mark_interrupted_on_boot_only_affects_in_flight(
     assert done is not None and done.status == "completed"
 
 
+async def test_app_config_round_trip(storage: Storage) -> None:
+    assert await storage.get_app_config() == {}
+
+    await storage.set_app_config(
+        {"postprocess_output_dir": "/tmp/out", "delete_raw_after_pack": True}
+    )
+    cfg = await storage.get_app_config()
+    assert cfg == {"postprocess_output_dir": "/tmp/out", "delete_raw_after_pack": True}
+
+    await storage.set_app_config({"postprocess_output_dir": None})
+    cfg = await storage.get_app_config()
+    assert cfg == {"postprocess_output_dir": None, "delete_raw_after_pack": True}
+
+
+async def test_mark_postprocess_persists_state(storage: Storage) -> None:
+    d = await storage.insert_pending("https://example/x", "fake")
+    await storage.mark_postprocess(d.id, "completed", chapters_packed=3, error=None)
+
+    fetched = await storage.get(d.id)
+    assert fetched is not None
+    assert fetched.postprocess_status == "completed"
+    assert fetched.postprocess_chapters_packed == 3
+    assert fetched.postprocess_error is None
+
+
+async def test_migrate_adds_new_columns_to_legacy_db(tmp_path: Path) -> None:
+    """Opening an old DB (without the postprocess columns) should add them."""
+    import aiosqlite
+
+    db_path = tmp_path / "legacy.db"
+    db = await aiosqlite.connect(db_path)
+    # Older schema, minus the postprocess columns.
+    await db.executescript(
+        """
+        CREATE TABLE downloads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT NOT NULL,
+            extractor TEXT,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            finished_at TEXT,
+            exit_code INTEGER,
+            files_downloaded INTEGER NOT NULL DEFAULT 0,
+            error TEXT
+        );
+        INSERT INTO downloads(url, status, created_at) VALUES('u', 'completed', '2024-01-01');
+        """
+    )
+    await db.commit()
+    await db.close()
+
+    s = await Storage.open(db_path)
+    try:
+        d = await s.get(1)
+        assert d is not None
+        assert d.postprocess_status is None
+        assert d.postprocess_chapters_packed is None
+        assert d.postprocess_error is None
+        assert d.files_expected is None
+    finally:
+        await s.close()
+
+
 async def test_manifest_cascades_on_download_delete(tmp_path: Path) -> None:
     """download_files has ON DELETE CASCADE; verify with a manual DELETE.
 

@@ -59,7 +59,7 @@ class _SlowFakeGallery(FakeGallery):
                 on_file_complete(rel)
             if "slow" in url:
                 time.sleep(0.4)
-        return 0
+        return 0, list(self._config.records_for.get(url, []))
 
 
 def _gallery_factory(settings: Settings) -> FakeGallery:

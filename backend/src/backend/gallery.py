@@ -7,6 +7,7 @@ from typing import Any
 from gallery_dl import config, extractor, output
 from gallery_dl.job import DownloadJob, SimulationJob
 
+from backend.postprocess import FileRecord, coerce_record_from_kwdict
 from backend.settings import Settings
 
 
@@ -47,14 +48,16 @@ class _ManifestSimulationJob(SimulationJob):
 
 
 class _ProgressDownloadJob(DownloadJob):
-    """DownloadJob variant that notifies a callback after each file completes.
+    """DownloadJob variant that notifies a callback after each file completes
+    and accumulates per-file metadata records for postprocessing.
 
-    Child jobs spawned for nested extractors share the same callback so a
-    single run reports every downloaded file.
+    Child jobs spawned for nested extractors share the same callback and
+    records list so a single run reports every downloaded file.
     """
 
     _on_file_complete: Callable[[str], None]
     _downloads_base: str
+    _records: list[FileRecord]
 
     def __init__(
         self,
@@ -68,10 +71,12 @@ class _ProgressDownloadJob(DownloadJob):
         if isinstance(parent, _ProgressDownloadJob):
             self._on_file_complete = parent._on_file_complete
             self._downloads_base = parent._downloads_base
+            self._records = parent._records
         else:
             assert on_file_complete is not None and downloads_base is not None
             self._on_file_complete = on_file_complete
             self._downloads_base = downloads_base
+            self._records = []
 
     def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
         super().handle_url(url, kwdict)
@@ -80,6 +85,11 @@ class _ProgressDownloadJob(DownloadJob):
             return
         full = pathfmt.directory + pathfmt.filename
         rel = full[len(self._downloads_base) :] if full.startswith(self._downloads_base) else full
+        # Snapshot metadata immediately — gallery-dl mutates kwdict over the
+        # download lifecycle. The records list is appended to from the worker
+        # thread (run via asyncio.to_thread); the event loop only reads it
+        # after the thread resolves, so no synchronisation is required.
+        self._records.append(coerce_record_from_kwdict(kwdict, Path(full)))
         self._on_file_complete(rel)
 
 
@@ -130,13 +140,19 @@ class Gallery:
         self,
         url: str,
         on_file_complete: Callable[[str], None] | None = None,
-    ) -> int:
+    ) -> tuple[int, list[FileRecord]]:
+        """Run a real download. Returns (exit_code, per-file metadata records).
+
+        Records are only collected when an `on_file_complete` callback is
+        supplied (the worker always supplies one); otherwise the list is empty.
+        """
         if on_file_complete is None:
-            return DownloadJob(url).run()
+            return DownloadJob(url).run(), []
         base = str(self._downloads_dir).rstrip(os.sep) + os.sep
         job = _ProgressDownloadJob(
             url,
             on_file_complete=on_file_complete,
             downloads_base=base,
         )
-        return job.run()
+        exit_code = job.run()
+        return exit_code, job._records

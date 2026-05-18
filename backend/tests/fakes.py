@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from pathlib import Path
 
+from backend.postprocess import FileRecord
 from backend.settings import Settings
 
 
@@ -18,6 +19,9 @@ class FakeGalleryConfig:
     def __init__(self) -> None:
         self.extractor_for: dict[str, str | None] = {}
         self.manifest_for: dict[str, list[str]] = {}
+        # Optional per-URL metadata; when set, FakeGallery.run_download returns
+        # these as records. When unset, no records are emitted.
+        self.records_for: dict[str, list[FileRecord]] = {}
         self.default_extractor: str | None = "fake"
         self.write_files: bool = True
 
@@ -57,7 +61,7 @@ class FakeGallery:
         self,
         url: str,
         on_file_complete: Callable[[str], None] | None = None,
-    ) -> int:
+    ) -> tuple[int, list[FileRecord]]:
         self.download_calls.append(url)
         for rel in self._config.manifest_for.get(url, []):
             if self._config.write_files:
@@ -66,4 +70,4 @@ class FakeGallery:
                 p.write_bytes(b"x")
             if on_file_complete is not None:
                 on_file_complete(rel)
-        return 0
+        return 0, list(self._config.records_for.get(url, []))

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.api.routes import downloads, health
+from backend.api.routes import config, downloads, health
 from backend.gallery import Gallery
 from backend.live_progress import LiveProgress
 from backend.settings import REPO_ROOT, Settings, load_settings
@@ -60,6 +60,7 @@ def create_app(
     app = FastAPI(title="gallery-dl-webui", lifespan=lifespan)
     app.include_router(health.router, prefix="/api")
     app.include_router(downloads.router, prefix="/api")
+    app.include_router(config.router, prefix="/api")
 
     if serve_frontend and FRONTEND_DIST.is_dir():
         app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")

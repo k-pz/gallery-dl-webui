@@ -1,7 +1,8 @@
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 
 import aiosqlite
 
@@ -17,7 +18,10 @@ CREATE TABLE IF NOT EXISTS downloads (
     exit_code INTEGER,
     files_downloaded INTEGER NOT NULL DEFAULT 0,
     files_expected INTEGER,
-    error TEXT
+    error TEXT,
+    postprocess_status TEXT,
+    postprocess_chapters_packed INTEGER,
+    postprocess_error TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at DESC);
@@ -30,6 +34,11 @@ CREATE TABLE IF NOT EXISTS download_files (
 );
 CREATE INDEX IF NOT EXISTS idx_download_files_download_id
     ON download_files(download_id);
+
+CREATE TABLE IF NOT EXISTS app_config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -46,6 +55,9 @@ class Download:
     files_downloaded: int
     files_expected: int | None
     error: str | None
+    postprocess_status: str | None
+    postprocess_chapters_packed: int | None
+    postprocess_error: str | None
 
 
 def _now() -> str:
@@ -65,6 +77,9 @@ def _row_to_download(row: aiosqlite.Row) -> Download:
         files_downloaded=row["files_downloaded"],
         files_expected=row["files_expected"],
         error=row["error"],
+        postprocess_status=row["postprocess_status"],
+        postprocess_chapters_packed=row["postprocess_chapters_packed"],
+        postprocess_error=row["postprocess_error"],
     )
 
 
@@ -83,11 +98,17 @@ class Storage:
 
     @staticmethod
     async def _migrate(db: aiosqlite.Connection) -> None:
-        # files_expected was added after the initial schema; add it if missing.
+        # Columns added after the initial schema; add any missing ones.
         async with db.execute("PRAGMA table_info(downloads)") as cur:
             cols = {row["name"] for row in await cur.fetchall()}
         if "files_expected" not in cols:
             await db.execute("ALTER TABLE downloads ADD COLUMN files_expected INTEGER")
+        if "postprocess_status" not in cols:
+            await db.execute("ALTER TABLE downloads ADD COLUMN postprocess_status TEXT")
+        if "postprocess_chapters_packed" not in cols:
+            await db.execute("ALTER TABLE downloads ADD COLUMN postprocess_chapters_packed INTEGER")
+        if "postprocess_error" not in cols:
+            await db.execute("ALTER TABLE downloads ADD COLUMN postprocess_error TEXT")
 
     async def close(self) -> None:
         await self._db.close()
@@ -113,6 +134,9 @@ class Storage:
             files_downloaded=0,
             files_expected=None,
             error=None,
+            postprocess_status=None,
+            postprocess_chapters_packed=None,
+            postprocess_error=None,
         )
 
     async def get(self, id_: int) -> Download | None:
@@ -195,3 +219,31 @@ class Storage:
         )
         await self._db.commit()
         return cursor.rowcount or 0
+
+    async def mark_postprocess(
+        self,
+        id_: int,
+        status: str,
+        chapters_packed: int | None = None,
+        error: str | None = None,
+    ) -> None:
+        await self._db.execute(
+            "UPDATE downloads SET postprocess_status = ?, "
+            "postprocess_chapters_packed = ?, postprocess_error = ? WHERE id = ?",
+            (status, chapters_packed, error, id_),
+        )
+        await self._db.commit()
+
+    async def get_app_config(self) -> dict[str, Any]:
+        async with self._db.execute("SELECT key, value FROM app_config") as cur:
+            rows = await cur.fetchall()
+        return {row["key"]: json.loads(row["value"]) for row in rows}
+
+    async def set_app_config(self, updates: dict[str, Any]) -> None:
+        for key, value in updates.items():
+            await self._db.execute(
+                "INSERT INTO app_config(key, value) VALUES(?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, json.dumps(value)),
+            )
+        await self._db.commit()

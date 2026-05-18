@@ -5,6 +5,34 @@ export type ClientOptions = {
 };
 
 /**
+ * AppConfigIn
+ */
+export type AppConfigIn = {
+    /**
+     * Postprocess Output Dir
+     */
+    postprocess_output_dir: string | null;
+    /**
+     * Delete Raw After Pack
+     */
+    delete_raw_after_pack: boolean;
+};
+
+/**
+ * AppConfigOut
+ */
+export type AppConfigOut = {
+    /**
+     * Postprocess Output Dir
+     */
+    postprocess_output_dir: string | null;
+    /**
+     * Delete Raw After Pack
+     */
+    delete_raw_after_pack: boolean;
+};
+
+/**
  * ChapterProgress
  */
 export type ChapterProgress = {
@@ -80,6 +108,18 @@ export type DownloadOut = {
      * Error
      */
     error: string | null;
+    /**
+     * Postprocess Status
+     */
+    postprocess_status: string | null;
+    /**
+     * Postprocess Chapters Packed
+     */
+    postprocess_chapters_packed: number | null;
+    /**
+     * Postprocess Error
+     */
+    postprocess_error: string | null;
 };
 
 /**
@@ -264,3 +304,44 @@ export type GetDownloadProgressResponses = {
 };
 
 export type GetDownloadProgressResponse = GetDownloadProgressResponses[keyof GetDownloadProgressResponses];
+
+export type GetConfigData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/config';
+};
+
+export type GetConfigResponses = {
+    /**
+     * Successful Response
+     */
+    200: AppConfigOut;
+};
+
+export type GetConfigResponse = GetConfigResponses[keyof GetConfigResponses];
+
+export type PutConfigData = {
+    body: AppConfigIn;
+    path?: never;
+    query?: never;
+    url: '/api/config';
+};
+
+export type PutConfigErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PutConfigError = PutConfigErrors[keyof PutConfigErrors];
+
+export type PutConfigResponses = {
+    /**
+     * Successful Response
+     */
+    200: AppConfigOut;
+};
+
+export type PutConfigResponse = PutConfigResponses[keyof PutConfigResponses];

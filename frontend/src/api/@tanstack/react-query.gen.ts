@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { createDownload, getDownload, getDownloadProgress, getHealth, listDownloads, type Options } from '../sdk.gen';
-import type { CreateDownloadData, CreateDownloadError, CreateDownloadResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, ListDownloadsData, ListDownloadsResponse } from '../types.gen';
+import { createDownload, getConfig, getDownload, getDownloadProgress, getHealth, listDownloads, type Options, putConfig } from '../sdk.gen';
+import type { CreateDownloadData, CreateDownloadError, CreateDownloadResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, ListDownloadsData, ListDownloadsResponse, PutConfigData, PutConfigError, PutConfigResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -127,3 +127,38 @@ export const getDownloadProgressOptions = (options: Options<GetDownloadProgressD
     },
     queryKey: getDownloadProgressQueryKey(options)
 });
+
+export const getConfigQueryKey = (options?: Options<GetConfigData>) => createQueryKey('getConfig', options);
+
+/**
+ * Get Config
+ */
+export const getConfigOptions = (options?: Options<GetConfigData>) => queryOptions<GetConfigResponse, DefaultError, GetConfigResponse, ReturnType<typeof getConfigQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getConfig({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getConfigQueryKey(options)
+});
+
+/**
+ * Put Config
+ */
+export const putConfigMutation = (options?: Partial<Options<PutConfigData>>): UseMutationOptions<PutConfigResponse, PutConfigError, Options<PutConfigData>> => {
+    const mutationOptions: UseMutationOptions<PutConfigResponse, PutConfigError, Options<PutConfigData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await putConfig({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
