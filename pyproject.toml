@@ -1,0 +1,41 @@
+[project]
+name = "gallery-dl-webui"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[standard]>=0.136.1",
+]
+
+[dependency-groups]
+dev = [
+    "poethepoet>=0.46.0",
+    "ruff>=0.15.13",
+    "ty>=0.0.37",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF"]
+
+[tool.ty.src]
+include = ["api"]
+
+[tool.poe.tasks]
+dev = "fastapi dev api/main.py"
+lint = "ruff check ."
+format = "ruff format ."
+format-check = "ruff format --check ."
+typecheck = "ty check"
+
+[tool.poe.tasks.check]
+sequence = ["lint", "format-check", "typecheck"]
+help = "Run all read-only checks (CI-safe)"
+
+[tool.poe.tasks.fix]
+shell = "ruff check --fix . && ruff format ."
+help = "Auto-fix lint findings and reformat"
