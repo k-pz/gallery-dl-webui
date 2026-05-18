@@ -317,3 +317,7 @@ pyrightconfig.json
 
 .local
 .claude
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
