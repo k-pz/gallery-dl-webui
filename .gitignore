@@ -321,3 +321,6 @@ pyrightconfig.json
 # Frontend
 frontend/node_modules/
 frontend/dist/
+
+# Runtime data
+data/

@@ -5,7 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "aiosqlite>=0.21",
     "fastapi[standard]>=0.136.1",
+    "gallery-dl>=1.32",
 ]
 
 [dependency-groups]
@@ -23,7 +25,15 @@ target-version = "py314"
 select = ["E", "F", "I", "B", "UP", "RUF"]
 
 [tool.ty.src]
-include = ["main.py", "routers"]
+include = [
+    "main.py",
+    "gallery_runtime.py",
+    "log_hub.py",
+    "routers",
+    "settings.py",
+    "storage.py",
+    "worker.py",
+]
 
 [tool.poe.tasks]
 dev = "fastapi dev main.py"

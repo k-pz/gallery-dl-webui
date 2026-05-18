@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetHealthData, GetHealthResponses } from './types.gen';
+import type { CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, GetDownloadData, GetDownloadErrors, GetDownloadResponses, GetHealthData, GetHealthResponses, ListDownloadsData, ListDownloadsResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -22,3 +22,25 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
  * Health
  */
 export const getHealth = <ThrowOnError extends boolean = false>(options?: Options<GetHealthData, ThrowOnError>) => (options?.client ?? client).get<GetHealthResponses, unknown, ThrowOnError>({ url: '/api/health', ...options });
+
+/**
+ * List Downloads
+ */
+export const listDownloads = <ThrowOnError extends boolean = false>(options?: Options<ListDownloadsData, ThrowOnError>) => (options?.client ?? client).get<ListDownloadsResponses, unknown, ThrowOnError>({ url: '/api/downloads', ...options });
+
+/**
+ * Create Download
+ */
+export const createDownload = <ThrowOnError extends boolean = false>(options: Options<CreateDownloadData, ThrowOnError>) => (options.client ?? client).post<CreateDownloadResponses, CreateDownloadErrors, ThrowOnError>({
+    url: '/api/downloads',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Download
+ */
+export const getDownload = <ThrowOnError extends boolean = false>(options: Options<GetDownloadData, ThrowOnError>) => (options.client ?? client).get<GetDownloadResponses, GetDownloadErrors, ThrowOnError>({ url: '/api/downloads/{download_id}', ...options });
