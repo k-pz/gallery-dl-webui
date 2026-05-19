@@ -28,14 +28,12 @@ import {
 import type { TargetOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { REFETCH_LIST_MS } from "../lib/polling";
-import { statusColor } from "../lib/status";
+import { isActive, statusColor } from "../lib/status";
 import { formatRel } from "../lib/time";
 
 type WatchedFilter = "any" | "watched" | "unwatched";
 type StatusFilter = "any" | "completed" | "failed" | "active" | "no-runs";
 type SortKey = "recent" | "name" | "created";
-
-const ACTIVE_STATUSES = new Set(["pending", "extracting", "running"]);
 
 export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void }) {
   const { data: targets, isLoading } = useQuery({
@@ -70,7 +68,7 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
       if (extractorFilter && t.extractor !== extractorFilter) return false;
       if (statusFilter !== "any") {
         const status = t.last_status;
-        const active = status !== null && ACTIVE_STATUSES.has(status);
+        const active = status !== null && isActive(status);
         if (statusFilter === "active" && !active) return false;
         if (statusFilter === "completed" && status !== "completed") return false;
         if (statusFilter === "failed" && status !== "failed") return false;

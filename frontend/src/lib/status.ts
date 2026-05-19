@@ -18,12 +18,18 @@ const STATUS_COLORS: Record<string, string> = {
 
 const TERMINAL_STATUSES: ReadonlyArray<Status> = ["completed", "failed", "cancelled"];
 
+const ACTIVE_STATUSES: ReadonlySet<string> = new Set(["pending", "extracting", "running"]);
+
 export function statusColor(status: string): string {
   return STATUS_COLORS[status] ?? "gray";
 }
 
 export function isTerminal(status: Status): boolean {
   return TERMINAL_STATUSES.includes(status);
+}
+
+export function isActive(status: string): boolean {
+  return ACTIVE_STATUSES.has(status);
 }
 
 export function isCancellable(status: Status): boolean {
