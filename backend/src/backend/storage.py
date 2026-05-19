@@ -140,11 +140,11 @@ def _row_to_target(row: aiosqlite.Row) -> Target:
     )
 
 
-class _Unset:
+class Unset:
     """Sentinel allowing update_target to distinguish "leave as-is" from "set to NULL"."""
 
 
-_UNSET = _Unset()
+UNSET = Unset()
 
 
 class Storage:
@@ -505,18 +505,18 @@ class Storage:
         id_: int,
         *,
         watched: bool | None = None,
-        watch_period: str | None | _Unset = _UNSET,
-        output_dir: str | None | _Unset = _UNSET,
+        watch_period: str | None | Unset = UNSET,
+        output_dir: str | None | Unset = UNSET,
     ) -> Target | None:
         updates: list[str] = []
         params: list[object] = []
         if watched is not None:
             updates.append("watched = ?")
             params.append(1 if watched else 0)
-        if not isinstance(watch_period, _Unset):
+        if not isinstance(watch_period, Unset):
             updates.append("watch_period = ?")
             params.append(watch_period)
-        if not isinstance(output_dir, _Unset):
+        if not isinstance(output_dir, Unset):
             updates.append("output_dir = ?")
             params.append(output_dir)
         if not updates:
