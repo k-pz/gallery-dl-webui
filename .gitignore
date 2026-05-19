@@ -260,7 +260,9 @@ venv.bak/
 
 # mkdocs documentation
 /site
-docs/reference/openapi.json
+
+# wiki build (rendered markdown + cloned wiki working copy)
+/wiki
 
 # mypy
 .mypy_cache/

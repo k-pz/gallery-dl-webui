@@ -149,30 +149,22 @@ description = "Regenerate the frontend API client from the live backend's OpenAP
 dir = "{{config_root}}/frontend"
 run = "pnpm generate"
 
-# ---- Docs ---------------------------------------------------------------
+# ---- Wiki (auto-generated docs) -----------------------------------------
 
-[tasks."docs:build"]
-description = "Dump OpenAPI + build the mkdocs site (output: ./site)"
-run = "bash {{config_root}}/scripts/build-docs.sh"
-
-[tasks."docs:serve"]
-description = "Live-reload the docs site at http://localhost:8001 (refreshes openapi.json once)"
+[tasks."wiki:build"]
+description = "Render the wiki markdown into ./wiki (preview locally; CI pushes to the .wiki.git repo)"
 dir = "{{config_root}}/backend"
-run = [
-    "uv run --group docs python {{config_root}}/scripts/dump-openapi.py {{config_root}}/docs/reference/openapi.json",
-    "uv run --group docs mkdocs serve --config-file {{config_root}}/mkdocs.yml --dev-addr 127.0.0.1:8001",
-]
+run = "uv run --group docs python {{config_root}}/scripts/build-wiki.py {{config_root}}/wiki"
 
 # ---- Cleanup -------------------------------------------------------------
 
 [tasks.clean]
-description = "Remove installed deps and build output (backend/.venv, frontend/node_modules, frontend/dist, site)"
+description = "Remove installed deps and build output (backend/.venv, frontend/node_modules, frontend/dist, wiki)"
 run = [
     "rm -rf {{config_root}}/backend/.venv",
     "rm -rf {{config_root}}/frontend/node_modules",
     "rm -rf {{config_root}}/frontend/dist",
-    "rm -rf {{config_root}}/site",
-    "rm -f {{config_root}}/docs/reference/openapi.json",
+    "rm -rf {{config_root}}/wiki",
 ]
 
 # ---- Production entrypoint ----------------------------------------------
