@@ -5,7 +5,7 @@ from pathlib import Path
 
 from gallery_dl.exception import StopExtraction
 
-from backend.gallery import Manifest
+from backend.gallery import Manifest, SkipChapterFn
 from backend.postprocess import FileRecord
 from backend.settings import Settings
 
@@ -59,10 +59,20 @@ class FakeGallery:
             return self._config.extractor_for[url]
         return self._config.default_extractor
 
-    def extract_manifest(self, url: str) -> Manifest:
+    def extract_manifest(
+        self,
+        url: str,
+        skip_chapter: SkipChapterFn | None = None,
+    ) -> Manifest:
         self.extract_calls.append(url)
+        paths: list[str] = []
+        for rel in self._config.manifest_for.get(url, []):
+            manga, chapter = self._chapter_for(url, rel)
+            if skip_chapter is not None and manga and chapter and skip_chapter(manga, chapter):
+                continue
+            paths.append(rel)
         return Manifest(
-            paths=list(self._config.manifest_for.get(url, [])),
+            paths=paths,
             series_name=self._config.series_name_for.get(url),
         )
 
@@ -70,9 +80,14 @@ class FakeGallery:
         self,
         url: str,
         on_file_complete: Callable[[str], None] | None = None,
+        skip_chapter: SkipChapterFn | None = None,
     ) -> tuple[int, list[FileRecord]]:
         self.download_calls.append(url)
+        emitted_records: list[FileRecord] = []
         for rel in self._config.manifest_for.get(url, []):
+            manga, chapter = self._chapter_for(url, rel)
+            if skip_chapter is not None and manga and chapter and skip_chapter(manga, chapter):
+                continue
             if self._config.write_files:
                 p = self._downloads_dir / rel
                 p.parent.mkdir(parents=True, exist_ok=True)
@@ -84,4 +99,26 @@ class FakeGallery:
                     # Mirror gallery-dl: StopExtraction unwinds the job cleanly
                     # and run() returns the current status code.
                     break
-        return 0, list(self._config.records_for.get(url, []))
+        for rec in self._config.records_for.get(url, []):
+            if (
+                skip_chapter is not None
+                and rec.manga
+                and rec.chapter
+                and skip_chapter(rec.manga, rec.chapter)
+            ):
+                continue
+            emitted_records.append(rec)
+        return 0, emitted_records
+
+    def _chapter_for(self, url: str, relpath: str) -> tuple[str, str]:
+        """Look up (manga, chapter) for a manifest entry from records_for, when
+        available. Lets tests exercise the skip-chapter path without wiring up
+        a full kwdict pipeline."""
+        for rec in self._config.records_for.get(url, []):
+            try:
+                rel = str(rec.path.relative_to(self._downloads_dir))
+            except ValueError:
+                continue
+            if rel == relpath:
+                return rec.manga, rec.chapter
+        return "", ""

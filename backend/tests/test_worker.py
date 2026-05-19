@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.gallery import Manifest
+from backend.gallery import Manifest, SkipChapterFn
 from backend.live_progress import LiveProgress
 from backend.postprocess import FileRecord
 from backend.settings import Settings
@@ -126,8 +126,8 @@ async def test_worker_cancel_after_extract_skips_download(
     # next check (right after extract returns).
     real_extract = gallery.extract_manifest
 
-    def extract_and_request_cancel(url: str) -> Manifest:
-        result = real_extract(url)
+    def extract_and_request_cancel(url: str, skip_chapter: SkipChapterFn | None = None) -> Manifest:
+        result = real_extract(url, skip_chapter)
         # The worker sets _current_id before starting extract, so this is safe.
         if worker._current_id is not None:
             worker.request_cancel(worker._current_id)
@@ -161,7 +161,9 @@ async def test_worker_marks_failed_when_extract_raises(
     settings: Settings, storage: Storage
 ) -> None:
     class Boom(FakeGallery):
-        def extract_manifest(self, url: str) -> Manifest:  # type: ignore[override]
+        def extract_manifest(  # type: ignore[override]
+            self, url: str, skip_chapter: SkipChapterFn | None = None
+        ) -> Manifest:
             raise RuntimeError("nope")
 
     gallery = Boom(settings, config=FakeGalleryConfig())
@@ -434,6 +436,113 @@ async def test_worker_skips_postprocess_when_output_dir_not_set(
         assert row is not None
         assert row.status == "completed"
         assert row.postprocess_status == "skipped"
+    finally:
+        await worker.stop()
+
+
+async def test_worker_skips_already_packed_chapter_for_watched_target(
+    settings: Settings, storage: Storage, tmp_path: Path
+) -> None:
+    """A watched target's subsequent poll should drop chapters whose CBZ
+    already lives in the output dir, both from the manifest and the download."""
+    root = tmp_path / "media"
+    default = root / "manga"
+    default.mkdir(parents=True)
+    # Pre-existing CBZ for chapter 1 — should be skipped this run.
+    series_dir = default / "S"
+    series_dir.mkdir()
+    (series_dir / "S - c001.cbz").write_bytes(b"already-packed")
+    await storage.set_app_config(
+        {
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": str(default),
+            "delete_raw_after_pack": True,
+        }
+    )
+
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = [
+        "fake/S/c1/001.jpg",
+        "fake/S/c1/002.jpg",
+        "fake/S/c2/001.jpg",
+    ]
+    config.records_for["https://example/x"] = [
+        *_make_records_for_chapter(settings.downloads_dir, "S", "1"),
+        *_make_records_for_chapter(settings.downloads_dir, "S", "2"),
+    ]
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(storage, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await storage.upsert_target("https://example/x", "fake", None)
+        await storage.update_target(target.id, watched=True)
+        d = await storage.insert_pending("https://example/x", "fake", target_id=target.id)
+        worker.notify()
+
+        async def packed() -> bool:
+            row = await storage.get(d.id)
+            return row is not None and row.postprocess_status in ("completed", "failed")
+
+        await _wait_for(packed)
+
+        row = await storage.get(d.id)
+        assert row is not None
+        assert row.status == "completed"
+        # Only c2 should appear in the manifest — c1 was filtered out.
+        manifest = await storage.get_manifest(d.id)
+        assert manifest == ["fake/S/c2/001.jpg"]
+        # And only c2 should have been newly packed.
+        assert row.postprocess_chapters_packed == 1
+        # The pre-existing CBZ wasn't overwritten.
+        assert (series_dir / "S - c001.cbz").read_bytes() == b"already-packed"
+        # And c2's CBZ shows up.
+        assert (series_dir / "S - c002.cbz").is_file()
+    finally:
+        await worker.stop()
+
+
+async def test_worker_does_not_skip_for_unwatched_target(
+    settings: Settings, storage: Storage, tmp_path: Path
+) -> None:
+    """Unwatched targets keep the existing re-download behavior — gallery-dl's
+    own archive.db is still the source of truth there."""
+    root = tmp_path / "media"
+    default = root / "manga"
+    default.mkdir(parents=True)
+    series_dir = default / "S"
+    series_dir.mkdir()
+    (series_dir / "S - c001.cbz").write_bytes(b"old")
+    await storage.set_app_config(
+        {
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": str(default),
+            "delete_raw_after_pack": True,
+        }
+    )
+
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]
+    config.records_for["https://example/x"] = _make_records_for_chapter(
+        settings.downloads_dir, "S", "1"
+    )
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(storage, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await storage.upsert_target("https://example/x", "fake", None)
+        # Target is NOT watched.
+        d = await storage.insert_pending("https://example/x", "fake", target_id=target.id)
+        worker.notify()
+
+        async def packed() -> bool:
+            row = await storage.get(d.id)
+            return row is not None and row.postprocess_status in ("completed", "failed")
+
+        await _wait_for(packed)
+
+        manifest = await storage.get_manifest(d.id)
+        # Full manifest preserved.
+        assert manifest == ["fake/S/c1/001.jpg"]
     finally:
         await worker.stop()
 

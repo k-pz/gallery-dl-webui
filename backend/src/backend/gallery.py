@@ -11,6 +11,11 @@ from gallery_dl.job import DownloadJob, SimulationJob
 from backend.postprocess import FileRecord, coerce_record_from_kwdict
 from backend.settings import Settings
 
+# Predicate: given (manga, chapter) from a gallery-dl kwdict, returns True if
+# the chapter is already represented as a CBZ in the postprocess output dir,
+# i.e. the worker should not re-download or include it in the manifest.
+SkipChapterFn = Callable[[str, str], bool]
+
 
 @dataclass
 class Manifest:
@@ -48,7 +53,7 @@ class _ManifestSimulationJob(SimulationJob):
     first-seen series name.
     """
 
-    _manifest: list[str]
+    _manifest: list[tuple[str, str, str]]
     _series_box: list[str | None]
 
     def __init__(self, url: Any, parent: SimulationJob | None = None) -> None:
@@ -80,7 +85,9 @@ class _ManifestSimulationJob(SimulationJob):
         if self.archive is not None and self._archive_write_skip:
             self.archive.add(kwdict)
         filename = pathfmt.build_filename(kwdict)
-        self._manifest.append(pathfmt.directory + filename)
+        manga = str(kwdict.get("manga") or "")
+        chapter = str(kwdict.get("chapter") or "")
+        self._manifest.append((pathfmt.directory + filename, manga, chapter))
 
 
 class _ProgressDownloadJob(DownloadJob):
@@ -94,6 +101,7 @@ class _ProgressDownloadJob(DownloadJob):
     _on_file_complete: Callable[[str], None]
     _downloads_base: str
     _records: list[FileRecord]
+    _skip_chapter: SkipChapterFn | None
 
     def __init__(
         self,
@@ -102,17 +110,33 @@ class _ProgressDownloadJob(DownloadJob):
         *,
         on_file_complete: Callable[[str], None] | None = None,
         downloads_base: str | None = None,
+        skip_chapter: SkipChapterFn | None = None,
     ) -> None:
         super().__init__(url, parent)
         if not _inherit_shared_state(
-            self, parent, "_on_file_complete", "_downloads_base", "_records"
+            self,
+            parent,
+            "_on_file_complete",
+            "_downloads_base",
+            "_records",
+            "_skip_chapter",
         ):
             assert on_file_complete is not None and downloads_base is not None
             self._on_file_complete = on_file_complete
             self._downloads_base = downloads_base
             self._records = []
+            self._skip_chapter = skip_chapter
 
     def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
+        if self._skip_chapter is not None:
+            manga = str(kwdict.get("manga") or "")
+            chapter = str(kwdict.get("chapter") or "")
+            if manga and chapter and self._skip_chapter(manga, chapter):
+                pathfmt = self.pathfmt
+                if pathfmt is not None:
+                    pathfmt.set_filename(kwdict)
+                self.handle_skip()
+                return
         super().handle_url(url, kwdict)
         pathfmt = self.pathfmt
         if pathfmt is None:
@@ -159,15 +183,26 @@ class Gallery:
             return None
         return getattr(found, "category", None)
 
-    def extract_manifest(self, url: str) -> Manifest:
+    def extract_manifest(
+        self,
+        url: str,
+        skip_chapter: SkipChapterFn | None = None,
+    ) -> Manifest:
         """Run gallery-dl in simulate mode; return the expected files (as paths
         relative to the configured downloads directory) plus the first series
-        name we observed in any directory's metadata."""
+        name we observed in any directory's metadata.
+
+        When `skip_chapter` is supplied, manifest entries belonging to chapters
+        the callable identifies as already-done are omitted, so progress
+        accounting reflects only the work the real download will perform.
+        """
         job = _ManifestSimulationJob(url)
         job.run()
         base = str(self._downloads_dir).rstrip(os.sep) + os.sep
         paths: list[str] = []
-        for full in job._manifest:
+        for full, manga, chapter in job._manifest:
+            if skip_chapter is not None and manga and chapter and skip_chapter(manga, chapter):
+                continue
             paths.append(full[len(base) :] if full.startswith(base) else full)
         return Manifest(paths=paths, series_name=job._series_box[0])
 
@@ -175,11 +210,14 @@ class Gallery:
         self,
         url: str,
         on_file_complete: Callable[[str], None] | None = None,
+        skip_chapter: SkipChapterFn | None = None,
     ) -> tuple[int, list[FileRecord]]:
         """Run a real download. Returns (exit_code, per-file metadata records).
 
         Records are only collected when an `on_file_complete` callback is
         supplied (the worker always supplies one); otherwise the list is empty.
+        `skip_chapter`, when set, causes the download job to short-circuit
+        URLs whose chapter the callable says is already packed.
         """
         if on_file_complete is None:
             return DownloadJob(url).run(), []
@@ -188,6 +226,7 @@ class Gallery:
             url,
             on_file_complete=on_file_complete,
             downloads_base=base,
+            skip_chapter=skip_chapter,
         )
         exit_code = job.run()
         return exit_code, job._records
