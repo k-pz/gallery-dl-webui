@@ -5,9 +5,9 @@ from pathlib import Path
 from gallery_dl.exception import StopExtraction
 
 from backend import postprocess
-from backend.gallery import Gallery
+from backend.gallery import Gallery, SkipChapterFn
 from backend.live_progress import LiveProgress
-from backend.postprocess import FileRecord
+from backend.postprocess import FileRecord, chapter_already_packed
 from backend.progress import count_present
 from backend.storage import Download, Storage
 
@@ -72,12 +72,15 @@ class Worker:
         exit_code = 1
         cancelled = False
         try:
-            relpaths = await self._extract_manifest(job)
+            skip_chapter = await self._build_skip_chapter(job)
+            relpaths = await self._extract_manifest(job, skip_chapter)
             if self._cancel_requested:
                 await self._storage.mark_cancelled(job.id, 0)
                 return
             await self._storage.save_manifest(job.id, relpaths)
-            exit_code, records, cancelled = await self._execute_download(job, relpaths)
+            exit_code, records, cancelled = await self._execute_download(
+                job, relpaths, skip_chapter
+            )
         except Exception as exc:
             await self._handle_failure(job, exc, relpaths)
             return
@@ -92,15 +95,49 @@ class Worker:
         if exit_code == 0 and not cancelled:
             await self._run_postprocess(job, records, self._gallery.downloads_dir)
 
-    async def _extract_manifest(self, job: Download) -> list[str]:
+    async def _build_skip_chapter(self, job: Download) -> SkipChapterFn | None:
+        """Skip-callable for watched targets so subsequent polls don't re-pull
+        chapters that already exist as CBZs in the postprocess output dir.
+
+        Returns None (no skipping) unless: the download is tied to a watched
+        target AND postprocess will run with a resolvable output_dir.
+        """
+        if job.target_id is None:
+            return None
+        target = await self._storage.get_target(job.target_id)
+        if target is None or not target.watched:
+            return None
+        cfg = await self._storage.get_app_config()
+        output_dir_str = job.output_dir or cfg.get("postprocess_default_output_dir")
+        if not isinstance(output_dir_str, str) or not output_dir_str:
+            return None
+        output_dir = Path(output_dir_str)
+        # Memoise per (manga, chapter) — gallery-dl calls into this once per
+        # page URL, but the answer is the same for every page in a chapter.
+        cache: dict[tuple[str, str], bool] = {}
+
+        def skip(manga: str, chapter: str) -> bool:
+            key = (manga, chapter)
+            if key not in cache:
+                cache[key] = chapter_already_packed(output_dir, manga, chapter)
+            return cache[key]
+
+        return skip
+
+    async def _extract_manifest(
+        self, job: Download, skip_chapter: SkipChapterFn | None
+    ) -> list[str]:
         """Sim-run to discover expected file paths and capture an early series_name."""
-        manifest = await asyncio.to_thread(self._gallery.extract_manifest, job.url)
+        manifest = await asyncio.to_thread(self._gallery.extract_manifest, job.url, skip_chapter)
         if job.target_id is not None and manifest.series_name:
             await self._storage.set_target_name(job.target_id, manifest.series_name)
         return manifest.paths
 
     async def _execute_download(
-        self, job: Download, relpaths: list[str]
+        self,
+        job: Download,
+        relpaths: list[str],
+        skip_chapter: SkipChapterFn | None,
     ) -> tuple[int, list[FileRecord], bool]:
         """Run the real download; return (exit_code, file records, was_cancelled)."""
         await self._storage.mark_running(job.id)
@@ -110,6 +147,7 @@ class Worker:
                 self._gallery.run_download,
                 job.url,
                 self._make_progress_cb(job.id),
+                skip_chapter,
             )
             cancelled = self._cancel_requested
             present = await asyncio.to_thread(count_present, relpaths, self._gallery.downloads_dir)

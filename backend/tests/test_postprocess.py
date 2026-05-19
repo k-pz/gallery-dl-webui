@@ -9,6 +9,7 @@ from backend.postprocess import (
     FileRecord,
     build_comicinfo_xml,
     cbz_target_path,
+    chapter_already_packed,
     coerce_record_from_kwdict,
     collect_chapters,
     run,
@@ -259,6 +260,58 @@ def test_coerce_record_handles_missing_fields() -> None:
     assert rec.chapter == ""
     assert rec.author == ""
     assert rec.date == ""
+
+
+def test_chapter_already_packed_finds_canonical_name(tmp_path: Path) -> None:
+    series_dir = tmp_path / "S"
+    series_dir.mkdir()
+    (series_dir / "S - c001.cbz").write_bytes(b"x")
+    assert chapter_already_packed(tmp_path, "S", "1") is True
+
+
+def test_chapter_already_packed_finds_titled_variant(tmp_path: Path) -> None:
+    series_dir = tmp_path / "S"
+    series_dir.mkdir()
+    (series_dir / "S - c001 - First.cbz").write_bytes(b"x")
+    assert chapter_already_packed(tmp_path, "S", "1") is True
+
+
+def test_chapter_already_packed_finds_collision_variant(tmp_path: Path) -> None:
+    series_dir = tmp_path / "S"
+    series_dir.mkdir()
+    (series_dir / "S - c001 (1).cbz").write_bytes(b"x")
+    assert chapter_already_packed(tmp_path, "S", "1") is True
+
+
+def test_chapter_already_packed_distinguishes_chapter_numbers(tmp_path: Path) -> None:
+    series_dir = tmp_path / "S"
+    series_dir.mkdir()
+    # c0011.cbz would be chapter 11 misformatted — must not match c001.
+    (series_dir / "S - c0011.cbz").write_bytes(b"x")
+    (series_dir / "S - c001.5.cbz").write_bytes(b"x")
+    assert chapter_already_packed(tmp_path, "S", "1") is False
+
+
+def test_chapter_already_packed_handles_missing_series_dir(tmp_path: Path) -> None:
+    assert chapter_already_packed(tmp_path, "Nope", "1") is False
+
+
+def test_chapter_already_packed_handles_empty_inputs(tmp_path: Path) -> None:
+    assert chapter_already_packed(tmp_path, "", "1") is False
+    assert chapter_already_packed(tmp_path, "S", "") is False
+
+
+def test_chapter_already_packed_ignores_non_cbz_files(tmp_path: Path) -> None:
+    series_dir = tmp_path / "S"
+    series_dir.mkdir()
+    (series_dir / "S - c001.txt").write_bytes(b"x")
+    assert chapter_already_packed(tmp_path, "S", "1") is False
+
+
+def test_chapter_already_packed_treats_file_at_series_path_as_missing(tmp_path: Path) -> None:
+    # A file (not a dir) sitting where the series dir would be is a no-op.
+    (tmp_path / "S").write_bytes(b"x")
+    assert chapter_already_packed(tmp_path, "S", "1") is False
 
 
 @pytest.mark.parametrize(

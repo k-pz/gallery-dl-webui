@@ -195,6 +195,30 @@ def cbz_target_path(output_dir: Path, ch: ChapterRecord) -> Path:
     raise RuntimeError(f"too many CBZ collisions at {base}")
 
 
+def chapter_already_packed(output_dir: Path, manga: str, chapter: str) -> bool:
+    """True if a CBZ for this chapter exists under output_dir.
+
+    Matches the cbz_target_path stem pattern so re-pack variants ("(1)") and
+    title-bearing variants ("- Title") all count as already-packed.
+    """
+    if not manga or not chapter:
+        return False
+    series = sanitize(manga)
+    chap = _format_chapter_number(chapter)
+    series_dir = output_dir / series
+    stem_prefix = f"{series} - c{chap}"
+    try:
+        for child in series_dir.iterdir():
+            if not child.is_file() or child.suffix.lower() != ".cbz":
+                continue
+            stem = child.stem
+            if stem == stem_prefix or stem.startswith(stem_prefix + " "):
+                return True
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    return False
+
+
 def build_comicinfo_xml(ch: ChapterRecord) -> bytes:
     root = ET.Element(
         "ComicInfo",
