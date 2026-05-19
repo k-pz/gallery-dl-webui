@@ -1,48 +1,17 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  bodyOf,
+  type FetchArgs,
+  findCall,
+  jsonResponse,
+  methodOf,
+  mockFetch,
+  urlOf,
+} from "../test/mocks";
 import { renderWithProviders } from "../test/render";
 import { SubmitForm } from "./SubmitForm";
-
-type FetchArgs = Parameters<typeof fetch>;
-
-function mockFetch(
-  handler: (input: FetchArgs[0], init?: FetchArgs[1]) => Response | Promise<Response>,
-) {
-  const spy = vi.fn(handler);
-  vi.stubGlobal("fetch", spy);
-  return spy;
-}
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function methodOf(input: FetchArgs[0], init?: FetchArgs[1]): string {
-  if (input instanceof Request) return input.method;
-  return init?.method ?? "GET";
-}
-
-function urlOf(input: FetchArgs[0]): string {
-  if (input instanceof Request) return input.url;
-  if (input instanceof URL) return input.toString();
-  return String(input);
-}
-
-async function bodyOf(input: FetchArgs[0], init?: FetchArgs[1]): Promise<string> {
-  if (input instanceof Request) return await input.clone().text();
-  return String(init?.body ?? "");
-}
-
-function findCall(
-  spy: ReturnType<typeof mockFetch>,
-  predicate: (input: FetchArgs[0], init?: FetchArgs[1]) => boolean,
-): FetchArgs | undefined {
-  return spy.mock.calls.find(([input, init]) => predicate(input, init));
-}
 
 const downloadStub = {
   id: 42,
