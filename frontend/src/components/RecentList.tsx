@@ -36,6 +36,14 @@ const STATUS_ORDER: Record<string, number> = {
   cancelled: 5,
 };
 
+function chapterCountLabel(item: DownloadOut): string {
+  const total = item.chapters_total;
+  if (total == null) return "—";
+  const packed = item.postprocess_chapters_packed;
+  if (packed != null) return `${packed}/${total} ch.`;
+  return `${total} ch.`;
+}
+
 export function RecentList({
   onSelect,
   selectedId,
@@ -281,7 +289,7 @@ function RecentRow({
               #{item.id} {displayName}
             </Text>
             <Text size="xs" c="dimmed">
-              {item.files_downloaded}/{item.files_expected ?? "?"}
+              {chapterCountLabel(item)}
             </Text>
           </Group>
           {showUrlSubtitle && (

@@ -1,8 +1,22 @@
 import { Badge, Box, Group, Loader, Progress, ScrollArea, Stack, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { getDownloadProgressOptions } from "../api/@tanstack/react-query.gen";
+import type { ChapterProgress } from "../api/types.gen";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
 import { isTerminal, type Status } from "../lib/status";
+
+type ChapterStage = "downloading" | "processing" | "completed";
+
+const STAGE_COLOR: Record<ChapterStage, string> = {
+  downloading: "blue",
+  processing: "yellow",
+  completed: "green",
+};
+
+function chapterStage(ch: ChapterProgress): ChapterStage {
+  if (ch.stage === "completed" || ch.stage === "processing") return ch.stage;
+  return "downloading";
+}
 
 export function ProgressCard({ jobId, status }: { jobId: number; status: Status }) {
   const terminal = isTerminal(status);
@@ -25,10 +39,10 @@ export function ProgressCard({ jobId, status }: { jobId: number; status: Status 
     );
   }
 
-  const expected = data.files_expected ?? 0;
-  const present = data.files_present;
-  const pct = expected > 0 ? (present / expected) * 100 : 0;
-  const manifestReady = expected > 0 && data.chapters.length > 0;
+  const totalChapters = data.chapters.length;
+  const settledChapters = data.chapters.filter((ch) => chapterStage(ch) !== "downloading").length;
+  const pct = totalChapters > 0 ? (settledChapters / totalChapters) * 100 : 0;
+  const manifestReady = totalChapters > 0;
 
   return (
     <Box>
@@ -37,7 +51,7 @@ export function ProgressCard({ jobId, status }: { jobId: number; status: Status 
           progress
         </Text>
         <Text size="xs" c="dimmed">
-          {manifestReady ? `${present} / ${expected} files` : "preparing…"}
+          {manifestReady ? `${settledChapters} / ${totalChapters} chapters` : "preparing…"}
         </Text>
       </Group>
       <Progress value={pct} size="md" striped={!terminal} animated={!terminal} />
@@ -45,7 +59,7 @@ export function ProgressCard({ jobId, status }: { jobId: number; status: Status 
         <ScrollArea h={220} mt="sm" type="auto">
           <Stack gap={4}>
             {data.chapters.map((ch) => {
-              const done = ch.files_present === ch.files_total;
+              const stage = chapterStage(ch);
               const label = ch.name || "(root)";
               return (
                 <Group key={label} justify="space-between" gap="xs" wrap="nowrap">
@@ -60,8 +74,8 @@ export function ProgressCard({ jobId, status }: { jobId: number; status: Status 
                   >
                     {label}
                   </Text>
-                  <Badge size="sm" color={done ? "green" : "blue"} variant="light">
-                    {ch.files_present}/{ch.files_total}
+                  <Badge size="sm" color={STAGE_COLOR[stage]} variant="light">
+                    {stage}
                   </Badge>
                 </Group>
               );

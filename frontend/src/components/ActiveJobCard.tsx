@@ -175,13 +175,6 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
             </Text>
             {job.extractor ?? "—"}
           </Text>
-          <Text size="sm">
-            <Text span c="dimmed">
-              files:{" "}
-            </Text>
-            {job.files_downloaded}
-            {job.files_expected !== null && ` / ${job.files_expected}`}
-          </Text>
           {job.exit_code !== null && (
             <Text size="sm">
               <Text span c="dimmed">
