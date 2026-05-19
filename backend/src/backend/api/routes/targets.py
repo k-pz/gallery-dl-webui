@@ -8,6 +8,7 @@ from backend.api.deps import PollerDep, StorageDep, WorkerDep
 from backend.api.schemas import TargetOut, TargetUpdate
 from backend.durations import parse_duration
 from backend.output_dirs import coerce_optional, validate_under_root
+from backend.storage import UNSET, Unset
 
 router = APIRouter(tags=["targets"])
 
@@ -36,10 +37,8 @@ async def update_target(
         raise HTTPException(status_code=404, detail="target not found")
 
     new_watched = existing.watched if body.watched is None else body.watched
-    new_period = existing.watch_period
-    new_output_dir = existing.output_dir
-    period_changed = False
-    output_changed = False
+    new_period: str | None | Unset = UNSET
+    new_output_dir: str | None | Unset = UNSET
 
     if body.watch_period is not None:
         cleaned = body.watch_period.strip()
@@ -51,7 +50,6 @@ async def update_target(
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             new_period = cleaned
-        period_changed = True
 
     if body.output_dir is not None:
         out_raw = coerce_optional(body.output_dir)
@@ -68,21 +66,13 @@ async def update_target(
             resolved = validate_under_root(out_raw, Path(root_raw), field="output_dir")
             new_output_dir = str(resolved)
             await storage.remember_output_dir(new_output_dir)
-        output_changed = True
 
-    if period_changed and output_changed:
-        await storage.update_target(
-            target_id,
-            watched=new_watched,
-            watch_period=new_period,
-            output_dir=new_output_dir,
-        )
-    elif period_changed:
-        await storage.update_target(target_id, watched=new_watched, watch_period=new_period)
-    elif output_changed:
-        await storage.update_target(target_id, watched=new_watched, output_dir=new_output_dir)
-    else:
-        await storage.update_target(target_id, watched=new_watched)
+    await storage.update_target(
+        target_id,
+        watched=new_watched,
+        watch_period=new_period,
+        output_dir=new_output_dir,
+    )
 
     if body.watched is True and not existing.watched:
         poller.notify()
