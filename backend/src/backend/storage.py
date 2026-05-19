@@ -106,11 +106,6 @@ def _now() -> str:
 
 
 def _row_to_download(row: aiosqlite.Row) -> Download:
-    target_id: int | None = None
-    try:
-        target_id = row["target_id"]
-    except IndexError, KeyError:
-        target_id = None
     return Download(
         id=row["id"],
         url=row["url"],
@@ -127,7 +122,7 @@ def _row_to_download(row: aiosqlite.Row) -> Download:
         postprocess_chapters_packed=row["postprocess_chapters_packed"],
         postprocess_error=row["postprocess_error"],
         output_dir=row["output_dir"],
-        target_id=target_id,
+        target_id=row["target_id"],
     )
 
 
