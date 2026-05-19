@@ -25,8 +25,8 @@ FORCE="${FORCE:-0}"
 
 # ---- Helpers --------------------------------------------------------------
 
-log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_proxmox-lib.sh"
 
 # ---- Preflight ------------------------------------------------------------
 
