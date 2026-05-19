@@ -30,13 +30,14 @@ from backend.api.deps import PollerDep, StorageDep
 from backend.api.schemas import LibraryImportResult
 from backend.durations import parse_duration
 from backend.output_dirs import validate_under_root
+from backend.storage import Target
 
 router = APIRouter(tags=["library"])
 
 SCHEMA_VERSION = 1
 
 
-def _series_to_dict(target) -> dict[str, Any]:  # type: ignore[no-untyped-def]
+def _series_to_dict(target: Target) -> dict[str, Any]:
     out: dict[str, Any] = {"url": target.url}
     if target.name:
         out["name"] = target.name
