@@ -140,6 +140,33 @@ def _row_to_target(row: aiosqlite.Row) -> Target:
     )
 
 
+_TARGET_SUMMARY_SELECT = """
+SELECT t.*,
+       d.id AS last_download_id,
+       d.status AS last_status,
+       d.finished_at AS last_finished_at,
+       d.created_at AS last_created_at,
+       (SELECT COUNT(*) FROM downloads WHERE target_id = t.id) AS download_count
+FROM targets t
+LEFT JOIN downloads d ON d.id = (
+    SELECT id FROM downloads
+    WHERE target_id = t.id
+    ORDER BY created_at DESC, id DESC LIMIT 1
+)
+"""
+
+
+def _row_to_target_summary(row: aiosqlite.Row) -> TargetSummary:
+    return TargetSummary(
+        target=_row_to_target(row),
+        last_download_id=row["last_download_id"],
+        last_status=row["last_status"],
+        last_finished_at=row["last_finished_at"],
+        last_created_at=row["last_created_at"],
+        download_count=row["download_count"] or 0,
+    )
+
+
 class Unset:
     """Sentinel allowing update_target to distinguish "leave as-is" from "set to NULL"."""
 
@@ -471,34 +498,16 @@ class Storage:
     async def list_targets(self) -> list[TargetSummary]:
         """List every target with a tiny summary of its latest download."""
         async with self._db.execute(
-            """
-            SELECT t.*,
-                   d.id AS last_download_id,
-                   d.status AS last_status,
-                   d.finished_at AS last_finished_at,
-                   d.created_at AS last_created_at,
-                   (SELECT COUNT(*) FROM downloads WHERE target_id = t.id) AS download_count
-            FROM targets t
-            LEFT JOIN downloads d ON d.id = (
-                SELECT id FROM downloads
-                WHERE target_id = t.id
-                ORDER BY created_at DESC, id DESC LIMIT 1
-            )
-            ORDER BY t.created_at DESC, t.id DESC
-            """
+            _TARGET_SUMMARY_SELECT + " ORDER BY t.created_at DESC, t.id DESC"
         ) as cur:
             rows = await cur.fetchall()
-        return [
-            TargetSummary(
-                target=_row_to_target(r),
-                last_download_id=r["last_download_id"],
-                last_status=r["last_status"],
-                last_finished_at=r["last_finished_at"],
-                last_created_at=r["last_created_at"],
-                download_count=r["download_count"] or 0,
-            )
-            for r in rows
-        ]
+        return [_row_to_target_summary(r) for r in rows]
+
+    async def get_target_summary(self, id_: int) -> TargetSummary | None:
+        """Single-row equivalent of list_targets — for routes that return one summary."""
+        async with self._db.execute(_TARGET_SUMMARY_SELECT + " WHERE t.id = ?", (id_,)) as cur:
+            row = await cur.fetchone()
+        return _row_to_target_summary(row) if row else None
 
     async def update_target(
         self,
