@@ -135,16 +135,21 @@ def collect_chapters(records: list[FileRecord]) -> list[ChapterRecord]:
     return sorted(by_dir.values(), key=_chapter_sort_key)
 
 
+def _safe_float(value: str) -> float | None:
+    """float() that returns None on conversion failure instead of raising."""
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
 def _chapter_sort_key(ch: ChapterRecord) -> tuple[int, float, str]:
     try:
         vol = int(ch.volume) if ch.volume else 0
     except ValueError:
         vol = 0
-    try:
-        cnum = float(ch.chapter)
-    except ValueError, TypeError:
-        cnum = 0.0
-    return (vol, cnum, ch.chapter)
+    cnum = _safe_float(ch.chapter)
+    return (vol, cnum if cnum is not None else 0.0, ch.chapter)
 
 
 _ILLEGAL = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -159,9 +164,8 @@ def sanitize(name: str) -> str:
 
 def _format_chapter_number(chapter: str) -> str:
     """Format chapter for filename: zero-pad to 3 digits when integer < 1000."""
-    try:
-        f = float(chapter)
-    except ValueError, TypeError:
+    f = _safe_float(chapter)
+    if f is None:
         return sanitize(chapter)
     if f.is_integer() and 0 <= f < 1000:
         return f"{int(f):03d}"
