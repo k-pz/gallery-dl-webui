@@ -7,9 +7,13 @@
 # Quickstart after `git clone`:
 #   mise install              # one-time: install the pinned toolchain
 #   mise run install          # one-time: backend + frontend deps
-#   mise run dev              # backend dev server (uvicorn :8000, reload)
-#   mise run dev:frontend     # frontend dev server (vite :5173)
+#   mise run dev              # backend + frontend dev servers (parallel)
 #   mise run check            # lint + typecheck + test (CI-safe)
+#
+# Task naming follows a consistent `<verb>:<part>` scheme for anything scoped
+# to one side of the repo (e.g. `lint:backend`, `build:frontend`,
+# `serve:backend`). Bare `<verb>` tasks (`lint`, `build`, `dev`, …) aggregate
+# both sides via `depends`, which mise runs in parallel.
 #
 # pnpm is deliberately *not* in [tools] — it's activated via corepack so that
 # the version pin in frontend/package.json's "packageManager" field is the
@@ -45,7 +49,7 @@ run = [
 
 # ---- Dev servers ---------------------------------------------------------
 
-[tasks.dev]
+[tasks."dev:backend"]
 description = "Backend dev server (uvicorn :8000, --reload)"
 dir = "{{config_root}}/backend"
 run = "uv run uvicorn backend.app:app --reload"
@@ -55,12 +59,20 @@ description = "Frontend dev server (vite :5173, proxies /api → :8000)"
 dir = "{{config_root}}/frontend"
 run = "pnpm dev"
 
+[tasks.dev]
+description = "Run backend + frontend dev servers in parallel (ctrl-C stops both)"
+depends = ["dev:backend", "dev:frontend"]
+
 # ---- Build ---------------------------------------------------------------
 
-[tasks.build]
+[tasks."build:frontend"]
 description = "Build the frontend for production (tsc -b && vite build)"
 dir = "{{config_root}}/frontend"
 run = "pnpm build"
+
+[tasks.build]
+description = "Build for production (frontend; backend has no build step)"
+depends = ["build:frontend"]
 
 # ---- Quality -------------------------------------------------------------
 
@@ -113,7 +125,7 @@ depends = ["test:backend", "test:frontend"]
 description = "All CI-safe checks: lint + typecheck + test"
 depends = ["lint", "typecheck", "test"]
 
-[tasks.fix]
+[tasks."fix:backend"]
 description = "Auto-fix lint findings and reformat (ruff --fix + ruff format)"
 dir = "{{config_root}}/backend"
 run = [
@@ -121,16 +133,35 @@ run = [
     "uv run ruff format .",
 ]
 
+[tasks."fix:frontend"]
+description = "Auto-fix lint findings and reformat (biome check --write)"
+dir = "{{config_root}}/frontend"
+run = "pnpm fix"
+
+[tasks.fix]
+description = "Auto-fix lint findings + reformat across backend + frontend"
+depends = ["fix:backend", "fix:frontend"]
+
 # ---- Codegen -------------------------------------------------------------
 
-[tasks.generate]
+[tasks."generate:client"]
 description = "Regenerate the frontend API client from the live backend's OpenAPI schema"
 dir = "{{config_root}}/frontend"
 run = "pnpm generate"
 
+# ---- Cleanup -------------------------------------------------------------
+
+[tasks.clean]
+description = "Remove installed deps and build output (backend/.venv, frontend/node_modules, frontend/dist)"
+run = [
+    "rm -rf {{config_root}}/backend/.venv",
+    "rm -rf {{config_root}}/frontend/node_modules",
+    "rm -rf {{config_root}}/frontend/dist",
+]
+
 # ---- Production entrypoint ----------------------------------------------
 
-[tasks."backend:run"]
+[tasks."serve:backend"]
 description = "Run the backend the way the systemd unit does (`python -m backend`, no reload, no dev deps)"
 dir = "{{config_root}}/backend"
 # `exec` so signals reach python directly — systemd KillMode=mixed sends

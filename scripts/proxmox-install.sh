@@ -327,7 +327,7 @@ Environment=WEBUI_DATA_DIR=${DATA_DIR}
 Environment=WEBUI_HOST=0.0.0.0
 Environment=WEBUI_PORT=${WEBUI_PORT}
 
-ExecStart=/usr/local/bin/mise run -C ${APP_DIR} backend:run
+ExecStart=/usr/local/bin/mise run -C ${APP_DIR} serve:backend
 
 Restart=on-failure
 RestartSec=5
