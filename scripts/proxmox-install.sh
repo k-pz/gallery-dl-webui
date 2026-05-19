@@ -73,20 +73,8 @@ NAS_LXC_GID="${NAS_LXC_GID:-10000}"
 
 # ---- Helpers --------------------------------------------------------------
 
-log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
-
-in_ct() { pct exec "$CTID" -- "$@"; }
-in_ct_sh() { pct exec "$CTID" -- bash -lc "$*"; }
-
-# Run a command in the CT as $APP_USER, with HOME pointed at $DATA_DIR (where
-# mise stores its installed tools) and a clean PATH containing /usr/local/bin
-# so the system-wide `mise` is found. Used for every mise / uv / pnpm call.
-as_app() {
-    pct exec "$CTID" -- sudo -u "$APP_USER" -H \
-        env PATH=/usr/local/bin:/usr/bin:/bin HOME="$DATA_DIR" \
-        "$@"
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_proxmox-lib.sh"
 
 # ---- Preflight ------------------------------------------------------------
 
