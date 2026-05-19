@@ -140,12 +140,18 @@ def _make_records_for_chapter(downloads_dir: Path, manga: str, chapter: str) -> 
     return records
 
 
-async def test_worker_runs_postprocess_when_output_dir_set(
+async def test_worker_runs_postprocess_when_default_dir_set(
     settings: Settings, storage: Storage, tmp_path: Path
 ) -> None:
-    output_dir = tmp_path / "cbz-out"
+    root = tmp_path / "media"
+    default = root / "manga"
+    default.mkdir(parents=True)
     await storage.set_app_config(
-        {"postprocess_output_dir": str(output_dir), "delete_raw_after_pack": True}
+        {
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": str(default),
+            "delete_raw_after_pack": True,
+        }
     )
     config = FakeGalleryConfig()
     config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg", "fake/S/c1/002.jpg"]
@@ -170,7 +176,81 @@ async def test_worker_runs_postprocess_when_output_dir_set(
         assert row.status == "completed"
         assert row.postprocess_status == "completed"
         assert row.postprocess_chapters_packed == 1
-        assert (output_dir / "S" / "S - c001.cbz").is_file()
+        assert (default / "S" / "S - c001.cbz").is_file()
+    finally:
+        await worker.stop()
+
+
+async def test_worker_prefers_per_job_output_dir_over_default(
+    settings: Settings, storage: Storage, tmp_path: Path
+) -> None:
+    root = tmp_path / "media"
+    default = root / "manga"
+    override = root / "comics"
+    default.mkdir(parents=True)
+    override.mkdir(parents=True)
+    await storage.set_app_config(
+        {
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": str(default),
+            "delete_raw_after_pack": True,
+        }
+    )
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]
+    config.records_for["https://example/x"] = _make_records_for_chapter(
+        settings.downloads_dir, "S", "1"
+    )
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(storage, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        d = await storage.insert_pending("https://example/x", "fake", output_dir=str(override))
+        worker.notify()
+
+        async def packed() -> bool:
+            row = await storage.get(d.id)
+            return row is not None and row.postprocess_status == "completed"
+
+        await _wait_for(packed)
+
+        assert (override / "S" / "S - c001.cbz").is_file()
+        assert not (default / "S" / "S - c001.cbz").exists()
+    finally:
+        await worker.stop()
+
+
+async def test_worker_creates_missing_per_job_output_dir(
+    settings: Settings, storage: Storage, tmp_path: Path
+) -> None:
+    root = tmp_path / "media"
+    root.mkdir()
+    new_dir = root / "freshly" / "made"
+    await storage.set_app_config(
+        {
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+        }
+    )
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]
+    config.records_for["https://example/x"] = _make_records_for_chapter(
+        settings.downloads_dir, "S", "1"
+    )
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(storage, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        d = await storage.insert_pending("https://example/x", "fake", output_dir=str(new_dir))
+        worker.notify()
+
+        async def packed() -> bool:
+            row = await storage.get(d.id)
+            return row is not None and row.postprocess_status == "completed"
+
+        await _wait_for(packed)
+        assert (new_dir / "S" / "S - c001.cbz").is_file()
     finally:
         await worker.stop()
 
@@ -178,6 +258,7 @@ async def test_worker_runs_postprocess_when_output_dir_set(
 async def test_worker_skips_postprocess_when_output_dir_not_set(
     settings: Settings, storage: Storage
 ) -> None:
+    # No root, no default, no per-job dir → postprocess should skip cleanly.
     config = FakeGalleryConfig()
     config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]
     config.records_for["https://example/x"] = _make_records_for_chapter(
@@ -207,10 +288,16 @@ async def test_worker_isolates_postprocess_failure_from_download_status(
     settings: Settings, storage: Storage, tmp_path: Path
 ) -> None:
     # Point output dir at a file (not a directory) so the postprocess pass fails.
-    blocking_file = tmp_path / "not-a-dir"
+    root = tmp_path / "media"
+    root.mkdir()
+    blocking_file = root / "not-a-dir"
     blocking_file.write_bytes(b"x")
     await storage.set_app_config(
-        {"postprocess_output_dir": str(blocking_file), "delete_raw_after_pack": False}
+        {
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": str(blocking_file),
+            "delete_raw_after_pack": False,
+        }
     )
     config = FakeGalleryConfig()
     config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 
 from backend.api.deps import GalleryDep, LiveProgressDep, SettingsDep, StorageDep, WorkerDep
@@ -7,6 +9,7 @@ from backend.api.schemas import (
     DownloadOut,
     ProgressOut,
 )
+from backend.output_dirs import coerce_optional, validate_under_root
 from backend.progress import chapter_progress, chapter_progress_from_completed
 
 router = APIRouter(tags=["downloads"])
@@ -28,7 +31,22 @@ async def create_download(
             status_code=400,
             detail="unsupported URL (no gallery-dl extractor matched)",
         )
-    download = await storage.insert_pending(url, category)
+
+    output_dir = coerce_optional(body.output_dir)
+    output_dir_str: str | None = None
+    if output_dir is not None:
+        cfg = await storage.get_app_config()
+        root_raw = cfg.get("postprocess_root")
+        if not isinstance(root_raw, str) or not root_raw:
+            raise HTTPException(
+                status_code=400,
+                detail="output_dir requires postprocess_root to be configured",
+            )
+        resolved = validate_under_root(output_dir, Path(root_raw), field="output_dir")
+        output_dir_str = str(resolved)
+        await storage.remember_output_dir(output_dir_str)
+
+    download = await storage.insert_pending(url, category, output_dir=output_dir_str)
     worker.notify()
     return DownloadOut.from_download(download)
 
