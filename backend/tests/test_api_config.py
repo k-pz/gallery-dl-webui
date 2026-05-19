@@ -3,76 +3,112 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 
+def _put(client: TestClient, **fields):
+    body = {
+        "postprocess_root": None,
+        "postprocess_default_output_dir": None,
+        "delete_raw_after_pack": True,
+    }
+    body.update(fields)
+    return client.put("/api/config", json=body)
+
+
 def test_get_config_returns_defaults(client: TestClient) -> None:
     resp = client.get("/api/config")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["postprocess_output_dir"] is None
+    assert body["postprocess_root"] is None
+    assert body["postprocess_default_output_dir"] is None
+    assert body["postprocess_known_output_dirs"] == []
     assert body["delete_raw_after_pack"] is True
 
 
-def test_put_config_persists_values(client: TestClient, tmp_path: Path) -> None:
-    target = tmp_path / "out"
-    resp = client.put(
-        "/api/config",
-        json={
-            "postprocess_output_dir": str(target),
-            "delete_raw_after_pack": False,
-        },
+def test_put_config_persists_root_and_default(client: TestClient, tmp_path: Path) -> None:
+    root = tmp_path / "media"
+    default = root / "manga"
+    resp = _put(
+        client,
+        postprocess_root=str(root),
+        postprocess_default_output_dir=str(default),
+        delete_raw_after_pack=False,
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.json()
     body = resp.json()
-    assert body["postprocess_output_dir"] == str(target)
+    assert body["postprocess_root"] == str(root.resolve())
+    assert body["postprocess_default_output_dir"] == str(default.resolve())
     assert body["delete_raw_after_pack"] is False
-    # Directory should have been created.
-    assert target.is_dir()
-    # And the value should survive a follow-up GET.
+    assert root.is_dir()
+    assert default.is_dir()
+
     follow = client.get("/api/config").json()
-    assert follow["postprocess_output_dir"] == str(target)
-    assert follow["delete_raw_after_pack"] is False
+    assert follow["postprocess_root"] == str(root.resolve())
+    assert follow["postprocess_default_output_dir"] == str(default.resolve())
 
 
-def test_put_config_rejects_relative_path(client: TestClient) -> None:
-    resp = client.put(
-        "/api/config",
-        json={"postprocess_output_dir": "relative/dir", "delete_raw_after_pack": True},
-    )
+def test_put_config_rejects_relative_root(client: TestClient) -> None:
+    resp = _put(client, postprocess_root="relative/dir")
     assert resp.status_code == 400
     assert "absolute path" in resp.json()["detail"]
 
 
-def test_put_config_rejects_missing_parent(client: TestClient, tmp_path: Path) -> None:
-    # Parent does not exist.
-    missing = tmp_path / "nope" / "nested" / "out"
-    resp = client.put(
-        "/api/config",
-        json={"postprocess_output_dir": str(missing), "delete_raw_after_pack": True},
+def test_put_config_rejects_default_outside_root(client: TestClient, tmp_path: Path) -> None:
+    root = tmp_path / "media"
+    outside = tmp_path / "other" / "manga"
+    resp = _put(
+        client,
+        postprocess_root=str(root),
+        postprocess_default_output_dir=str(outside),
     )
     assert resp.status_code == 400
-    assert "parent directory" in resp.json()["detail"]
+    assert "under root" in resp.json()["detail"]
+
+
+def test_put_config_rejects_default_without_root(client: TestClient, tmp_path: Path) -> None:
+    resp = _put(
+        client,
+        postprocess_root=None,
+        postprocess_default_output_dir=str(tmp_path / "manga"),
+    )
+    assert resp.status_code == 400
+    assert "requires postprocess_root" in resp.json()["detail"]
 
 
 def test_put_config_accepts_null_to_clear(client: TestClient, tmp_path: Path) -> None:
-    target = tmp_path / "out"
-    client.put(
-        "/api/config",
-        json={
-            "postprocess_output_dir": str(target),
-            "delete_raw_after_pack": False,
-        },
+    root = tmp_path / "media"
+    _put(
+        client,
+        postprocess_root=str(root),
+        postprocess_default_output_dir=str(root / "manga"),
     )
-    resp = client.put(
-        "/api/config",
-        json={"postprocess_output_dir": None, "delete_raw_after_pack": True},
-    )
+    resp = _put(client, postprocess_root=None, postprocess_default_output_dir=None)
     assert resp.status_code == 200
-    assert resp.json()["postprocess_output_dir"] is None
+    body = resp.json()
+    assert body["postprocess_root"] is None
+    assert body["postprocess_default_output_dir"] is None
 
 
 def test_put_config_trims_whitespace_to_null(client: TestClient) -> None:
-    resp = client.put(
-        "/api/config",
-        json={"postprocess_output_dir": "   ", "delete_raw_after_pack": True},
-    )
+    resp = _put(client, postprocess_root="   ", postprocess_default_output_dir="   ")
     assert resp.status_code == 200
-    assert resp.json()["postprocess_output_dir"] is None
+    body = resp.json()
+    assert body["postprocess_root"] is None
+    assert body["postprocess_default_output_dir"] is None
+
+
+def test_changing_root_clears_known_dirs(client: TestClient, tmp_path: Path) -> None:
+    root_a = tmp_path / "a"
+    root_b = tmp_path / "b"
+    # Configure root A and submit a download with an output dir under it.
+    _put(client, postprocess_root=str(root_a))
+    sub = client.post(
+        "/api/downloads",
+        json={"url": "https://example/x", "output_dir": str(root_a / "comics")},
+    )
+    assert sub.status_code == 200, sub.json()
+    cfg = client.get("/api/config").json()
+    assert any("comics" in d for d in cfg["postprocess_known_output_dirs"])
+
+    # Switching root drops the remembered list.
+    resp = _put(client, postprocess_root=str(root_b))
+    assert resp.status_code == 200
+    assert resp.json()["postprocess_known_output_dirs"] == []

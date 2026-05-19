@@ -180,15 +180,22 @@ async def test_mark_interrupted_on_boot_only_affects_in_flight(
 async def test_app_config_round_trip(storage: Storage) -> None:
     assert await storage.get_app_config() == {}
 
-    await storage.set_app_config(
-        {"postprocess_output_dir": "/tmp/out", "delete_raw_after_pack": True}
-    )
+    await storage.set_app_config({"postprocess_root": "/tmp/media", "delete_raw_after_pack": True})
     cfg = await storage.get_app_config()
-    assert cfg == {"postprocess_output_dir": "/tmp/out", "delete_raw_after_pack": True}
+    assert cfg == {"postprocess_root": "/tmp/media", "delete_raw_after_pack": True}
 
-    await storage.set_app_config({"postprocess_output_dir": None})
+    await storage.set_app_config({"postprocess_root": None})
     cfg = await storage.get_app_config()
-    assert cfg == {"postprocess_output_dir": None, "delete_raw_after_pack": True}
+    assert cfg == {"postprocess_root": None, "delete_raw_after_pack": True}
+
+
+async def test_remember_output_dir_dedupes_and_orders(storage: Storage) -> None:
+    after = await storage.remember_output_dir("/m/a")
+    assert after == ["/m/a"]
+    after = await storage.remember_output_dir("/m/b")
+    assert after == ["/m/b", "/m/a"]
+    after = await storage.remember_output_dir("/m/a")
+    assert after == ["/m/a", "/m/b"]
 
 
 async def test_mark_postprocess_persists_state(storage: Storage) -> None:

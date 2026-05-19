@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS downloads (
     error TEXT,
     postprocess_status TEXT,
     postprocess_chapters_packed INTEGER,
-    postprocess_error TEXT
+    postprocess_error TEXT,
+    output_dir TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at DESC);
@@ -58,6 +59,7 @@ class Download:
     postprocess_status: str | None
     postprocess_chapters_packed: int | None
     postprocess_error: str | None
+    output_dir: str | None
 
 
 def _now() -> str:
@@ -80,6 +82,7 @@ def _row_to_download(row: aiosqlite.Row) -> Download:
         postprocess_status=row["postprocess_status"],
         postprocess_chapters_packed=row["postprocess_chapters_packed"],
         postprocess_error=row["postprocess_error"],
+        output_dir=row["output_dir"],
     )
 
 
@@ -109,15 +112,20 @@ class Storage:
             await db.execute("ALTER TABLE downloads ADD COLUMN postprocess_chapters_packed INTEGER")
         if "postprocess_error" not in cols:
             await db.execute("ALTER TABLE downloads ADD COLUMN postprocess_error TEXT")
+        if "output_dir" not in cols:
+            await db.execute("ALTER TABLE downloads ADD COLUMN output_dir TEXT")
 
     async def close(self) -> None:
         await self._db.close()
 
-    async def insert_pending(self, url: str, extractor: str | None) -> Download:
+    async def insert_pending(
+        self, url: str, extractor: str | None, output_dir: str | None = None
+    ) -> Download:
         created_at = _now()
         cursor = await self._db.execute(
-            "INSERT INTO downloads(url, extractor, status, created_at) VALUES(?, ?, ?, ?)",
-            (url, extractor, "pending", created_at),
+            "INSERT INTO downloads(url, extractor, status, created_at, output_dir) "
+            "VALUES(?, ?, ?, ?, ?)",
+            (url, extractor, "pending", created_at, output_dir),
         )
         await self._db.commit()
         new_id = cursor.lastrowid
@@ -137,6 +145,7 @@ class Storage:
             postprocess_status=None,
             postprocess_chapters_packed=None,
             postprocess_error=None,
+            output_dir=output_dir,
         )
 
     async def get(self, id_: int) -> Download | None:
@@ -247,3 +256,14 @@ class Storage:
                 (key, json.dumps(value)),
             )
         await self._db.commit()
+
+    async def remember_output_dir(self, output_dir: str, limit: int = 20) -> list[str]:
+        """Append `output_dir` to known_output_dirs (most-recent first, deduped)."""
+        cfg = await self.get_app_config()
+        known = cfg.get("postprocess_known_output_dirs") or []
+        if not isinstance(known, list):
+            known = []
+        deduped = [output_dir] + [d for d in known if d != output_dir]
+        deduped = deduped[:limit]
+        await self.set_app_config({"postprocess_known_output_dirs": deduped})
+        return deduped

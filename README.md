@@ -84,9 +84,19 @@ with the `:backend` / `:frontend` suffix (e.g. `mise run test:backend`).
 
 ### CBZ postprocessing (Komga)
 
-Open the **Config** tab in the UI to set a postprocessing output directory.
-When configured, every finished manga download is packed into a CBZ archive
-with a Komga-compatible `ComicInfo.xml`, placed at:
+Open the **Config** tab to set:
+
+- a **Root** (e.g. `/mnt/nas/Media`) — every output dir must live under this path,
+- a **Default output directory** (e.g. `/mnt/nas/Media/manga`) used when a download
+  is submitted without an explicit one.
+
+Each new download picks up its output dir from the **Output directory**
+autocomplete on the submit form. The dropdown is seeded with the default and
+populated with any directories previously used — picking one is one click, and
+typing a fresh path creates it on submit (`mkdir -p`). Every submitted path is
+re-validated server-side: absolute, under the configured root, writable.
+
+Finished downloads are packed into Komga-compatible CBZs:
 
 ```
 <output_dir>/<Series>/<Series> - cNNN[ - Title].cbz
@@ -97,10 +107,10 @@ download directory once a chapter's CBZ is written.
 
 **Deployment note.** The systemd unit installed by `scripts/proxmox-install.sh`
 runs with `ProtectSystem=strict` and only `WEBUI_DATA_DIR` is writable. If the
-postprocessing output dir lives outside `WEBUI_DATA_DIR` (e.g. a NAS mount),
-pass `EXTRA_RW_PATHS=/that/path` to the install script so it gets added to the
-service's `ReadWritePaths`. The UI runs a write-probe when you save the Config,
-so a missing whitelist surfaces immediately as a 400.
+root (or any output dir under it) lives outside `WEBUI_DATA_DIR` (e.g. a NAS
+mount), pass `EXTRA_RW_PATHS=/that/path` to the install script so it gets added
+to the service's `ReadWritePaths`. The UI runs a write-probe when you save the
+Config, so a missing whitelist surfaces immediately as a 400.
 
 **Re-pack caveat.** `gallery-dl` tracks completed downloads in `archive.db`, so
 toggling the delete-raw setting and resubmitting the same URL will not re-pack

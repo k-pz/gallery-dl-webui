@@ -83,14 +83,32 @@ class Worker:
         self, job: Download, records: list[FileRecord], downloads_dir: Path
     ) -> None:
         cfg = await self._storage.get_app_config()
-        output_dir_str = cfg.get("postprocess_output_dir")
-        if not output_dir_str:
+        output_dir_str = job.output_dir or cfg.get("postprocess_default_output_dir")
+        root_str = cfg.get("postprocess_root")
+        if not output_dir_str or not root_str:
             await self._storage.mark_postprocess(job.id, "skipped")
+            return
+        output_dir = Path(output_dir_str)
+        root = Path(root_str).resolve()
+        try:
+            resolved = output_dir.resolve()
+        except OSError as exc:
+            await self._storage.mark_postprocess(job.id, "failed", error=repr(exc))
+            return
+        if resolved != root and root not in resolved.parents:
+            await self._storage.mark_postprocess(
+                job.id, "failed", error=f"output_dir {resolved} is not under root {root}"
+            )
+            return
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            await self._storage.mark_postprocess(job.id, "failed", error=repr(exc))
             return
         delete_raw = bool(cfg.get("delete_raw_after_pack", True))
         await self._storage.mark_postprocess(job.id, "running")
         try:
-            result = await postprocess.run(records, Path(output_dir_str), downloads_dir, delete_raw)
+            result = await postprocess.run(records, output_dir, downloads_dir, delete_raw)
         except Exception as exc:
             logger.exception("postprocess for download %d failed", job.id)
             await self._storage.mark_postprocess(job.id, "failed", error=repr(exc))

@@ -9,9 +9,13 @@ export type ClientOptions = {
  */
 export type AppConfigIn = {
     /**
-     * Postprocess Output Dir
+     * Postprocess Root
      */
-    postprocess_output_dir: string | null;
+    postprocess_root: string | null;
+    /**
+     * Postprocess Default Output Dir
+     */
+    postprocess_default_output_dir: string | null;
     /**
      * Delete Raw After Pack
      */
@@ -23,9 +27,17 @@ export type AppConfigIn = {
  */
 export type AppConfigOut = {
     /**
-     * Postprocess Output Dir
+     * Postprocess Root
      */
-    postprocess_output_dir: string | null;
+    postprocess_root: string | null;
+    /**
+     * Postprocess Default Output Dir
+     */
+    postprocess_default_output_dir: string | null;
+    /**
+     * Postprocess Known Output Dirs
+     */
+    postprocess_known_output_dirs: Array<string>;
     /**
      * Delete Raw After Pack
      */
@@ -58,6 +70,10 @@ export type DownloadCreate = {
      * Url
      */
     url: string;
+    /**
+     * Output Dir
+     */
+    output_dir?: string | null;
 };
 
 /**
@@ -120,6 +136,10 @@ export type DownloadOut = {
      * Postprocess Error
      */
     postprocess_error: string | null;
+    /**
+     * Output Dir
+     */
+    output_dir: string | null;
 };
 
 /**

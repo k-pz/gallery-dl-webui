@@ -7,6 +7,7 @@ from backend.storage import Download
 
 class DownloadCreate(BaseModel):
     url: str
+    output_dir: str | None = None
 
 
 class DownloadOut(BaseModel):
@@ -24,6 +25,7 @@ class DownloadOut(BaseModel):
     postprocess_status: str | None
     postprocess_chapters_packed: int | None
     postprocess_error: str | None
+    output_dir: str | None
 
     @classmethod
     def from_download(cls, d: Download) -> DownloadOut:
@@ -42,6 +44,7 @@ class DownloadOut(BaseModel):
             postprocess_status=d.postprocess_status,
             postprocess_chapters_packed=d.postprocess_chapters_packed,
             postprocess_error=d.postprocess_error,
+            output_dir=d.output_dir,
         )
 
 
@@ -59,10 +62,13 @@ class ProgressOut(BaseModel):
 
 
 class AppConfigOut(BaseModel):
-    postprocess_output_dir: str | None
+    postprocess_root: str | None
+    postprocess_default_output_dir: str | None
+    postprocess_known_output_dirs: list[str]
     delete_raw_after_pack: bool
 
 
 class AppConfigIn(BaseModel):
-    postprocess_output_dir: str | None
+    postprocess_root: str | None
+    postprocess_default_output_dir: str | None
     delete_raw_after_pack: bool

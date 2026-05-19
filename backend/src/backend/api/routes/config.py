@@ -1,76 +1,74 @@
 from __future__ import annotations
 
-from pathlib import Path
-
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from backend.api.deps import StorageDep
 from backend.api.schemas import AppConfigIn, AppConfigOut
+from backend.output_dirs import coerce_optional, validate_root, validate_under_root
 
 router = APIRouter(tags=["config"])
 
 DEFAULT_DELETE_RAW = True
-_PROBE_NAME = ".gallery-dl-webui-write-probe"
 
 
-def _coerce_dir(raw: str | None) -> str | None:
-    if raw is None:
-        return None
-    cleaned = raw.strip()
-    return cleaned or None
-
-
-def _validate_output_dir(raw: str) -> Path:
-    path = Path(raw)
-    if not path.is_absolute():
-        raise HTTPException(
-            status_code=400,
-            detail="postprocess_output_dir must be an absolute path",
-        )
-    parent = path.parent
-    if not parent.exists():
-        raise HTTPException(
-            status_code=400,
-            detail=f"parent directory does not exist: {parent}",
-        )
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        raise HTTPException(
-            status_code=400, detail=f"cannot create output directory: {exc}"
-        ) from exc
-    probe = path / _PROBE_NAME
-    try:
-        probe.write_bytes(b"")
-        probe.unlink()
-    except OSError as exc:
-        raise HTTPException(
-            status_code=400, detail=f"output directory is not writable: {exc}"
-        ) from exc
-    return path
-
-
-@router.get("/config", operation_id="getConfig")
-async def get_config(storage: StorageDep) -> AppConfigOut:
-    cfg = await storage.get_app_config()
+def _load_config(cfg: dict[str, object]) -> AppConfigOut:
+    root = cfg.get("postprocess_root")
+    if not isinstance(root, str):
+        root = None
+    default = cfg.get("postprocess_default_output_dir")
+    if not isinstance(default, str):
+        default = None
+    known = cfg.get("postprocess_known_output_dirs")
+    if not isinstance(known, list):
+        known = []
+    known_str = [k for k in known if isinstance(k, str)]
     return AppConfigOut(
-        postprocess_output_dir=cfg.get("postprocess_output_dir"),
+        postprocess_root=root,
+        postprocess_default_output_dir=default,
+        postprocess_known_output_dirs=known_str,
         delete_raw_after_pack=bool(cfg.get("delete_raw_after_pack", DEFAULT_DELETE_RAW)),
     )
 
 
+@router.get("/config", operation_id="getConfig")
+async def get_config(storage: StorageDep) -> AppConfigOut:
+    return _load_config(await storage.get_app_config())
+
+
 @router.put("/config", operation_id="putConfig")
 async def put_config(body: AppConfigIn, storage: StorageDep) -> AppConfigOut:
-    output_dir = _coerce_dir(body.postprocess_output_dir)
-    if output_dir is not None:
-        _validate_output_dir(output_dir)
-    await storage.set_app_config(
-        {
-            "postprocess_output_dir": output_dir,
-            "delete_raw_after_pack": bool(body.delete_raw_after_pack),
-        }
-    )
-    return AppConfigOut(
-        postprocess_output_dir=output_dir,
-        delete_raw_after_pack=bool(body.delete_raw_after_pack),
-    )
+    root_raw = coerce_optional(body.postprocess_root)
+    default_raw = coerce_optional(body.postprocess_default_output_dir)
+
+    root_path = validate_root(root_raw) if root_raw else None
+    default_path = None
+    if default_raw is not None:
+        if root_path is None:
+            from fastapi import HTTPException
+
+            raise HTTPException(
+                status_code=400,
+                detail="postprocess_default_output_dir requires postprocess_root",
+            )
+        default_path = validate_under_root(
+            default_raw, root_path, field="postprocess_default_output_dir"
+        )
+
+    # When the root changes, drop the remembered dirs — they may no longer be valid.
+    existing = await storage.get_app_config()
+    prior_root = existing.get("postprocess_root")
+    known = existing.get("postprocess_known_output_dirs") or []
+    if not isinstance(known, list):
+        known = []
+    root_str = str(root_path) if root_path else None
+    if root_str != prior_root:
+        known = []
+
+    updates: dict[str, object] = {
+        "postprocess_root": root_str,
+        "postprocess_default_output_dir": str(default_path) if default_path else None,
+        "postprocess_known_output_dirs": known,
+        "delete_raw_after_pack": bool(body.delete_raw_after_pack),
+    }
+    await storage.set_app_config(updates)
+    return _load_config(updates)

@@ -116,6 +116,61 @@ def test_progress_endpoint_returns_404_for_missing(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
+def test_create_download_rejects_output_dir_outside_root(
+    client: TestClient, gallery_config: FakeGalleryConfig, tmp_path
+) -> None:
+    gallery_config.extractor_for["https://example/x"] = "fake"
+    client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(tmp_path / "media"),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+        },
+    )
+    resp = client.post(
+        "/api/downloads",
+        json={"url": "https://example/x", "output_dir": str(tmp_path / "elsewhere")},
+    )
+    assert resp.status_code == 400
+    assert "under root" in resp.json()["detail"]
+
+
+def test_create_download_requires_root_when_output_dir_provided(
+    client: TestClient, gallery_config: FakeGalleryConfig, tmp_path
+) -> None:
+    gallery_config.extractor_for["https://example/x"] = "fake"
+    resp = client.post(
+        "/api/downloads",
+        json={"url": "https://example/x", "output_dir": str(tmp_path / "out")},
+    )
+    assert resp.status_code == 400
+    assert "postprocess_root" in resp.json()["detail"]
+
+
+def test_create_download_remembers_output_dir(
+    client: TestClient, gallery_config: FakeGalleryConfig, tmp_path
+) -> None:
+    gallery_config.extractor_for["https://example/x"] = "fake"
+    root = tmp_path / "media"
+    chosen = root / "comics"
+    client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+        },
+    )
+    resp = client.post(
+        "/api/downloads",
+        json={"url": "https://example/x", "output_dir": str(chosen)},
+    )
+    assert resp.status_code == 200
+    cfg = client.get("/api/config").json()
+    assert str(chosen.resolve()) in cfg["postprocess_known_output_dirs"]
+
+
 def test_create_download_invokes_fake_gallery(
     client: TestClient,
     gallery_config: FakeGalleryConfig,

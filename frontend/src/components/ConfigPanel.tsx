@@ -23,15 +23,16 @@ export function ConfigPanel() {
   const { data, isLoading } = useQuery(getConfigOptions());
   const queryClient = useQueryClient();
 
-  const [outputDir, setOutputDir] = useState("");
+  const [root, setRoot] = useState("");
+  const [defaultDir, setDefaultDir] = useState("");
   const [deleteRaw, setDeleteRaw] = useState(true);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
-  // Reset form when the server-loaded config arrives or changes.
   useEffect(() => {
     if (data) {
-      setOutputDir(data.postprocess_output_dir ?? "");
+      setRoot(data.postprocess_root ?? "");
+      setDefaultDir(data.postprocess_default_output_dir ?? "");
       setDeleteRaw(data.delete_raw_after_pack);
     }
   }, [data]);
@@ -50,7 +51,8 @@ export function ConfigPanel() {
 
   const dirty =
     data !== undefined &&
-    ((outputDir.trim() || null) !== (data.postprocess_output_dir ?? null) ||
+    ((root.trim() || null) !== (data.postprocess_root ?? null) ||
+      (defaultDir.trim() || null) !== (data.postprocess_default_output_dir ?? null) ||
       deleteRaw !== data.delete_raw_after_pack);
 
   const save = () => {
@@ -58,7 +60,8 @@ export function ConfigPanel() {
     setSavedAt(null);
     mutation.mutate({
       body: {
-        postprocess_output_dir: outputDir.trim() || null,
+        postprocess_root: root.trim() || null,
+        postprocess_default_output_dir: defaultDir.trim() || null,
         delete_raw_after_pack: deleteRaw,
       },
     });
@@ -80,16 +83,25 @@ export function ConfigPanel() {
       <Stack gap="md">
         <Title order={3}>Postprocessing</Title>
         <Text size="sm" c="dimmed">
-          When set, finished manga downloads are packed into Komga-compatible CBZ archives at{" "}
-          <code>&lt;dir&gt;/&lt;Series&gt;/&lt;Series&gt; - cNNN.cbz</code>.
+          When a root is set, finished downloads are packed into Komga-compatible CBZs at{" "}
+          <code>&lt;output-dir&gt;/&lt;Series&gt;/&lt;Series&gt; - cNNN.cbz</code>. Every
+          per-download output directory must live under the root.
         </Text>
         <TextInput
-          label="Output directory"
-          placeholder="/mnt/manga"
-          description="Absolute path. Must be writable by the service user (see EXTRA_RW_PATHS in scripts/proxmox-install.sh for paths outside WEBUI_DATA_DIR)."
-          value={outputDir}
-          onChange={(e) => setOutputDir(e.currentTarget.value)}
+          label="Root"
+          placeholder="/mnt/nas/Media"
+          description="Absolute path. The hard upper bound for every output dir. Created if missing; must be writable."
+          value={root}
+          onChange={(e) => setRoot(e.currentTarget.value)}
           disabled={mutation.isPending}
+        />
+        <TextInput
+          label="Default output directory"
+          placeholder="/mnt/nas/Media/manga"
+          description="Used when a download is submitted without an explicit output dir. Must be under the root."
+          value={defaultDir}
+          onChange={(e) => setDefaultDir(e.currentTarget.value)}
+          disabled={mutation.isPending || !root.trim()}
         />
         <Switch
           label="Delete raw images after packing"
@@ -112,6 +124,20 @@ export function ConfigPanel() {
           <Alert color="red" variant="light">
             {submitError}
           </Alert>
+        )}
+        {data.postprocess_known_output_dirs.length > 0 && (
+          <Stack gap={4}>
+            <Text size="sm" fw={500}>
+              Remembered output directories
+            </Text>
+            <Stack gap={2}>
+              {data.postprocess_known_output_dirs.map((dir) => (
+                <Text key={dir} size="xs" c="dimmed" ff="monospace">
+                  {dir}
+                </Text>
+              ))}
+            </Stack>
+          </Stack>
         )}
       </Stack>
     </Card>

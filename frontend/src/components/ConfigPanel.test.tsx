@@ -34,6 +34,13 @@ function findCall(spy: ReturnType<typeof mockFetch>, method: string): FetchArgs 
   return spy.mock.calls.find(([input, init]) => methodOf(input, init) === method);
 }
 
+const emptyConfig = {
+  postprocess_root: null,
+  postprocess_default_output_dir: null,
+  postprocess_known_output_dirs: [],
+  delete_raw_after_pack: true,
+};
+
 describe("ConfigPanel", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -47,41 +54,42 @@ describe("ConfigPanel", () => {
   it("renders the loaded config", async () => {
     mockFetch(async () =>
       jsonResponse({
-        postprocess_output_dir: "/mnt/manga",
+        postprocess_root: "/mnt/nas/Media",
+        postprocess_default_output_dir: "/mnt/nas/Media/manga",
+        postprocess_known_output_dirs: ["/mnt/nas/Media/comics"],
         delete_raw_after_pack: true,
       }),
     );
 
     renderWithProviders(<ConfigPanel />);
 
-    const input = (await screen.findByLabelText(/output directory/i)) as HTMLInputElement;
-    expect(input.value).toBe("/mnt/manga");
+    const rootInput = (await screen.findByLabelText(/^root$/i)) as HTMLInputElement;
+    expect(rootInput.value).toBe("/mnt/nas/Media");
+    const defaultInput = screen.getByLabelText(/default output directory/i) as HTMLInputElement;
+    expect(defaultInput.value).toBe("/mnt/nas/Media/manga");
     expect(screen.getByLabelText(/delete raw images after packing/i)).toBeChecked();
+    expect(screen.getByText("/mnt/nas/Media/comics")).toBeInTheDocument();
   });
 
   it("disables Save until a field changes", async () => {
-    mockFetch(async () =>
-      jsonResponse({
-        postprocess_output_dir: null,
-        delete_raw_after_pack: true,
-      }),
-    );
+    mockFetch(async () => jsonResponse(emptyConfig));
 
     renderWithProviders(<ConfigPanel />);
 
-    const input = (await screen.findByLabelText(/output directory/i)) as HTMLInputElement;
+    const rootInput = (await screen.findByLabelText(/^root$/i)) as HTMLInputElement;
     const save = screen.getByRole("button", { name: /save/i });
     expect(save).toBeDisabled();
 
-    fireEvent.change(input, { target: { value: "/tmp/out" } });
+    fireEvent.change(rootInput, { target: { value: "/mnt/nas/Media" } });
     await waitFor(() => expect(save).not.toBeDisabled());
   });
 
-  it("submits the new config and shows a saved indicator", async () => {
-    let stored: unknown = { postprocess_output_dir: null, delete_raw_after_pack: true };
+  it("submits the new config", async () => {
+    let stored = emptyConfig;
     const fetchSpy = mockFetch(async (input, init) => {
       if (methodOf(input, init) === "PUT") {
-        stored = JSON.parse(await bodyOf(input, init));
+        const body = JSON.parse(await bodyOf(input, init));
+        stored = { ...stored, ...body };
         return jsonResponse(stored);
       }
       return jsonResponse(stored);
@@ -89,8 +97,10 @@ describe("ConfigPanel", () => {
 
     renderWithProviders(<ConfigPanel />);
 
-    const input = (await screen.findByLabelText(/output directory/i)) as HTMLInputElement;
-    fireEvent.change(input, { target: { value: "/tmp/out" } });
+    const rootInput = (await screen.findByLabelText(/^root$/i)) as HTMLInputElement;
+    fireEvent.change(rootInput, { target: { value: "/mnt/nas/Media" } });
+    const defaultInput = screen.getByLabelText(/default output directory/i) as HTMLInputElement;
+    fireEvent.change(defaultInput, { target: { value: "/mnt/nas/Media/manga" } });
     const save = screen.getByRole("button", { name: /save/i });
     await waitFor(() => expect(save).not.toBeDisabled());
     fireEvent.click(save);
@@ -102,7 +112,8 @@ describe("ConfigPanel", () => {
     });
     const [putInput, putInit] = putCall as FetchArgs;
     expect(JSON.parse(await bodyOf(putInput, putInit))).toEqual({
-      postprocess_output_dir: "/tmp/out",
+      postprocess_root: "/mnt/nas/Media",
+      postprocess_default_output_dir: "/mnt/nas/Media/manga",
       delete_raw_after_pack: true,
     });
     await screen.findByText(/saved/i);
@@ -111,18 +122,15 @@ describe("ConfigPanel", () => {
   it("surfaces a server-side error from PUT", async () => {
     mockFetch(async (input, init) => {
       if (methodOf(input, init) === "PUT") {
-        return jsonResponse({ detail: "postprocess_output_dir must be an absolute path" }, 400);
+        return jsonResponse({ detail: "postprocess_root must be an absolute path" }, 400);
       }
-      return jsonResponse({
-        postprocess_output_dir: null,
-        delete_raw_after_pack: true,
-      });
+      return jsonResponse(emptyConfig);
     });
 
     renderWithProviders(<ConfigPanel />);
 
-    const input = (await screen.findByLabelText(/output directory/i)) as HTMLInputElement;
-    fireEvent.change(input, { target: { value: "relative/dir" } });
+    const rootInput = (await screen.findByLabelText(/^root$/i)) as HTMLInputElement;
+    fireEvent.change(rootInput, { target: { value: "relative/dir" } });
     const save = screen.getByRole("button", { name: /save/i });
     await waitFor(() => expect(save).not.toBeDisabled());
     fireEvent.click(save);
@@ -130,11 +138,32 @@ describe("ConfigPanel", () => {
     await waitFor(() => expect(screen.getByText(/absolute path/i)).toBeInTheDocument());
   });
 
-  it("sends null when the path field is cleared", async () => {
-    let stored: unknown = { postprocess_output_dir: "/old", delete_raw_after_pack: true };
+  it("disables the default-dir input until root is set", async () => {
+    mockFetch(async () => jsonResponse(emptyConfig));
+
+    renderWithProviders(<ConfigPanel />);
+
+    const defaultInput = (await screen.findByLabelText(
+      /default output directory/i,
+    )) as HTMLInputElement;
+    expect(defaultInput).toBeDisabled();
+
+    const rootInput = screen.getByLabelText(/^root$/i) as HTMLInputElement;
+    fireEvent.change(rootInput, { target: { value: "/mnt/nas/Media" } });
+    await waitFor(() => expect(defaultInput).not.toBeDisabled());
+  });
+
+  it("sends null when both path fields are cleared", async () => {
+    let stored: unknown = {
+      postprocess_root: "/old",
+      postprocess_default_output_dir: "/old/manga",
+      postprocess_known_output_dirs: [],
+      delete_raw_after_pack: true,
+    };
     const fetchSpy = mockFetch(async (input, init) => {
       if (methodOf(input, init) === "PUT") {
-        stored = JSON.parse(await bodyOf(input, init));
+        const body = JSON.parse(await bodyOf(input, init));
+        stored = { ...(stored as object), ...body };
         return jsonResponse(stored);
       }
       return jsonResponse(stored);
@@ -142,9 +171,11 @@ describe("ConfigPanel", () => {
 
     renderWithProviders(<ConfigPanel />);
 
-    const input = (await screen.findByLabelText(/output directory/i)) as HTMLInputElement;
-    await waitFor(() => expect(input.value).toBe("/old"));
-    fireEvent.change(input, { target: { value: "" } });
+    const rootInput = (await screen.findByLabelText(/^root$/i)) as HTMLInputElement;
+    await waitFor(() => expect(rootInput.value).toBe("/old"));
+    const defaultInput = screen.getByLabelText(/default output directory/i) as HTMLInputElement;
+    fireEvent.change(defaultInput, { target: { value: "" } });
+    fireEvent.change(rootInput, { target: { value: "" } });
     const save = screen.getByRole("button", { name: /save/i });
     await waitFor(() => expect(save).not.toBeDisabled());
     fireEvent.click(save);
@@ -156,7 +187,8 @@ describe("ConfigPanel", () => {
     });
     const [putInput, putInit] = putCall as FetchArgs;
     expect(JSON.parse(await bodyOf(putInput, putInit))).toEqual({
-      postprocess_output_dir: null,
+      postprocess_root: null,
+      postprocess_default_output_dir: null,
       delete_raw_after_pack: true,
     });
   });
