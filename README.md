@@ -36,20 +36,21 @@ data/                   ← local dev only; archive.db, jobs.db, downloads/
 
 ## Dev quickstart
 
+Everything below runs through `mise` — the top-level `mise.toml` pins the
+toolchain (Python 3.14, uv, Node) and defines the repo's tasks. pnpm is
+activated via `corepack` so the version pin in
+`frontend/package.json`'s `packageManager` field is the source of truth.
+
 ```sh
-# 1. tools (Python 3.14, uv, Node, pnpm)
+# 1. one-time: install the pinned toolchain
 mise install
-corepack enable
 
-# 2. backend
-cd backend
-uv sync
-uv run poe dev          # uvicorn on :8000 with reload
+# 2. one-time: backend + frontend deps (also corepack-enables pnpm)
+mise run install
 
-# 3. frontend (in another shell)
-cd frontend
-pnpm install
-pnpm dev                # vite on :5173, proxies /api → :8000
+# 3. two shells:
+mise run dev            # backend (uvicorn :8000, reload)
+mise run dev:frontend   # frontend (vite :5173, proxies /api → :8000)
 ```
 
 Open <http://localhost:5173>. In production the backend serves the built
@@ -58,15 +59,17 @@ Open <http://localhost:5173>. In production the backend serves the built
 ## Checks
 
 ```sh
-# backend
-cd backend && uv run poe check     # ruff + ty
-cd backend && uv run poe fix       # ruff --fix + format
+mise run check       # lint + typecheck + test (CI-safe, parallel)
 
-# frontend
-cd frontend && pnpm lint
-cd frontend && pnpm typecheck
-cd frontend && pnpm build
+mise run lint        # backend (ruff) + frontend (biome)
+mise run typecheck   # backend (ty) + frontend (tsc)
+mise run test        # backend (pytest) + frontend (vitest)
+mise run fix         # ruff --fix + format
+mise run build       # tsc -b && vite build
 ```
+
+Run `mise tasks ls` for the full list. Any task can be scoped to one side
+with the `:backend` / `:frontend` suffix (e.g. `mise run test:backend`).
 
 ## Configuration
 
@@ -112,5 +115,5 @@ this tree.
 After changing backend routes or schemas, with the backend running:
 
 ```sh
-cd frontend && pnpm generate
+mise run generate
 ```
