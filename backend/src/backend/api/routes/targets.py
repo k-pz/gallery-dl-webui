@@ -21,11 +21,10 @@ async def list_targets(storage: StorageDep) -> list[TargetOut]:
 
 @router.get("/targets/{target_id}", operation_id="getTarget")
 async def get_target(target_id: int, storage: StorageDep) -> TargetOut:
-    rows = await storage.list_targets()
-    for s in rows:
-        if s.target.id == target_id:
-            return TargetOut.from_summary(s)
-    raise HTTPException(status_code=404, detail="target not found")
+    summary = await storage.get_target_summary(target_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="target not found")
+    return TargetOut.from_summary(summary)
 
 
 @router.patch("/targets/{target_id}", operation_id="updateTarget")
@@ -76,11 +75,10 @@ async def update_target(
 
     if body.watched is True and not existing.watched:
         poller.notify()
-    rows = await storage.list_targets()
-    for s in rows:
-        if s.target.id == target_id:
-            return TargetOut.from_summary(s)
-    raise HTTPException(status_code=404, detail="target not found")
+    summary = await storage.get_target_summary(target_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="target not found")
+    return TargetOut.from_summary(summary)
 
 
 @router.post("/targets/{target_id}/poll", operation_id="pollTarget")
@@ -98,11 +96,10 @@ async def poll_target(target_id: int, storage: StorageDep, worker: WorkerDep) ->
     )
     await storage.mark_target_polled(target_id)
     worker.notify()
-    rows = await storage.list_targets()
-    for s in rows:
-        if s.target.id == target_id:
-            return TargetOut.from_summary(s)
-    raise HTTPException(status_code=404, detail="target not found")
+    summary = await storage.get_target_summary(target_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="target not found")
+    return TargetOut.from_summary(summary)
 
 
 @router.delete("/targets/{target_id}", operation_id="deleteTarget")
