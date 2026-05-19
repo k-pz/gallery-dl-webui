@@ -67,54 +67,72 @@ class Worker:
                 self._current_id = None
 
     async def _process(self, job: Download) -> None:
-        downloads_dir = self._gallery.downloads_dir
         relpaths: list[str] = []
         records: list[FileRecord] = []
         exit_code = 1
-        cancelled_during_download = False
+        cancelled = False
         try:
-            manifest = await asyncio.to_thread(self._gallery.extract_manifest, job.url)
-            relpaths = manifest.paths
-            if job.target_id is not None and manifest.series_name:
-                await self._storage.set_target_name(job.target_id, manifest.series_name)
+            relpaths = await self._extract_manifest(job)
             if self._cancel_requested:
                 await self._storage.mark_cancelled(job.id, 0)
                 return
             await self._storage.save_manifest(job.id, relpaths)
-            await self._storage.mark_running(job.id)
-            self._live.start(job.id)
-            try:
-                exit_code, records = await asyncio.to_thread(
-                    self._gallery.run_download,
-                    job.url,
-                    self._make_progress_cb(job.id),
-                )
-                cancelled_during_download = self._cancel_requested
-                present = await asyncio.to_thread(count_present, relpaths, downloads_dir)
-                if cancelled_during_download:
-                    await self._storage.mark_cancelled(job.id, present)
-                else:
-                    await self._storage.finish_job(job.id, exit_code, present)
-            finally:
-                self._live.clear(job.id)
+            exit_code, records, cancelled = await self._execute_download(job, relpaths)
         except Exception as exc:
-            logger.exception("download %d failed", job.id)
-            present = 0
-            if relpaths:
-                try:
-                    present = await asyncio.to_thread(count_present, relpaths, downloads_dir)
-                except Exception:
-                    present = 0
-            await self._storage.mark_failed(job.id, repr(exc), present)
+            await self._handle_failure(job, exc, relpaths)
             return
 
+        # The simulation pass's series_name can be approximate; the real download
+        # yields better metadata. Refine the target name if records carry one.
         if records and job.target_id is not None:
             manga = next((r.manga for r in records if r.manga), None)
             if manga:
                 await self._storage.set_target_name(job.target_id, manga)
 
-        if exit_code == 0 and not cancelled_during_download:
-            await self._run_postprocess(job, records, downloads_dir)
+        if exit_code == 0 and not cancelled:
+            await self._run_postprocess(job, records, self._gallery.downloads_dir)
+
+    async def _extract_manifest(self, job: Download) -> list[str]:
+        """Sim-run to discover expected file paths and capture an early series_name."""
+        manifest = await asyncio.to_thread(self._gallery.extract_manifest, job.url)
+        if job.target_id is not None and manifest.series_name:
+            await self._storage.set_target_name(job.target_id, manifest.series_name)
+        return manifest.paths
+
+    async def _execute_download(
+        self, job: Download, relpaths: list[str]
+    ) -> tuple[int, list[FileRecord], bool]:
+        """Run the real download; return (exit_code, file records, was_cancelled)."""
+        await self._storage.mark_running(job.id)
+        self._live.start(job.id)
+        try:
+            exit_code, records = await asyncio.to_thread(
+                self._gallery.run_download,
+                job.url,
+                self._make_progress_cb(job.id),
+            )
+            cancelled = self._cancel_requested
+            present = await asyncio.to_thread(count_present, relpaths, self._gallery.downloads_dir)
+            if cancelled:
+                await self._storage.mark_cancelled(job.id, present)
+            else:
+                await self._storage.finish_job(job.id, exit_code, present)
+            return exit_code, records, cancelled
+        finally:
+            self._live.clear(job.id)
+
+    async def _handle_failure(self, job: Download, exc: BaseException, relpaths: list[str]) -> None:
+        """Log + persist a job failure, counting whatever files made it to disk."""
+        logger.exception("download %d failed", job.id)
+        present = 0
+        if relpaths:
+            try:
+                present = await asyncio.to_thread(
+                    count_present, relpaths, self._gallery.downloads_dir
+                )
+            except Exception:
+                present = 0
+        await self._storage.mark_failed(job.id, repr(exc), present)
 
     def _make_progress_cb(self, job_id: int):
         # Raise StopExtraction so gallery-dl's own dispatcher catches it
