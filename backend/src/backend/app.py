@@ -7,9 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.api.routes import config, downloads, health
+from backend.api.routes import config, downloads, health, output_dirs, targets
 from backend.gallery import Gallery
 from backend.live_progress import LiveProgress
+from backend.poller import Poller
 from backend.settings import REPO_ROOT, Settings, load_settings
 from backend.storage import Storage
 from backend.worker import Worker
@@ -44,22 +45,28 @@ def create_app(
         live_progress = LiveProgress()
         worker = Worker(storage, gallery, live_progress)
         worker.start()
+        poller = Poller(storage, worker)
+        poller.start()
 
         app.state.settings = settings
         app.state.storage = storage
         app.state.gallery = gallery
         app.state.worker = worker
         app.state.live_progress = live_progress
+        app.state.poller = poller
 
         try:
             yield
         finally:
+            await poller.stop()
             await worker.stop()
             await storage.close()
 
     app = FastAPI(title="gallery-dl-webui", lifespan=lifespan)
     app.include_router(health.router, prefix="/api")
     app.include_router(downloads.router, prefix="/api")
+    app.include_router(targets.router, prefix="/api")
+    app.include_router(output_dirs.router, prefix="/api")
     app.include_router(config.router, prefix="/api")
 
     if serve_frontend and FRONTEND_DIST.is_dir():

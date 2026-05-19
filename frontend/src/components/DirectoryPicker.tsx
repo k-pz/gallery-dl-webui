@@ -1,0 +1,159 @@
+import {
+  ActionIcon,
+  Button,
+  Group,
+  Loader,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+  Tooltip,
+} from "@mantine/core";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import {
+  createOutputDirMutation,
+  listOutputDirsOptions,
+  listOutputDirsQueryKey,
+} from "../api/@tanstack/react-query.gen";
+import { extractErrorMessage } from "../lib/apiError";
+
+export interface DirectoryPickerProps {
+  label: string;
+  description?: string;
+  placeholder?: string;
+  value: string | null;
+  onChange: (value: string | null) => void;
+  /** When true, the input + Select are read-only. */
+  disabled?: boolean;
+  /** True when a postprocess_root is set. When false, the picker just renders disabled. */
+  enabled: boolean;
+  /** Extra path that should appear in the dropdown even if it's not in the listing. */
+  extraOption?: string | null;
+}
+
+export function DirectoryPicker({
+  label,
+  description,
+  placeholder,
+  value,
+  onChange,
+  disabled,
+  enabled,
+  extraOption,
+}: DirectoryPickerProps) {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    ...listOutputDirsOptions(),
+    enabled,
+  });
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [createPath, setCreatePath] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const options = useMemo(() => {
+    const set = new Set<string>();
+    const paths: string[] = [];
+    const push = (p: string | null | undefined) => {
+      if (!p) return;
+      if (set.has(p)) return;
+      set.add(p);
+      paths.push(p);
+    };
+    push(value);
+    push(extraOption ?? null);
+    if (Array.isArray(data)) for (const d of data) push(d.path);
+    return paths.map((p) => ({ value: p, label: p }));
+  }, [data, extraOption, value]);
+
+  const create = useMutation({
+    ...createOutputDirMutation(),
+    onSuccess: (entry) => {
+      setCreateError(null);
+      setShowCreate(false);
+      setCreatePath("");
+      onChange(entry.path);
+      queryClient.invalidateQueries({ queryKey: listOutputDirsQueryKey() });
+    },
+    onError: (err) => setCreateError(extractErrorMessage(err)),
+  });
+
+  const submitCreate = () => {
+    const trimmed = createPath.trim();
+    if (!trimmed) {
+      setCreateError("path is required");
+      return;
+    }
+    setCreateError(null);
+    create.mutate({ body: { path: trimmed } });
+  };
+
+  return (
+    <Stack gap={4}>
+      <Group align="flex-end" gap="xs" wrap="nowrap">
+        <Select
+          style={{ flex: 1 }}
+          label={label}
+          description={description}
+          placeholder={placeholder ?? "Pick a folder"}
+          data={options}
+          value={value || null}
+          onChange={(v) => onChange(v)}
+          searchable
+          clearable
+          nothingFoundMessage={isLoading ? "Loading…" : "No folders found"}
+          disabled={disabled || !enabled}
+          comboboxProps={{ withinPortal: true }}
+          rightSection={isLoading ? <Loader size="xs" /> : undefined}
+        />
+        <Tooltip label="Create folder" withArrow>
+          <ActionIcon
+            variant="light"
+            size="lg"
+            disabled={disabled || !enabled}
+            onClick={() => setShowCreate((s) => !s)}
+            aria-label="Create folder"
+          >
+            +
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+      {showCreate && (
+        <Group align="flex-end" gap="xs" wrap="nowrap">
+          <TextInput
+            style={{ flex: 1 }}
+            label="New folder path"
+            description="Absolute, or relative to the root."
+            placeholder="manga/new-series"
+            value={createPath}
+            onChange={(e) => setCreatePath(e.currentTarget.value)}
+            disabled={create.isPending}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitCreate();
+            }}
+          />
+          <Button onClick={submitCreate} loading={create.isPending}>
+            Create
+          </Button>
+          <Button
+            variant="subtle"
+            onClick={() => {
+              setShowCreate(false);
+              setCreateError(null);
+              setCreatePath("");
+            }}
+            disabled={create.isPending}
+          >
+            Cancel
+          </Button>
+        </Group>
+      )}
+      {createError && (
+        <Text size="sm" c="red">
+          {createError}
+        </Text>
+      )}
+    </Stack>
+  );
+}

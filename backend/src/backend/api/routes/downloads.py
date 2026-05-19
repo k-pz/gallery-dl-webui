@@ -46,7 +46,10 @@ async def create_download(
         output_dir_str = str(resolved)
         await storage.remember_output_dir(output_dir_str)
 
-    download = await storage.insert_pending(url, category, output_dir=output_dir_str)
+    target = await storage.upsert_target(url, category, output_dir_str)
+    download = await storage.insert_pending(
+        url, category, output_dir=output_dir_str, target_id=target.id
+    )
     worker.notify()
     return DownloadOut.from_download(download)
 

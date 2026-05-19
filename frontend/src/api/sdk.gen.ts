@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, ListDownloadsData, ListDownloadsResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses } from './types.gen';
+import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetTargetData, GetTargetErrors, GetTargetResponses, ListDownloadsData, ListDownloadsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -59,6 +59,55 @@ export const requeueDownload = <ThrowOnError extends boolean = false>(options: O
  * Get Progress
  */
 export const getDownloadProgress = <ThrowOnError extends boolean = false>(options: Options<GetDownloadProgressData, ThrowOnError>) => (options.client ?? client).get<GetDownloadProgressResponses, GetDownloadProgressErrors, ThrowOnError>({ url: '/api/downloads/{download_id}/progress', ...options });
+
+/**
+ * List Targets
+ */
+export const listTargets = <ThrowOnError extends boolean = false>(options?: Options<ListTargetsData, ThrowOnError>) => (options?.client ?? client).get<ListTargetsResponses, unknown, ThrowOnError>({ url: '/api/targets', ...options });
+
+/**
+ * Delete Target
+ */
+export const deleteTarget = <ThrowOnError extends boolean = false>(options: Options<DeleteTargetData, ThrowOnError>) => (options.client ?? client).delete<DeleteTargetResponses, DeleteTargetErrors, ThrowOnError>({ url: '/api/targets/{target_id}', ...options });
+
+/**
+ * Get Target
+ */
+export const getTarget = <ThrowOnError extends boolean = false>(options: Options<GetTargetData, ThrowOnError>) => (options.client ?? client).get<GetTargetResponses, GetTargetErrors, ThrowOnError>({ url: '/api/targets/{target_id}', ...options });
+
+/**
+ * Update Target
+ */
+export const updateTarget = <ThrowOnError extends boolean = false>(options: Options<UpdateTargetData, ThrowOnError>) => (options.client ?? client).patch<UpdateTargetResponses, UpdateTargetErrors, ThrowOnError>({
+    url: '/api/targets/{target_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Poll Target
+ */
+export const pollTarget = <ThrowOnError extends boolean = false>(options: Options<PollTargetData, ThrowOnError>) => (options.client ?? client).post<PollTargetResponses, PollTargetErrors, ThrowOnError>({ url: '/api/targets/{target_id}/poll', ...options });
+
+/**
+ * List Output Dirs
+ */
+export const listOutputDirs = <ThrowOnError extends boolean = false>(options?: Options<ListOutputDirsData, ThrowOnError>) => (options?.client ?? client).get<ListOutputDirsResponses, unknown, ThrowOnError>({ url: '/api/output-dirs', ...options });
+
+/**
+ * Create Output Dir
+ */
+export const createOutputDir = <ThrowOnError extends boolean = false>(options: Options<CreateOutputDirData, ThrowOnError>) => (options.client ?? client).post<CreateOutputDirResponses, CreateOutputDirErrors, ThrowOnError>({
+    url: '/api/output-dirs',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Get Config
