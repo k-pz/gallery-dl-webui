@@ -13,6 +13,7 @@ class DownloadCreate(BaseModel):
 class DownloadOut(BaseModel):
     id: int
     url: str
+    name: str | None
     extractor: str | None
     status: str
     created_at: str
@@ -29,10 +30,11 @@ class DownloadOut(BaseModel):
     target_id: int | None
 
     @classmethod
-    def from_download(cls, d: Download) -> DownloadOut:
+    def from_download(cls, d: Download, name: str | None = None) -> DownloadOut:
         return cls(
             id=d.id,
             url=d.url,
+            name=name,
             extractor=d.extractor,
             status=d.status,
             created_at=d.created_at,
@@ -81,6 +83,7 @@ class AppConfigIn(BaseModel):
 class TargetOut(BaseModel):
     id: int
     url: str
+    name: str | None
     extractor: str | None
     output_dir: str | None
     watched: bool
@@ -98,6 +101,7 @@ class TargetOut(BaseModel):
         return cls(
             id=s.target.id,
             url=s.target.url,
+            name=s.target.name,
             extractor=s.target.extractor,
             output_dir=s.target.output_dir,
             watched=s.target.watched,
@@ -127,3 +131,9 @@ class DirEntry(BaseModel):
 
 class DirCreate(BaseModel):
     path: str
+
+
+class LibraryImportResult(BaseModel):
+    imported: int
+    updated: int
+    errors: list[str]

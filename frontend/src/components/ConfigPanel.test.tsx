@@ -109,18 +109,18 @@ describe("ConfigPanel", () => {
     expect(screen.getByText("/mnt/nas/Media/comics")).toBeInTheDocument();
   });
 
-  it("disables Save until a field changes", async () => {
+  it("hides Save until a field changes", async () => {
     const state = { current: { ...emptyConfig } };
     mockFetch(configHandler(state));
 
     renderWithProviders(<ConfigPanel />);
 
     const rootInput = (await screen.findByLabelText(/^root$/i)) as HTMLInputElement;
-    const save = screen.getByRole("button", { name: /save/i });
-    expect(save).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /save/i })).not.toBeInTheDocument();
 
     fireEvent.change(rootInput, { target: { value: "/mnt/nas/Media" } });
-    await waitFor(() => expect(save).not.toBeDisabled());
+    const save = await screen.findByRole("button", { name: /save/i });
+    expect(save).not.toBeDisabled();
   });
 
   it("submits the new config", async () => {

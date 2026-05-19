@@ -20,6 +20,7 @@ def _t(**kwargs) -> Target:
     base = dict(
         id=1,
         url="https://x",
+        name=None,
         extractor=None,
         output_dir=None,
         watched=True,

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from backend.gallery import Manifest
 from backend.live_progress import LiveProgress
 from backend.postprocess import FileRecord
 from backend.settings import Settings
@@ -125,7 +126,7 @@ async def test_worker_cancel_after_extract_skips_download(
     # next check (right after extract returns).
     real_extract = gallery.extract_manifest
 
-    def extract_and_request_cancel(url: str) -> list[str]:
+    def extract_and_request_cancel(url: str) -> Manifest:
         result = real_extract(url)
         # The worker sets _current_id before starting extract, so this is safe.
         if worker._current_id is not None:
@@ -160,7 +161,7 @@ async def test_worker_marks_failed_when_extract_raises(
     settings: Settings, storage: Storage
 ) -> None:
     class Boom(FakeGallery):
-        def extract_manifest(self, url: str) -> list[str]:  # type: ignore[override]
+        def extract_manifest(self, url: str) -> Manifest:  # type: ignore[override]
             raise RuntimeError("nope")
 
     gallery = Boom(settings, config=FakeGalleryConfig())
@@ -181,6 +182,70 @@ async def test_worker_marks_failed_when_extract_raises(
         assert row is not None
         assert row.status == "failed"
         assert row.error is not None and "nope" in row.error
+    finally:
+        await worker.stop()
+
+
+async def test_worker_captures_series_name_from_manifest(
+    settings: Settings, storage: Storage
+) -> None:
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["a/1.jpg"]
+    config.series_name_for["https://example/x"] = "Captured Series"
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(storage, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await storage.upsert_target("https://example/x", "fake", None)
+        d = await storage.insert_pending("https://example/x", "fake", target_id=target.id)
+        worker.notify()
+
+        async def done() -> bool:
+            row = await storage.get(d.id)
+            return row is not None and row.status == "completed"
+
+        await _wait_for(done)
+        refreshed = await storage.get_target(target.id)
+        assert refreshed is not None
+        assert refreshed.name == "Captured Series"
+    finally:
+        await worker.stop()
+
+
+async def test_worker_captures_series_name_from_records_when_manifest_lacks_it(
+    settings: Settings, storage: Storage
+) -> None:
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]
+    config.records_for["https://example/x"] = [
+        FileRecord(
+            category="fake",
+            manga="From Records",
+            chapter="1",
+            title="",
+            volume="",
+            lang="",
+            author="",
+            date="",
+            path=settings.downloads_dir / "fake" / "S" / "c1" / "001.jpg",
+        )
+    ]
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(storage, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await storage.upsert_target("https://example/x", "fake", None)
+        d = await storage.insert_pending("https://example/x", "fake", target_id=target.id)
+        worker.notify()
+
+        async def done() -> bool:
+            row = await storage.get(d.id)
+            return row is not None and row.status == "completed"
+
+        await _wait_for(done)
+        refreshed = await storage.get_target(target.id)
+        assert refreshed is not None
+        assert refreshed.name == "From Records"
     finally:
         await worker.stop()
 
