@@ -17,14 +17,19 @@ service that runs `gallery-dl` against a single-process worker queue.
 ```
 backend/                ← FastAPI app (uv project, src-layout)
   src/backend/
-    app.py              ← FastAPI app + lifespan
+    main.py             ← FastAPI app + lifespan + router registration
     __main__.py         ← `python -m backend` entrypoint
-    settings.py
-    storage.py          ← aiosqlite job store
-    gallery.py          ← gallery-dl wrapper (Gallery class)
-    progress.py         ← chapter-progress accounting
-    worker.py           ← single-job background worker
-    api/                ← routes, schemas, deps
+    config.py           ← Settings + load_settings (env vars)
+    database.py         ← aiosqlite connection lifecycle + schema + migrations
+    exceptions.py       ← shared HTTPException subclasses
+    dependencies.py     ← cross-domain FastAPI deps (db, settings)
+    downloads/          ← downloads domain (router, schemas, service, worker,
+                          gallery, postprocess, live_progress, progress)
+    targets/            ← watched targets (router, service, poller, durations)
+    app_config/         ← app-wide config endpoint
+    library/            ← library YAML import/export
+    output_dirs/        ← output-dir picker
+    health/             ← health endpoint
 frontend/               ← Vite + React app
   src/
     App.tsx

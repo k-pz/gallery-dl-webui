@@ -1,0 +1,99 @@
+import logging
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+from backend.app_config.router import router as config_router
+from backend.config import REPO_ROOT, Settings, load_settings
+from backend.database import open_database
+from backend.downloads import service as downloads_service
+from backend.downloads.gallery import Gallery
+from backend.downloads.live_progress import LiveProgress
+from backend.downloads.router import router as downloads_router
+from backend.downloads.worker import Worker
+from backend.health.router import router as health_router
+from backend.library.router import router as library_router
+from backend.output_dirs.router import router as output_dirs_router
+from backend.targets.poller import Poller
+from backend.targets.router import router as targets_router
+
+logger = logging.getLogger(__name__)
+
+FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
+
+GalleryFactory = Callable[[Settings], Gallery]
+SettingsFactory = Callable[[], Settings]
+
+
+def create_app(
+    *,
+    settings_factory: SettingsFactory = load_settings,
+    gallery_factory: GalleryFactory = Gallery,
+    serve_frontend: bool = True,
+) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        settings = settings_factory()
+        settings.data_dir.mkdir(parents=True, exist_ok=True)
+        settings.downloads_dir.mkdir(parents=True, exist_ok=True)
+
+        db = await open_database(settings.jobs_db_path)
+        gallery = gallery_factory(settings)
+
+        interrupted = await downloads_service.mark_interrupted_on_boot(db)
+        if interrupted:
+            logger.warning("marked %d in-flight job(s) as failed on boot", interrupted)
+
+        live_progress = LiveProgress()
+        worker = Worker(db, gallery, live_progress)
+        worker.start()
+        poller = Poller(db, worker)
+        poller.start()
+
+        app.state.settings = settings
+        app.state.db = db
+        app.state.gallery = gallery
+        app.state.worker = worker
+        app.state.live_progress = live_progress
+        app.state.poller = poller
+
+        try:
+            yield
+        finally:
+            await poller.stop()
+            await worker.stop()
+            await db.close()
+
+    app = FastAPI(title="gallery-dl-webui", lifespan=lifespan)
+    app.include_router(health_router, prefix="/api")
+    app.include_router(downloads_router, prefix="/api")
+    app.include_router(targets_router, prefix="/api")
+    app.include_router(output_dirs_router, prefix="/api")
+    app.include_router(config_router, prefix="/api")
+    app.include_router(library_router, prefix="/api")
+
+    if serve_frontend and FRONTEND_DIST.is_dir():
+        app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def spa_fallback(full_path: str) -> FileResponse:
+            candidate = FRONTEND_DIST / full_path
+            if full_path and candidate.is_file():
+                return FileResponse(candidate)
+            return FileResponse(FRONTEND_DIST / "index.html")
+    else:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["http://localhost:5173"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+    return app
+
+
+app = create_app()
