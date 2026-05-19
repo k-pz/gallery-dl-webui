@@ -79,6 +79,15 @@ die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 in_ct() { pct exec "$CTID" -- "$@"; }
 in_ct_sh() { pct exec "$CTID" -- bash -lc "$*"; }
 
+# Run a command in the CT as $APP_USER, with HOME pointed at $DATA_DIR (where
+# mise stores its installed tools) and a clean PATH containing /usr/local/bin
+# so the system-wide `mise` is found. Used for every mise / uv / pnpm call.
+as_app() {
+    pct exec "$CTID" -- sudo -u "$APP_USER" -H \
+        env PATH=/usr/local/bin:/usr/bin:/bin HOME="$DATA_DIR" \
+        "$@"
+}
+
 # ---- Preflight ------------------------------------------------------------
 
 [[ $EUID -eq 0 ]] || die "must run as root"
@@ -283,33 +292,21 @@ tar -C "$SRC_DIR" \
   | in_ct tar -C "$APP_DIR" -xf -
 in_ct chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
-# ---- Install pinned toolchain via mise ------------------------------------
+# ---- Install toolchain + deps via mise ------------------------------------
+#
+# `mise run install:prod` installs the pinned toolchain (python/uv/node) on
+# demand, then enables pnpm via corepack and runs `uv sync --no-dev` +
+# `pnpm install`. The task lives in mise.toml so the same command works
+# locally and here.
 
-log "installing pinned toolchain (python, uv, node, pnpm) via mise as $APP_USER"
-in_ct_sh "sudo -u '$APP_USER' -H \
-    env PATH=/usr/local/bin:/usr/bin:/bin HOME='$DATA_DIR' \
-    mise trust '$APP_DIR/mise.toml'"
-in_ct_sh "sudo -u '$APP_USER' -H \
-    env PATH=/usr/local/bin:/usr/bin:/bin HOME='$DATA_DIR' \
-    mise install -C '$APP_DIR'"
+log "trusting mise config"
+as_app mise trust "$APP_DIR/mise.toml"
 
-# ---- Backend: uv sync -----------------------------------------------------
+log "installing toolchain + backend + frontend deps via mise (this may take a few minutes on first run)"
+as_app mise run -C "$APP_DIR" install:prod
 
-log "running uv sync --frozen --no-dev in $APP_DIR/backend as $APP_USER"
-in_ct_sh "cd '$APP_DIR/backend' && sudo -u '$APP_USER' -H \
-    env PATH=/usr/local/bin:/usr/bin:/bin HOME='$DATA_DIR' \
-    mise exec -- uv sync --frozen --no-dev"
-
-# ---- Frontend: pnpm build -------------------------------------------------
-
-log "building frontend in $APP_DIR/frontend as $APP_USER"
-in_ct_sh "cd '$APP_DIR/frontend' && sudo -u '$APP_USER' -H \
-    env PATH=/usr/local/bin:/usr/bin:/bin HOME='$DATA_DIR' \
-    mise exec -- bash -c 'mkdir -p \"\$HOME/.local/bin\" && \
-        corepack enable --install-directory=\"\$HOME/.local/bin\" && \
-        export PATH=\"\$HOME/.local/bin:\$PATH\" && \
-        pnpm install --frozen-lockfile && \
-        pnpm build'"
+log "building frontend via mise"
+as_app mise run -C "$APP_DIR" build
 
 # ---- systemd unit ---------------------------------------------------------
 
@@ -330,7 +327,7 @@ Environment=WEBUI_DATA_DIR=${DATA_DIR}
 Environment=WEBUI_HOST=0.0.0.0
 Environment=WEBUI_PORT=${WEBUI_PORT}
 
-ExecStart=/usr/local/bin/mise exec -- uv run --frozen --no-dev python -m backend
+ExecStart=/usr/local/bin/mise run -C ${APP_DIR} backend:run
 
 Restart=on-failure
 RestartSec=5

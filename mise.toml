@@ -1,5 +1,138 @@
+# gallery-dl-webui — mise config
+#
+# Pins the runtime toolchain (python/uv/node) and defines every repo task so
+# the same `mise run <task>` works locally, in the Proxmox LXC, and from
+# editor/CI runners.
+#
+# Quickstart after `git clone`:
+#   mise install              # one-time: install the pinned toolchain
+#   mise run install          # one-time: backend + frontend deps
+#   mise run dev              # backend dev server (uvicorn :8000, reload)
+#   mise run dev:frontend     # frontend dev server (vite :5173)
+#   mise run check            # lint + typecheck + test (CI-safe)
+#
+# pnpm is deliberately *not* in [tools] — it's activated via corepack so that
+# the version pin in frontend/package.json's "packageManager" field is the
+# single source of truth. The shim lands in .local/bin (already gitignored).
+
 [tools]
 python = "3.14"
 uv = "latest"
 node = "24.15.0"
-pnpm = "latest"
+
+[env]
+# corepack-installed pnpm/yarn/npm shims land here (see the install tasks);
+# putting the dir on PATH lets later tasks call `pnpm` without an absolute path.
+_.path = ["{{config_root}}/.local/bin"]
+
+# ---- Bootstrap -----------------------------------------------------------
+
+[tasks.install]
+description = "Install backend (dev) + frontend deps. Run after `git clone`."
+run = [
+    "mkdir -p {{config_root}}/.local/bin && corepack enable --install-directory={{config_root}}/.local/bin",
+    "cd {{config_root}}/backend && uv sync --frozen",
+    "cd {{config_root}}/frontend && pnpm install --frozen-lockfile",
+]
+
+[tasks."install:prod"]
+description = "Install for production (backend without dev extras). Used by the Proxmox scripts."
+run = [
+    "mkdir -p {{config_root}}/.local/bin && corepack enable --install-directory={{config_root}}/.local/bin",
+    "cd {{config_root}}/backend && uv sync --frozen --no-dev",
+    "cd {{config_root}}/frontend && pnpm install --frozen-lockfile",
+]
+
+# ---- Dev servers ---------------------------------------------------------
+
+[tasks.dev]
+description = "Backend dev server (uvicorn :8000, --reload)"
+dir = "{{config_root}}/backend"
+run = "uv run uvicorn backend.app:app --reload"
+
+[tasks."dev:frontend"]
+description = "Frontend dev server (vite :5173, proxies /api → :8000)"
+dir = "{{config_root}}/frontend"
+run = "pnpm dev"
+
+# ---- Build ---------------------------------------------------------------
+
+[tasks.build]
+description = "Build the frontend for production (tsc -b && vite build)"
+dir = "{{config_root}}/frontend"
+run = "pnpm build"
+
+# ---- Quality -------------------------------------------------------------
+
+[tasks."lint:backend"]
+description = "ruff check + ruff format --check"
+dir = "{{config_root}}/backend"
+run = [
+    "uv run ruff check .",
+    "uv run ruff format --check .",
+]
+
+[tasks."lint:frontend"]
+description = "biome check"
+dir = "{{config_root}}/frontend"
+run = "pnpm lint"
+
+[tasks.lint]
+description = "Lint backend + frontend"
+depends = ["lint:backend", "lint:frontend"]
+
+[tasks."typecheck:backend"]
+description = "ty check"
+dir = "{{config_root}}/backend"
+run = "uv run ty check"
+
+[tasks."typecheck:frontend"]
+description = "tsc -b --noEmit"
+dir = "{{config_root}}/frontend"
+run = "pnpm typecheck"
+
+[tasks.typecheck]
+description = "Typecheck backend + frontend"
+depends = ["typecheck:backend", "typecheck:frontend"]
+
+[tasks."test:backend"]
+description = "pytest"
+dir = "{{config_root}}/backend"
+run = "uv run pytest"
+
+[tasks."test:frontend"]
+description = "vitest run"
+dir = "{{config_root}}/frontend"
+run = "pnpm test"
+
+[tasks.test]
+description = "Run backend + frontend unit tests"
+depends = ["test:backend", "test:frontend"]
+
+[tasks.check]
+description = "All CI-safe checks: lint + typecheck + test"
+depends = ["lint", "typecheck", "test"]
+
+[tasks.fix]
+description = "Auto-fix lint findings and reformat (ruff --fix + ruff format)"
+dir = "{{config_root}}/backend"
+run = [
+    "uv run ruff check --fix .",
+    "uv run ruff format .",
+]
+
+# ---- Codegen -------------------------------------------------------------
+
+[tasks.generate]
+description = "Regenerate the frontend API client from the live backend's OpenAPI schema"
+dir = "{{config_root}}/frontend"
+run = "pnpm generate"
+
+# ---- Production entrypoint ----------------------------------------------
+
+[tasks."backend:run"]
+description = "Run the backend the way the systemd unit does (`python -m backend`, no reload, no dev deps)"
+dir = "{{config_root}}/backend"
+# `exec` so signals reach python directly — systemd KillMode=mixed sends
+# SIGTERM to the leader and we want that to land on the asyncio loop.
+run = "exec uv run --frozen --no-dev python -m backend"

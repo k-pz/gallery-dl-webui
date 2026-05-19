@@ -18,9 +18,11 @@ build-backend = "hatchling.build"
 packages = ["src/backend"]
 
 [dependency-groups]
+# Repo-level tasks (dev server, lint, format, typecheck, test) live in the
+# top-level mise.toml — run them via `mise run <task>`. This group only
+# pins the underlying tools.
 dev = [
     "httpx>=0.28",
-    "poethepoet>=0.46.0",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "ruff>=0.15.13",
@@ -42,23 +44,3 @@ include = ["src/backend"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-ra"
-
-[tool.poe.tasks]
-dev = "uvicorn backend.app:app --reload"
-lint = "ruff check ."
-format = "ruff format ."
-format-check = "ruff format --check ."
-typecheck = "ty check"
-test = "pytest"
-
-[tool.poe.tasks.frontend-dev]
-shell = "cd ../frontend && pnpm dev"
-help = "Run the Vite dev server (proxies /api to :8000)"
-
-[tool.poe.tasks.check]
-sequence = ["lint", "format-check", "typecheck", "test"]
-help = "Run all read-only checks (CI-safe)"
-
-[tool.poe.tasks.fix]
-shell = "ruff check --fix . && ruff format ."
-help = "Auto-fix lint findings and reformat"

@@ -47,6 +47,15 @@ die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 in_ct() { pct exec "$CTID" -- "$@"; }
 in_ct_sh() { pct exec "$CTID" -- bash -lc "$*"; }
 
+# Run a command in the CT as $APP_USER with mise's HOME pointed at $DATA_DIR.
+# Mirrors the helper in proxmox-install.sh so the two scripts invoke mise
+# the same way.
+as_app() {
+    pct exec "$CTID" -- sudo -u "$APP_USER" -H \
+        env PATH=/usr/local/bin:/usr/bin:/bin HOME="$DATA_DIR" \
+        "$@"
+}
+
 # ---- Preflight ------------------------------------------------------------
 
 [[ $EUID -eq 0 ]] || die "must run as root"
@@ -114,33 +123,35 @@ tar -C "$SRC_DIR" \
   | in_ct tar -C "$APP_DIR" -xf -
 in_ct chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
-# ---- Refresh pinned toolchain (cheap if mise.toml unchanged) --------------
+# ---- Refresh toolchain + deps via mise ------------------------------------
+#
+# `mise run install:prod` re-syncs the pinned toolchain (cheap if mise.toml
+# hasn't changed), corepack-enables pnpm, and runs uv/pnpm install. Same task
+# as proxmox-install.sh — see mise.toml for the definition.
 
-log "mise install -C $APP_DIR (refresh pinned toolchain)"
-in_ct_sh "sudo -u '$APP_USER' -H \
-    env PATH=/usr/local/bin:/usr/bin:/bin HOME='$DATA_DIR' \
-    mise trust '$APP_DIR/mise.toml'"
-in_ct_sh "sudo -u '$APP_USER' -H \
-    env PATH=/usr/local/bin:/usr/bin:/bin HOME='$DATA_DIR' \
-    mise install -C '$APP_DIR'"
+log "trusting mise config"
+as_app mise trust "$APP_DIR/mise.toml"
 
-# ---- Backend: uv sync -----------------------------------------------------
+log "refreshing toolchain + backend + frontend deps via mise"
+as_app mise run -C "$APP_DIR" install:prod
 
-log "running uv sync --frozen --no-dev in $APP_DIR/backend as $APP_USER"
-in_ct_sh "cd '$APP_DIR/backend' && sudo -u '$APP_USER' -H \
-    env PATH=/usr/local/bin:/usr/bin:/bin HOME='$DATA_DIR' \
-    mise exec -- uv sync --frozen --no-dev"
+log "rebuilding frontend via mise"
+as_app mise run -C "$APP_DIR" build
 
-# ---- Frontend: pnpm build -------------------------------------------------
+# ---- Migrate systemd unit ExecStart (one-time) ----------------------------
+#
+# Pre-mise-tasks installs wrote `ExecStart=/usr/local/bin/mise exec -- uv run
+# --frozen --no-dev python -m backend`. Newer installs use the mise task
+# `backend:run`. Swap the line in-place so existing CTs converge — leaves
+# every other directive (Environment=, ReadWritePaths=, etc.) untouched.
 
-log "rebuilding frontend in $APP_DIR/frontend as $APP_USER"
-in_ct_sh "cd '$APP_DIR/frontend' && sudo -u '$APP_USER' -H \
-    env PATH=/usr/local/bin:/usr/bin:/bin HOME='$DATA_DIR' \
-    mise exec -- bash -c 'mkdir -p \"\$HOME/.local/bin\" && \
-        corepack enable --install-directory=\"\$HOME/.local/bin\" && \
-        export PATH=\"\$HOME/.local/bin:\$PATH\" && \
-        pnpm install --frozen-lockfile && \
-        pnpm build'"
+DESIRED_EXEC="ExecStart=/usr/local/bin/mise run -C ${APP_DIR} backend:run"
+UNIT_PATH="/etc/systemd/system/${SERVICE}"
+if ! in_ct grep -qF "$DESIRED_EXEC" "$UNIT_PATH"; then
+    log "migrating ${SERVICE} ExecStart to use the mise backend:run task"
+    in_ct sed -i "s|^ExecStart=.*|${DESIRED_EXEC}|" "$UNIT_PATH"
+    in_ct systemctl daemon-reload
+fi
 
 # ---- Restart --------------------------------------------------------------
 #
