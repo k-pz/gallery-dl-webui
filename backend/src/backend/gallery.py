@@ -25,6 +25,21 @@ class Manifest:
     series_name: str | None = None
 
 
+def _inherit_shared_state(child: Any, parent: Any, *attrs: str) -> bool:
+    """If parent is the same kind as child, copy the named attrs over.
+
+    Gallery-dl spawns child jobs for nested extractors; subclasses below use
+    this to forward their accumulator state (manifests, callbacks, records)
+    so a single run aggregates everything the root started with.
+    Returns True when state was inherited so callers know to skip fresh init.
+    """
+    if not isinstance(parent, type(child)):
+        return False
+    for name in attrs:
+        setattr(child, name, getattr(parent, name))
+    return True
+
+
 class _ManifestSimulationJob(SimulationJob):
     """SimulationJob variant that records every would-be file path.
 
@@ -38,10 +53,7 @@ class _ManifestSimulationJob(SimulationJob):
 
     def __init__(self, url: Any, parent: SimulationJob | None = None) -> None:
         super().__init__(url, parent)
-        if isinstance(parent, _ManifestSimulationJob):
-            self._manifest = parent._manifest
-            self._series_box = parent._series_box
-        else:
+        if not _inherit_shared_state(self, parent, "_manifest", "_series_box"):
             self._manifest = []
             self._series_box = [None]
 
@@ -92,11 +104,9 @@ class _ProgressDownloadJob(DownloadJob):
         downloads_base: str | None = None,
     ) -> None:
         super().__init__(url, parent)
-        if isinstance(parent, _ProgressDownloadJob):
-            self._on_file_complete = parent._on_file_complete
-            self._downloads_base = parent._downloads_base
-            self._records = parent._records
-        else:
+        if not _inherit_shared_state(
+            self, parent, "_on_file_complete", "_downloads_base", "_records"
+        ):
             assert on_file_complete is not None and downloads_base is not None
             self._on_file_complete = on_file_complete
             self._downloads_base = downloads_base
