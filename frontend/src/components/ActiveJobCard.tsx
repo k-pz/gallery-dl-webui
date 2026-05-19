@@ -20,6 +20,7 @@ import {
 } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
+import { useOptimisticCancel } from "../lib/optimisticCancel";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
 import { isCancellable, isTerminal, JOB_STEPS, jobStep, statusColor } from "../lib/status";
 import { ProgressCard } from "./ProgressCard";
@@ -27,7 +28,6 @@ import { ProgressCard } from "./ProgressCard";
 export function ActiveJobCard({ jobId }: { jobId: number }) {
   const invalidate = useDataInvalidators();
   const [actionError, setActionError] = useState<string | null>(null);
-  const [cancelIntent, setCancelIntent] = useState(false);
 
   const { data: job, isLoading } = useQuery({
     ...getDownloadOptions({ path: { download_id: jobId } }),
@@ -37,18 +37,11 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
     },
   });
 
-  // Clear the optimistic "cancelling" flag once the backend has reflected a
-  // terminal status — covers both successful cancels and races where the job
-  // completed or failed before the worker saw the cancel request.
-  useEffect(() => {
-    if (job && isTerminal(job.status)) setCancelIntent(false);
-  }, [job]);
+  const cancelIntent = useOptimisticCancel(jobId, job?.status);
 
-  // Reset the flag whenever the focused job changes; otherwise the badge for
-  // a freshly-selected job could briefly show "cancelling" from a prior one.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: jobId is the reactive trigger; body intentionally uses no other deps.
+  // Reset the per-job action error when the focused job changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: jobId is the reactive trigger.
   useEffect(() => {
-    setCancelIntent(false);
     setActionError(null);
   }, [jobId]);
 
@@ -60,7 +53,7 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
   const cancel = useMutation({
     ...cancelDownloadMutation(),
     onMutate: () => {
-      setCancelIntent(true);
+      cancelIntent.mark();
     },
     onSuccess: () => {
       setActionError(null);
@@ -72,7 +65,7 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
       refresh();
     },
     onError: (err) => {
-      setCancelIntent(false);
+      cancelIntent.clear();
       const msg = extractErrorMessage(err);
       setActionError(msg);
       notifications.show({
@@ -86,7 +79,7 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
   const requeue = useMutation({
     ...requeueDownloadMutation(),
     onMutate: () => {
-      setCancelIntent(false);
+      cancelIntent.clear();
     },
     onSuccess: () => {
       setActionError(null);
@@ -116,7 +109,7 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
     );
   }
 
-  const showCancelling = cancelIntent && !isTerminal(job.status);
+  const showCancelling = cancelIntent.cancelling;
   const step = jobStep(job.status, job.postprocess_status, showCancelling);
   const canCancel = isCancellable(job.status) && !showCancelling;
   const canRequeue = isTerminal(job.status);

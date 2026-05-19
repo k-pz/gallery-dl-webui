@@ -14,7 +14,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   cancelDownloadMutation,
   listDownloadsOptions,
@@ -23,6 +23,7 @@ import {
 import type { DownloadOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
+import { useOptimisticCancelMany } from "../lib/optimisticCancel";
 import { REFETCH_LIST_MS } from "../lib/polling";
 import {
   CANCELLING_LABEL,
@@ -58,29 +59,10 @@ export function RecentList({
     refetchInterval: REFETCH_LIST_MS,
   });
 
-  const [cancellingIds, setCancellingIds] = useState<Set<number>>(() => new Set());
+  const cancelIntent = useOptimisticCancelMany(data);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("any");
   const [sortKey, setSortKey] = useState<SortKey>("recent");
-
-  // Prune the optimistic-cancelling set once the row reaches terminal state,
-  // so the badge stops lying after the worker has reflected the cancel.
-  useEffect(() => {
-    if (!data) return;
-    setCancellingIds((prev) => {
-      if (prev.size === 0) return prev;
-      let changed = false;
-      const next = new Set(prev);
-      for (const id of prev) {
-        const item = data.find((d) => d.id === id);
-        if (!item || isTerminal(item.status)) {
-          next.delete(id);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [data]);
 
   const refresh = (id: number) => {
     invalidate.downloads();
@@ -90,12 +72,7 @@ export function RecentList({
   const cancel = useMutation({
     ...cancelDownloadMutation(),
     onMutate: (vars) => {
-      const id = vars.path.download_id;
-      setCancellingIds((prev) => {
-        const next = new Set(prev);
-        next.add(id);
-        return next;
-      });
+      cancelIntent.mark(vars.path.download_id);
     },
     onSuccess: (d) => {
       notifications.show({
@@ -107,11 +84,7 @@ export function RecentList({
     },
     onError: (err, vars) => {
       const id = vars.path.download_id;
-      setCancellingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+      cancelIntent.clear(id);
       notifications.show({
         title: `Cancel failed (#${id})`,
         message: extractErrorMessage(err),
@@ -123,13 +96,7 @@ export function RecentList({
   const requeue = useMutation({
     ...requeueDownloadMutation(),
     onMutate: (vars) => {
-      const id = vars.path.download_id;
-      setCancellingIds((prev) => {
-        if (!prev.has(id)) return prev;
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+      cancelIntent.clear(vars.path.download_id);
     },
     onSuccess: (d) => {
       notifications.show({
@@ -252,7 +219,7 @@ export function RecentList({
                 key={item.id}
                 item={item}
                 selected={item.id === selectedId}
-                cancelling={cancellingIds.has(item.id)}
+                cancelling={cancelIntent.isCancelling(item.id)}
                 inflight={inflightId === item.id}
                 isCancelPending={cancel.isPending}
                 isRequeuePending={requeue.isPending}
@@ -289,7 +256,7 @@ function RecentRow({
   onCancel: () => void;
   onRequeue: () => void;
 }) {
-  const showCancelling = cancelling && !isTerminal(item.status);
+  const showCancelling = cancelling;
   const displayStatus = showCancelling ? CANCELLING_LABEL : item.status;
   const step = jobStep(item.status, item.postprocess_status, showCancelling);
   const canCancel = isCancellable(item.status) && !showCancelling;
