@@ -50,17 +50,23 @@ export const JOB_STEPS = [
 
 export type JobStepName = (typeof JOB_STEPS)[number];
 
+export type JobStepKind = "running" | "done" | "failed" | "cancelled" | "cancelling";
+
+/**
+ * Discriminated by `kind`:
+ *   - "running":    in-flight; index points at the currently-loading step
+ *   - "done":       reached the final step (Completed)
+ *   - "failed":     terminal failure
+ *   - "cancelled":  terminal cancellation
+ *   - "cancelling": cancel requested, job not yet terminal
+ *
+ * `index` and `total` are always present so the Stepper can position itself.
+ */
 export type JobStep = {
-  /** 0-based index into JOB_STEPS for the currently-active step. */
   index: number;
   label: string;
   total: number;
-  /** True when the job's terminal status is failed/cancelled — Stepper styling. */
-  failed: boolean;
-  cancelled: boolean;
-  cancelling: boolean;
-  /** True when every step is done (Completed). */
-  done: boolean;
+  kind: JobStepKind;
 };
 
 export function jobStep(
@@ -69,48 +75,22 @@ export function jobStep(
   cancelling: boolean = false,
 ): JobStep {
   const total = JOB_STEPS.length;
+  const idx = stepIndexFor(status, postprocessStatus);
   if (cancelling && !isTerminal(status as Status)) {
-    return {
-      index: stepIndexFor(status, postprocessStatus),
-      label: "Cancelling…",
-      total,
-      failed: false,
-      cancelled: false,
-      cancelling: true,
-      done: false,
-    };
+    return { kind: "cancelling", index: idx, label: "Cancelling…", total };
   }
   if (status === "failed") {
-    return {
-      index: stepIndexFor(status, postprocessStatus),
-      label: "Failed",
-      total,
-      failed: true,
-      cancelled: false,
-      cancelling: false,
-      done: false,
-    };
+    return { kind: "failed", index: idx, label: "Failed", total };
   }
   if (status === "cancelled") {
-    return {
-      index: stepIndexFor(status, postprocessStatus),
-      label: "Cancelled",
-      total,
-      failed: false,
-      cancelled: true,
-      cancelling: false,
-      done: false,
-    };
+    return { kind: "cancelled", index: idx, label: "Cancelled", total };
   }
-  const idx = stepIndexFor(status, postprocessStatus);
+  const label = JOB_STEPS[Math.min(idx, total - 1)];
   return {
+    kind: idx >= total - 1 ? "done" : "running",
     index: idx,
-    label: JOB_STEPS[Math.min(idx, total - 1)],
+    label,
     total,
-    failed: false,
-    cancelled: false,
-    cancelling: false,
-    done: idx >= total - 1,
   };
 }
 

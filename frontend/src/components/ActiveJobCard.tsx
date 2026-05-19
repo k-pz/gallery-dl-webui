@@ -219,7 +219,7 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
 
 function JobStepper({ job }: { job: { status: string; step: ReturnType<typeof jobStep> } }) {
   const { step } = job;
-  if (step.failed || step.cancelled) {
+  if (step.kind === "failed" || step.kind === "cancelled") {
     return (
       <Group gap="xs">
         <Badge size="lg" color={statusColor(job.status)} variant="filled">
@@ -230,14 +230,19 @@ function JobStepper({ job }: { job: { status: string; step: ReturnType<typeof jo
   }
   // Stepper's `active` is the next-incomplete index. For a done job we pass
   // total so every step renders as complete.
-  const active = step.done ? step.total : step.index;
+  const active = step.kind === "done" ? step.total : step.index;
   return (
-    <Stepper active={active} size="xs" iconSize={20} color={step.cancelling ? "orange" : undefined}>
+    <Stepper
+      active={active}
+      size="xs"
+      iconSize={20}
+      color={step.kind === "cancelling" ? "orange" : undefined}
+    >
       {JOB_STEPS.map((label, i) => (
         <Stepper.Step
           key={label}
           label={label}
-          loading={!step.done && !step.cancelling && i === step.index}
+          loading={step.kind === "running" && i === step.index}
         />
       ))}
     </Stepper>
