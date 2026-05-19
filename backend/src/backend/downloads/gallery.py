@@ -1,0 +1,232 @@
+import logging
+import os
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from gallery_dl import config, extractor, output
+from gallery_dl.job import DownloadJob, SimulationJob
+
+from backend.config import Settings
+from backend.downloads.postprocess import FileRecord, coerce_record_from_kwdict
+
+# Predicate: given (manga, chapter) from a gallery-dl kwdict, returns True if
+# the chapter is already represented as a CBZ in the postprocess output dir,
+# i.e. the worker should not re-download or include it in the manifest.
+SkipChapterFn = Callable[[str, str], bool]
+
+
+@dataclass
+class Manifest:
+    """Result of a simulation pass: which files we expect, plus discovered metadata.
+
+    `series_name` is the first non-empty `manga` (or `series`) value seen in any
+    directory's kwdict — gallery-dl exposes a per-source metadata dict before
+    pages are enumerated, so we capture it without running a real download.
+    """
+
+    paths: list[str]
+    series_name: str | None = None
+
+
+def _inherit_shared_state(child: Any, parent: Any, *attrs: str) -> bool:
+    """If parent is the same kind as child, copy the named attrs over.
+
+    Gallery-dl spawns child jobs for nested extractors; subclasses below use
+    this to forward their accumulator state (manifests, callbacks, records)
+    so a single run aggregates everything the root started with.
+    Returns True when state was inherited so callers know to skip fresh init.
+    """
+    if not isinstance(parent, type(child)):
+        return False
+    for name in attrs:
+        setattr(child, name, getattr(parent, name))
+    return True
+
+
+class _ManifestSimulationJob(SimulationJob):
+    """SimulationJob variant that records every would-be file path.
+
+    Child jobs spawned for nested extractors share the same _manifest list and
+    series-name box so a single run accumulates all expected paths and the
+    first-seen series name.
+    """
+
+    _manifest: list[tuple[str, str, str]]
+    _series_box: list[str | None]
+
+    def __init__(self, url: Any, parent: SimulationJob | None = None) -> None:
+        super().__init__(url, parent)
+        if not _inherit_shared_state(self, parent, "_manifest", "_series_box"):
+            self._manifest = []
+            self._series_box = [None]
+
+    def handle_directory(self, kwdict: dict[str, Any]) -> None:
+        # SimulationJob.handle_directory only calls initialize() and never sets
+        # pathfmt.directory, so the recorded paths would be missing the per-job
+        # directory prefix. Mirror DownloadJob.handle_directory's behavior.
+        if self.pathfmt is None:
+            self.initialize(kwdict)
+        else:
+            self.pathfmt.set_directory(kwdict)
+        if self._series_box[0] is None:
+            for key in ("manga", "series", "title"):
+                value = kwdict.get(key)
+                if isinstance(value, str) and value.strip():
+                    self._series_box[0] = value.strip()
+                    break
+
+    def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
+        pathfmt = self.pathfmt
+        assert pathfmt is not None
+        ext = kwdict["extension"] or "jpg"
+        kwdict["extension"] = pathfmt.extension_map(ext, ext)
+        if self.archive is not None and self._archive_write_skip:
+            self.archive.add(kwdict)
+        filename = pathfmt.build_filename(kwdict)
+        manga = str(kwdict.get("manga") or "")
+        chapter = str(kwdict.get("chapter") or "")
+        self._manifest.append((pathfmt.directory + filename, manga, chapter))
+
+
+class _ProgressDownloadJob(DownloadJob):
+    """DownloadJob variant that notifies a callback after each file completes
+    and accumulates per-file metadata records for postprocessing.
+
+    Child jobs spawned for nested extractors share the same callback and
+    records list so a single run reports every downloaded file.
+    """
+
+    _on_file_complete: Callable[[str], None]
+    _downloads_base: str
+    _records: list[FileRecord]
+    _skip_chapter: SkipChapterFn | None
+
+    def __init__(
+        self,
+        url: Any,
+        parent: DownloadJob | None = None,
+        *,
+        on_file_complete: Callable[[str], None] | None = None,
+        downloads_base: str | None = None,
+        skip_chapter: SkipChapterFn | None = None,
+    ) -> None:
+        super().__init__(url, parent)
+        if not _inherit_shared_state(
+            self,
+            parent,
+            "_on_file_complete",
+            "_downloads_base",
+            "_records",
+            "_skip_chapter",
+        ):
+            assert on_file_complete is not None and downloads_base is not None
+            self._on_file_complete = on_file_complete
+            self._downloads_base = downloads_base
+            self._records = []
+            self._skip_chapter = skip_chapter
+
+    def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
+        if self._skip_chapter is not None:
+            manga = str(kwdict.get("manga") or "")
+            chapter = str(kwdict.get("chapter") or "")
+            if manga and chapter and self._skip_chapter(manga, chapter):
+                pathfmt = self.pathfmt
+                if pathfmt is not None:
+                    pathfmt.set_filename(kwdict)
+                self.handle_skip()
+                return
+        super().handle_url(url, kwdict)
+        pathfmt = self.pathfmt
+        if pathfmt is None:
+            return
+        full = pathfmt.directory + pathfmt.filename
+        rel = full[len(self._downloads_base) :] if full.startswith(self._downloads_base) else full
+        # Snapshot metadata immediately — gallery-dl mutates kwdict over the
+        # download lifecycle. The records list is appended to from the worker
+        # thread (run via asyncio.to_thread); the event loop only reads it
+        # after the thread resolves, so no synchronisation is required.
+        self._records.append(coerce_record_from_kwdict(kwdict, Path(full)))
+        self._on_file_complete(rel)
+
+
+class Gallery:
+    """Thin wrapper around gallery-dl, scoped to one Settings instance.
+
+    Configures gallery-dl's global state on construction. Constructing more
+    than one instance per process is supported but will overwrite the previous
+    configuration.
+    """
+
+    _configured = False
+
+    def __init__(self, settings: Settings) -> None:
+        self._downloads_dir = settings.downloads_dir
+        if not Gallery._configured:
+            output.initialize_logging(logging.INFO)
+            Gallery._configured = True
+        config.set(("extractor",), "base-directory", str(settings.downloads_dir))
+        config.set(("extractor",), "archive", str(settings.archive_db_path))
+
+    @property
+    def downloads_dir(self) -> Path:
+        return self._downloads_dir
+
+    @staticmethod
+    def find_extractor(url: str) -> str | None:
+        try:
+            found = extractor.find(url)
+        except Exception:
+            return None
+        if found is None:
+            return None
+        return getattr(found, "category", None)
+
+    def extract_manifest(
+        self,
+        url: str,
+        skip_chapter: SkipChapterFn | None = None,
+    ) -> Manifest:
+        """Run gallery-dl in simulate mode; return the expected files (as paths
+        relative to the configured downloads directory) plus the first series
+        name we observed in any directory's metadata.
+
+        When `skip_chapter` is supplied, manifest entries belonging to chapters
+        the callable identifies as already-done are omitted, so progress
+        accounting reflects only the work the real download will perform.
+        """
+        job = _ManifestSimulationJob(url)
+        job.run()
+        base = str(self._downloads_dir).rstrip(os.sep) + os.sep
+        paths: list[str] = []
+        for full, manga, chapter in job._manifest:
+            if skip_chapter is not None and manga and chapter and skip_chapter(manga, chapter):
+                continue
+            paths.append(full[len(base) :] if full.startswith(base) else full)
+        return Manifest(paths=paths, series_name=job._series_box[0])
+
+    def run_download(
+        self,
+        url: str,
+        on_file_complete: Callable[[str], None] | None = None,
+        skip_chapter: SkipChapterFn | None = None,
+    ) -> tuple[int, list[FileRecord]]:
+        """Run a real download. Returns (exit_code, per-file metadata records).
+
+        Records are only collected when an `on_file_complete` callback is
+        supplied (the worker always supplies one); otherwise the list is empty.
+        `skip_chapter`, when set, causes the download job to short-circuit
+        URLs whose chapter the callable says is already packed.
+        """
+        if on_file_complete is None:
+            return DownloadJob(url).run(), []
+        base = str(self._downloads_dir).rstrip(os.sep) + os.sep
+        job = _ProgressDownloadJob(
+            url,
+            on_file_complete=on_file_complete,
+            downloads_base=base,
+            skip_chapter=skip_chapter,
+        )
+        exit_code = job.run()
+        return exit_code, job._records
