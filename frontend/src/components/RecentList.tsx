@@ -25,7 +25,14 @@ import {
 import type { DownloadOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { REFETCH_LIST_MS } from "../lib/polling";
-import { CANCELLING_LABEL, isCancellable, isTerminal, jobStep, statusColor } from "../lib/status";
+import {
+  CANCELLING_LABEL,
+  isActive,
+  isCancellable,
+  isTerminal,
+  jobStep,
+  statusColor,
+} from "../lib/status";
 
 type StatusFilter = "any" | "active" | "completed" | "failed" | "cancelled";
 type SortKey = "recent" | "status";
@@ -38,8 +45,6 @@ const STATUS_ORDER: Record<string, number> = {
   failed: 4,
   cancelled: 5,
 };
-
-const ACTIVE_STATUSES = new Set(["pending", "extracting", "running"]);
 
 export function RecentList({
   onSelect,
@@ -162,7 +167,7 @@ export function RecentList({
         if (!haystack.includes(needle)) return false;
       }
       if (statusFilter !== "any") {
-        if (statusFilter === "active" && !ACTIVE_STATUSES.has(d.status)) return false;
+        if (statusFilter === "active" && !isActive(d.status)) return false;
         if (statusFilter === "completed" && d.status !== "completed") return false;
         if (statusFilter === "failed" && d.status !== "failed") return false;
         if (statusFilter === "cancelled" && d.status !== "cancelled") return false;
