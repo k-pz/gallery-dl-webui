@@ -140,15 +140,16 @@ as_app mise run -C "$APP_DIR" build
 
 # ---- Migrate systemd unit ExecStart (one-time) ----------------------------
 #
-# Pre-mise-tasks installs wrote `ExecStart=/usr/local/bin/mise exec -- uv run
-# --frozen --no-dev python -m backend`. Newer installs use the mise task
-# `backend:run`. Swap the line in-place so existing CTs converge — leaves
-# every other directive (Environment=, ReadWritePaths=, etc.) untouched.
+# Older installs wrote a different ExecStart line — either pre-mise-tasks
+# (`/usr/local/bin/mise exec -- uv run --frozen --no-dev python -m backend`)
+# or the now-renamed `backend:run` task. The current task is `serve:backend`.
+# Swap the line in-place so existing CTs converge — leaves every other
+# directive (Environment=, ReadWritePaths=, etc.) untouched.
 
-DESIRED_EXEC="ExecStart=/usr/local/bin/mise run -C ${APP_DIR} backend:run"
+DESIRED_EXEC="ExecStart=/usr/local/bin/mise run -C ${APP_DIR} serve:backend"
 UNIT_PATH="/etc/systemd/system/${SERVICE}"
 if ! in_ct grep -qF "$DESIRED_EXEC" "$UNIT_PATH"; then
-    log "migrating ${SERVICE} ExecStart to use the mise backend:run task"
+    log "migrating ${SERVICE} ExecStart to use the mise serve:backend task"
     in_ct sed -i "s|^ExecStart=.*|${DESIRED_EXEC}|" "$UNIT_PATH"
     in_ct systemctl daemon-reload
 fi

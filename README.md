@@ -48,10 +48,12 @@ mise install
 # 2. one-time: backend + frontend deps (also corepack-enables pnpm)
 mise run install
 
-# 3. two shells:
-mise run dev            # backend (uvicorn :8000, reload)
-mise run dev:frontend   # frontend (vite :5173, proxies /api → :8000)
+# 3. start both dev servers in parallel (ctrl-C stops both)
+mise run dev            # uvicorn :8000 (reload) + vite :5173 (proxies /api → :8000)
 ```
+
+If you'd rather have them in separate shells, run `mise run dev:backend` and
+`mise run dev:frontend` individually.
 
 Open <http://localhost:5173>. In production the backend serves the built
 `frontend/dist/` directly from `/`.
@@ -64,8 +66,9 @@ mise run check       # lint + typecheck + test (CI-safe, parallel)
 mise run lint        # backend (ruff) + frontend (biome)
 mise run typecheck   # backend (ty) + frontend (tsc)
 mise run test        # backend (pytest) + frontend (vitest)
-mise run fix         # ruff --fix + format
+mise run fix         # ruff --fix + format (backend) + biome --write (frontend)
 mise run build       # tsc -b && vite build
+mise run clean       # rm backend/.venv, frontend/node_modules, frontend/dist
 ```
 
 Run `mise tasks ls` for the full list. Any task can be scoped to one side
@@ -115,5 +118,5 @@ this tree.
 After changing backend routes or schemas, with the backend running:
 
 ```sh
-mise run generate
+mise run generate:client
 ```
