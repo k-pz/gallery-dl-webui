@@ -39,6 +39,7 @@ async def test_migrate_adds_new_columns_to_legacy_db(tmp_path: Path) -> None:
         assert d.postprocess_chapters_packed is None
         assert d.postprocess_error is None
         assert d.files_expected is None
+        assert d.chapters_total is None
     finally:
         await conn.close()
 

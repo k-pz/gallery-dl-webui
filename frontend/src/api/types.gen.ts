@@ -68,6 +68,10 @@ export type ChapterProgress = {
      * Files Present
      */
     files_present: number;
+    /**
+     * Stage
+     */
+    stage: string;
 };
 
 /**
@@ -160,6 +164,10 @@ export type DownloadOut = {
      * Files Expected
      */
     files_expected: number | null;
+    /**
+     * Chapters Total
+     */
+    chapters_total: number | null;
     /**
      * Error
      */

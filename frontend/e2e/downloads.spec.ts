@@ -22,8 +22,9 @@ test.describe("downloads UI", () => {
     // The submitted URL appears in the active job card.
     await expect(page.getByTitle(OK_URL).first()).toBeVisible();
 
-    // Active job header reports the final file count once the worker is done.
-    await expect(page.getByText(/files:\s*3\s*\/\s*3/i)).toBeVisible({ timeout: 15_000 });
+    // The progress card reports all chapters settled once the worker is done.
+    // OK_URL has 2 chapters in its manifest.
+    await expect(page.getByText(/2\s*\/\s*2\s+chapters/i)).toBeVisible({ timeout: 15_000 });
   });
 
   test("rejects an unsupported URL inline", async ({ page }) => {
@@ -47,12 +48,9 @@ test.describe("downloads UI", () => {
     // Active job card appears with the slow URL.
     await expect(page.getByTitle(SLOW_URL).first()).toBeVisible();
 
-    // The job header eventually reports 5 / 5 files.
-    await expect(page.getByText(/files:\s*5\s*\/\s*5/i)).toBeVisible({ timeout: 30_000 });
-
-    // ProgressCard's own aggregate must also reach 5 / 5 — guards against the
-    // freeze where polling stopped before the final progress fetch landed.
-    await expect(page.getByText(/5\s*\/\s*5\s+files/i)).toBeVisible({ timeout: 30_000 });
+    // ProgressCard reports the single chapter settled once download wraps up.
+    // SLOW_URL has 1 chapter ("slow") with 5 files.
+    await expect(page.getByText(/1\s*\/\s*1\s+chapters/i)).toBeVisible({ timeout: 30_000 });
   });
 
   test("cancels a slow download from the active job card", async ({ page }) => {
@@ -84,8 +82,8 @@ test.describe("downloads UI", () => {
     await page.getByLabel(/gallery url/i).fill(OK_URL);
     await page.getByRole("button", { name: /^download$/i }).click();
 
-    // Wait for completion of the first run.
-    await expect(page.getByText(/files:\s*3\s*\/\s*3/i)).toBeVisible({ timeout: 15_000 });
+    // Wait for completion of the first run (OK_URL → 2 chapters settled).
+    await expect(page.getByText(/2\s*\/\s*2\s+chapters/i)).toBeVisible({ timeout: 15_000 });
     await expect(
       page
         .locator(".mantine-Badge-root")

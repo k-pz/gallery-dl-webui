@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS downloads (
     exit_code INTEGER,
     files_downloaded INTEGER NOT NULL DEFAULT 0,
     files_expected INTEGER,
+    chapters_total INTEGER,
     error TEXT,
     postprocess_status TEXT,
     postprocess_chapters_packed INTEGER,
@@ -84,6 +85,8 @@ async def _migrate(db: aiosqlite.Connection) -> None:
         cols = {row["name"] for row in await cur.fetchall()}
     if "files_expected" not in cols:
         await db.execute("ALTER TABLE downloads ADD COLUMN files_expected INTEGER")
+    if "chapters_total" not in cols:
+        await db.execute("ALTER TABLE downloads ADD COLUMN chapters_total INTEGER")
     if "postprocess_status" not in cols:
         await db.execute("ALTER TABLE downloads ADD COLUMN postprocess_status TEXT")
     if "postprocess_chapters_packed" not in cols:

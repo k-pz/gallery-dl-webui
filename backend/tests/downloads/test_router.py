@@ -109,6 +109,10 @@ def test_progress_endpoint_returns_chapter_breakdown(
     assert by_name["ch1"]["files_total"] == 2
     assert by_name["ch1"]["files_present"] == 2
     assert by_name["ch2"]["files_total"] == 1
+    # No postprocess root configured → postprocess_status is "skipped", which
+    # counts as terminal; chapters with downloaded files settle to "completed".
+    assert by_name["ch1"]["stage"] == "completed"
+    assert by_name["ch2"]["stage"] == "completed"
 
 
 def test_progress_endpoint_returns_404_for_missing(client: TestClient) -> None:

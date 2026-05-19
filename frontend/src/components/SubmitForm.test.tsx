@@ -24,6 +24,7 @@ const downloadStub = {
   exit_code: null,
   files_downloaded: 0,
   files_expected: null,
+  chapters_total: null,
   error: null,
   postprocess_status: null,
   postprocess_chapters_packed: null,
