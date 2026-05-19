@@ -4,6 +4,10 @@ A small web UI for [gallery-dl](https://github.com/mikf/gallery-dl). Submit a
 gallery URL and watch downloads progress in the browser. Backed by a FastAPI
 service that runs `gallery-dl` against a single-process worker queue.
 
+📖 **Docs:** <https://k-pz.github.io/gallery-dl-webui/> — auto-generated on
+every push to `main` from `README.md`, `ARCHITECTURE.md`, the backend's
+docstrings, and the live OpenAPI schema.
+
 ## Stack
 
 - **Backend** — Python 3.14, FastAPI, `aiosqlite` for the job queue,
@@ -135,3 +139,23 @@ After changing backend routes or schemas, with the backend running:
 ```sh
 mise run generate:client
 ```
+
+## Docs
+
+The docs site at <https://k-pz.github.io/gallery-dl-webui/> is built by
+`.github/workflows/docs.yml` on every push to `main` and deployed to GitHub
+Pages. It combines the project markdown (`README.md`, `ARCHITECTURE.md`), a
+Python API reference auto-generated from the backend source via
+[mkdocstrings](https://mkdocstrings.github.io/), and a Redoc view of the
+FastAPI OpenAPI schema (dumped fresh on each build).
+
+Iterate locally with:
+
+```sh
+mise run docs:serve    # http://localhost:8001 with live reload
+mise run docs:build    # one-shot build → ./site
+```
+
+Both require the `docs` dependency group; install it with
+`cd backend && uv sync --group docs`. The build is `mkdocs build --strict` so
+broken links and missing nav targets fail CI.
