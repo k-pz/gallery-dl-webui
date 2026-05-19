@@ -1,45 +1,32 @@
-import { Autocomplete, Button, Card, Group, Stack, Text, TextInput, Title } from "@mantine/core";
+import { Button, Card, Group, Stack, Text, TextInput, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   createDownloadMutation,
   getConfigOptions,
   getConfigQueryKey,
   listDownloadsQueryKey,
+  listTargetsQueryKey,
 } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
+import { DirectoryPicker } from "./DirectoryPicker";
 
-export function SubmitForm({ onCreated }: { onCreated: (id: number) => void }) {
+export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } = {}) {
   const [url, setUrl] = useState("");
-  const [outputDir, setOutputDir] = useState("");
+  const [outputDir, setOutputDir] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { data: config } = useQuery(getConfigOptions());
 
   // Seed the output-dir field with the default whenever the config arrives or changes,
-  // but only while the user hasn't typed something themselves.
+  // but only while the user hasn't picked something themselves.
   const [touched, setTouched] = useState(false);
   useEffect(() => {
     if (!touched && config) {
-      setOutputDir(config.postprocess_default_output_dir ?? "");
+      setOutputDir(config.postprocess_default_output_dir ?? null);
     }
   }, [config, touched]);
-
-  const suggestions = useMemo(() => {
-    if (!config) return [] as string[];
-    const seen = new Set<string>();
-    const out: string[] = [];
-    const push = (value: string | null | undefined) => {
-      if (!value) return;
-      if (seen.has(value)) return;
-      seen.add(value);
-      out.push(value);
-    };
-    push(config.postprocess_default_output_dir);
-    for (const dir of config.postprocess_known_output_dirs) push(dir);
-    return out;
-  }, [config]);
 
   const mutation = useMutation({
     ...createDownloadMutation(),
@@ -47,13 +34,14 @@ export function SubmitForm({ onCreated }: { onCreated: (id: number) => void }) {
       setUrl("");
       setSubmitError(null);
       setTouched(false);
-      onCreated(data.id);
+      onCreated?.(data.id);
       notifications.show({
         title: "Download queued",
         message: `Job #${data.id} added to the queue.`,
         color: "green",
       });
       queryClient.invalidateQueries({ queryKey: listDownloadsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: listTargetsQueryKey() });
       queryClient.invalidateQueries({ queryKey: getConfigQueryKey() });
     },
     onError: (err) => {
@@ -73,9 +61,8 @@ export function SubmitForm({ onCreated }: { onCreated: (id: number) => void }) {
       setSubmitError("url is required");
       return;
     }
-    const dir = outputDir.trim();
     mutation.mutate({
-      body: { url: trimmed, output_dir: dir || null },
+      body: { url: trimmed, output_dir: outputDir || null },
     });
   };
 
@@ -84,7 +71,7 @@ export function SubmitForm({ onCreated }: { onCreated: (id: number) => void }) {
   return (
     <Card withBorder shadow="sm" padding="lg">
       <Stack gap="sm">
-        <Title order={3}>New download</Title>
+        <Title order={3}>Add a download</Title>
         <Group align="flex-end" gap="sm" wrap="nowrap">
           <TextInput
             style={{ flex: 1 }}
@@ -103,22 +90,22 @@ export function SubmitForm({ onCreated }: { onCreated: (id: number) => void }) {
             Download
           </Button>
         </Group>
-        <Autocomplete
+        <DirectoryPicker
           label="Output directory"
           placeholder={hasRoot ? "/mnt/nas/Media/manga" : "Set a root in Config first"}
           description={
             hasRoot
-              ? `Must be under root: ${config?.postprocess_root}. New paths are created on submit.`
+              ? `Must be under root: ${config?.postprocess_root}. Use + to create a new folder.`
               : "Postprocessing disabled until a root is configured."
           }
-          data={suggestions}
           value={outputDir}
-          onChange={(value) => {
+          onChange={(v) => {
             setTouched(true);
-            setOutputDir(value);
+            setOutputDir(v);
           }}
-          disabled={mutation.isPending || !hasRoot}
-          limit={20}
+          enabled={hasRoot}
+          disabled={mutation.isPending}
+          extraOption={config?.postprocess_default_output_dir ?? null}
         />
         {submitError && (
           <Text size="sm" c="red">

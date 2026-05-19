@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelDownload, createDownload, getConfig, getDownload, getDownloadProgress, getHealth, listDownloads, type Options, putConfig, requeueDownload } from '../sdk.gen';
-import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, ListDownloadsData, ListDownloadsResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse } from '../types.gen';
+import { cancelDownload, createDownload, createOutputDir, deleteTarget, getConfig, getDownload, getDownloadProgress, getHealth, getTarget, listDownloads, listOutputDirs, listTargets, type Options, pollTarget, putConfig, requeueDownload, updateTarget } from '../sdk.gen';
+import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetTargetData, GetTargetError, GetTargetResponse, ListDownloadsData, ListDownloadsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -161,6 +161,128 @@ export const getDownloadProgressOptions = (options: Options<GetDownloadProgressD
     },
     queryKey: getDownloadProgressQueryKey(options)
 });
+
+export const listTargetsQueryKey = (options?: Options<ListTargetsData>) => createQueryKey('listTargets', options);
+
+/**
+ * List Targets
+ */
+export const listTargetsOptions = (options?: Options<ListTargetsData>) => queryOptions<ListTargetsResponse, DefaultError, ListTargetsResponse, ReturnType<typeof listTargetsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listTargets({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listTargetsQueryKey(options)
+});
+
+/**
+ * Delete Target
+ */
+export const deleteTargetMutation = (options?: Partial<Options<DeleteTargetData>>): UseMutationOptions<DeleteTargetResponse, DeleteTargetError, Options<DeleteTargetData>> => {
+    const mutationOptions: UseMutationOptions<DeleteTargetResponse, DeleteTargetError, Options<DeleteTargetData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await deleteTarget({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getTargetQueryKey = (options: Options<GetTargetData>) => createQueryKey('getTarget', options);
+
+/**
+ * Get Target
+ */
+export const getTargetOptions = (options: Options<GetTargetData>) => queryOptions<GetTargetResponse, GetTargetError, GetTargetResponse, ReturnType<typeof getTargetQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getTarget({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getTargetQueryKey(options)
+});
+
+/**
+ * Update Target
+ */
+export const updateTargetMutation = (options?: Partial<Options<UpdateTargetData>>): UseMutationOptions<UpdateTargetResponse, UpdateTargetError, Options<UpdateTargetData>> => {
+    const mutationOptions: UseMutationOptions<UpdateTargetResponse, UpdateTargetError, Options<UpdateTargetData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await updateTarget({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Poll Target
+ */
+export const pollTargetMutation = (options?: Partial<Options<PollTargetData>>): UseMutationOptions<PollTargetResponse, PollTargetError, Options<PollTargetData>> => {
+    const mutationOptions: UseMutationOptions<PollTargetResponse, PollTargetError, Options<PollTargetData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await pollTarget({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listOutputDirsQueryKey = (options?: Options<ListOutputDirsData>) => createQueryKey('listOutputDirs', options);
+
+/**
+ * List Output Dirs
+ */
+export const listOutputDirsOptions = (options?: Options<ListOutputDirsData>) => queryOptions<ListOutputDirsResponse, DefaultError, ListOutputDirsResponse, ReturnType<typeof listOutputDirsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listOutputDirs({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listOutputDirsQueryKey(options)
+});
+
+/**
+ * Create Output Dir
+ */
+export const createOutputDirMutation = (options?: Partial<Options<CreateOutputDirData>>): UseMutationOptions<CreateOutputDirResponse, CreateOutputDirError, Options<CreateOutputDirData>> => {
+    const mutationOptions: UseMutationOptions<CreateOutputDirResponse, CreateOutputDirError, Options<CreateOutputDirData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await createOutputDir({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 export const getConfigQueryKey = (options?: Options<GetConfigData>) => createQueryKey('getConfig', options);
 

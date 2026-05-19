@@ -7,6 +7,18 @@ from typing import Any, Self
 import aiosqlite
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS targets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL UNIQUE,
+    extractor TEXT,
+    output_dir TEXT,
+    watched INTEGER NOT NULL DEFAULT 0,
+    watch_period TEXT,
+    last_polled_at TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_targets_watched ON targets(watched, last_polled_at);
+
 CREATE TABLE IF NOT EXISTS downloads (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     url TEXT NOT NULL,
@@ -22,10 +34,12 @@ CREATE TABLE IF NOT EXISTS downloads (
     postprocess_status TEXT,
     postprocess_chapters_packed INTEGER,
     postprocess_error TEXT,
-    output_dir TEXT
+    output_dir TEXT,
+    target_id INTEGER REFERENCES targets(id)
 );
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at DESC);
+-- idx_downloads_target_id is created in _migrate after the column is ensured.
 
 CREATE TABLE IF NOT EXISTS download_files (
     download_id INTEGER NOT NULL REFERENCES downloads(id) ON DELETE CASCADE,
@@ -60,6 +74,29 @@ class Download:
     postprocess_chapters_packed: int | None
     postprocess_error: str | None
     output_dir: str | None
+    target_id: int | None = None
+
+
+@dataclass
+class Target:
+    id: int
+    url: str
+    extractor: str | None
+    output_dir: str | None
+    watched: bool
+    watch_period: str | None
+    last_polled_at: str | None
+    created_at: str
+
+
+@dataclass
+class TargetSummary:
+    target: Target
+    last_download_id: int | None
+    last_status: str | None
+    last_finished_at: str | None
+    last_created_at: str | None
+    download_count: int
 
 
 def _now() -> str:
@@ -67,6 +104,11 @@ def _now() -> str:
 
 
 def _row_to_download(row: aiosqlite.Row) -> Download:
+    target_id: int | None = None
+    try:
+        target_id = row["target_id"]
+    except IndexError, KeyError:
+        target_id = None
     return Download(
         id=row["id"],
         url=row["url"],
@@ -83,7 +125,28 @@ def _row_to_download(row: aiosqlite.Row) -> Download:
         postprocess_chapters_packed=row["postprocess_chapters_packed"],
         postprocess_error=row["postprocess_error"],
         output_dir=row["output_dir"],
+        target_id=target_id,
     )
+
+
+def _row_to_target(row: aiosqlite.Row) -> Target:
+    return Target(
+        id=row["id"],
+        url=row["url"],
+        extractor=row["extractor"],
+        output_dir=row["output_dir"],
+        watched=bool(row["watched"]),
+        watch_period=row["watch_period"],
+        last_polled_at=row["last_polled_at"],
+        created_at=row["created_at"],
+    )
+
+
+class _Unset:
+    """Sentinel allowing update_target to distinguish "leave as-is" from "set to NULL"."""
+
+
+_UNSET = _Unset()
 
 
 class Storage:
@@ -114,18 +177,51 @@ class Storage:
             await db.execute("ALTER TABLE downloads ADD COLUMN postprocess_error TEXT")
         if "output_dir" not in cols:
             await db.execute("ALTER TABLE downloads ADD COLUMN output_dir TEXT")
+        if "target_id" not in cols:
+            await db.execute(
+                "ALTER TABLE downloads ADD COLUMN target_id INTEGER REFERENCES targets(id)"
+            )
+            await Storage._backfill_targets(db)
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_downloads_target_id ON downloads(target_id)"
+        )
+
+    @staticmethod
+    async def _backfill_targets(db: aiosqlite.Connection) -> None:
+        """For each distinct URL in existing downloads, create a target and link it."""
+        async with db.execute(
+            "SELECT url, MAX(extractor) AS extractor, MAX(output_dir) AS output_dir, "
+            "MIN(created_at) AS created_at FROM downloads "
+            "WHERE target_id IS NULL GROUP BY url"
+        ) as cur:
+            groups = await cur.fetchall()
+        for g in groups:
+            await db.execute(
+                "INSERT OR IGNORE INTO targets(url, extractor, output_dir, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (g["url"], g["extractor"], g["output_dir"], g["created_at"] or _now()),
+            )
+        await db.execute(
+            "UPDATE downloads SET target_id = ("
+            "  SELECT id FROM targets WHERE targets.url = downloads.url"
+            ") WHERE target_id IS NULL"
+        )
 
     async def close(self) -> None:
         await self._db.close()
 
     async def insert_pending(
-        self, url: str, extractor: str | None, output_dir: str | None = None
+        self,
+        url: str,
+        extractor: str | None,
+        output_dir: str | None = None,
+        target_id: int | None = None,
     ) -> Download:
         created_at = _now()
         cursor = await self._db.execute(
-            "INSERT INTO downloads(url, extractor, status, created_at, output_dir) "
-            "VALUES(?, ?, ?, ?, ?)",
-            (url, extractor, "pending", created_at, output_dir),
+            "INSERT INTO downloads(url, extractor, status, created_at, output_dir, target_id) "
+            "VALUES(?, ?, ?, ?, ?, ?)",
+            (url, extractor, "pending", created_at, output_dir, target_id),
         )
         await self._db.commit()
         new_id = cursor.lastrowid
@@ -146,6 +242,7 @@ class Storage:
             postprocess_chapters_packed=None,
             postprocess_error=None,
             output_dir=output_dir,
+            target_id=target_id,
         )
 
     async def get(self, id_: int) -> Download | None:
@@ -306,3 +403,144 @@ class Storage:
         deduped = deduped[:limit]
         await self.set_app_config({"postprocess_known_output_dirs": deduped})
         return deduped
+
+    # ---- Targets ---------------------------------------------------------
+
+    async def upsert_target(
+        self, url: str, extractor: str | None, output_dir: str | None
+    ) -> Target:
+        """Find a target by URL, or create a fresh one. Updates output_dir/extractor
+        from the latest submit so the next poll reuses what the user picked."""
+        async with self._db.execute("SELECT * FROM targets WHERE url = ?", (url,)) as cur:
+            row = await cur.fetchone()
+        if row is not None:
+            updates: list[str] = []
+            params: list[object] = []
+            if extractor and extractor != row["extractor"]:
+                updates.append("extractor = ?")
+                params.append(extractor)
+            if output_dir is not None and output_dir != row["output_dir"]:
+                updates.append("output_dir = ?")
+                params.append(output_dir)
+            if updates:
+                params.append(row["id"])
+                await self._db.execute(
+                    f"UPDATE targets SET {', '.join(updates)} WHERE id = ?", params
+                )
+                await self._db.commit()
+                async with self._db.execute(
+                    "SELECT * FROM targets WHERE id = ?", (row["id"],)
+                ) as cur2:
+                    row = await cur2.fetchone()
+            assert row is not None
+            return _row_to_target(row)
+
+        created_at = _now()
+        cursor = await self._db.execute(
+            "INSERT INTO targets(url, extractor, output_dir, created_at) VALUES(?, ?, ?, ?)",
+            (url, extractor, output_dir, created_at),
+        )
+        await self._db.commit()
+        new_id = cursor.lastrowid
+        assert new_id is not None
+        return Target(
+            id=new_id,
+            url=url,
+            extractor=extractor,
+            output_dir=output_dir,
+            watched=False,
+            watch_period=None,
+            last_polled_at=None,
+            created_at=created_at,
+        )
+
+    async def get_target(self, id_: int) -> Target | None:
+        async with self._db.execute("SELECT * FROM targets WHERE id = ?", (id_,)) as cur:
+            row = await cur.fetchone()
+        return _row_to_target(row) if row else None
+
+    async def list_targets(self) -> list[TargetSummary]:
+        """List every target with a tiny summary of its latest download."""
+        async with self._db.execute(
+            """
+            SELECT t.*,
+                   d.id AS last_download_id,
+                   d.status AS last_status,
+                   d.finished_at AS last_finished_at,
+                   d.created_at AS last_created_at,
+                   (SELECT COUNT(*) FROM downloads WHERE target_id = t.id) AS download_count
+            FROM targets t
+            LEFT JOIN downloads d ON d.id = (
+                SELECT id FROM downloads
+                WHERE target_id = t.id
+                ORDER BY created_at DESC, id DESC LIMIT 1
+            )
+            ORDER BY t.created_at DESC, t.id DESC
+            """
+        ) as cur:
+            rows = await cur.fetchall()
+        return [
+            TargetSummary(
+                target=_row_to_target(r),
+                last_download_id=r["last_download_id"],
+                last_status=r["last_status"],
+                last_finished_at=r["last_finished_at"],
+                last_created_at=r["last_created_at"],
+                download_count=r["download_count"] or 0,
+            )
+            for r in rows
+        ]
+
+    async def update_target(
+        self,
+        id_: int,
+        *,
+        watched: bool | None = None,
+        watch_period: str | None | _Unset = _UNSET,
+        output_dir: str | None | _Unset = _UNSET,
+    ) -> Target | None:
+        updates: list[str] = []
+        params: list[object] = []
+        if watched is not None:
+            updates.append("watched = ?")
+            params.append(1 if watched else 0)
+        if not isinstance(watch_period, _Unset):
+            updates.append("watch_period = ?")
+            params.append(watch_period)
+        if not isinstance(output_dir, _Unset):
+            updates.append("output_dir = ?")
+            params.append(output_dir)
+        if not updates:
+            return await self.get_target(id_)
+        params.append(id_)
+        await self._db.execute(f"UPDATE targets SET {', '.join(updates)} WHERE id = ?", params)
+        await self._db.commit()
+        return await self.get_target(id_)
+
+    async def mark_target_polled(self, id_: int) -> None:
+        await self._db.execute(
+            "UPDATE targets SET last_polled_at = ? WHERE id = ?",
+            (_now(), id_),
+        )
+        await self._db.commit()
+
+    async def list_watched_targets(self) -> list[Target]:
+        async with self._db.execute(
+            "SELECT * FROM targets WHERE watched = 1 ORDER BY id ASC"
+        ) as cur:
+            rows = await cur.fetchall()
+        return [_row_to_target(r) for r in rows]
+
+    async def has_active_download_for_target(self, target_id: int) -> bool:
+        async with self._db.execute(
+            "SELECT 1 FROM downloads WHERE target_id = ? AND status IN "
+            "('pending', 'extracting', 'running') LIMIT 1",
+            (target_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        return row is not None
+
+    async def delete_target(self, id_: int) -> bool:
+        cursor = await self._db.execute("DELETE FROM targets WHERE id = ?", (id_,))
+        await self._db.commit()
+        return (cursor.rowcount or 0) > 0

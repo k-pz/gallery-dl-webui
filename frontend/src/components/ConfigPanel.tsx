@@ -21,6 +21,7 @@ import {
   putConfigMutation,
 } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
+import { DirectoryPicker } from "./DirectoryPicker";
 
 export function ConfigPanel() {
   const { data, isLoading } = useQuery(getConfigOptions());
@@ -28,7 +29,8 @@ export function ConfigPanel() {
   const { colorScheme, setColorScheme } = useMantineColorScheme();
 
   const [root, setRoot] = useState("");
-  const [defaultDir, setDefaultDir] = useState("");
+  const [defaultDir, setDefaultDir] = useState<string | null>(null);
+  const [defaultPeriod, setDefaultPeriod] = useState("");
   const [deleteRaw, setDeleteRaw] = useState(true);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -36,7 +38,8 @@ export function ConfigPanel() {
   useEffect(() => {
     if (data) {
       setRoot(data.postprocess_root ?? "");
-      setDefaultDir(data.postprocess_default_output_dir ?? "");
+      setDefaultDir(data.postprocess_default_output_dir ?? null);
+      setDefaultPeriod(data.default_watch_period ?? "");
       setDeleteRaw(data.delete_raw_after_pack);
     }
   }, [data]);
@@ -56,7 +59,8 @@ export function ConfigPanel() {
   const dirty =
     data !== undefined &&
     ((root.trim() || null) !== (data.postprocess_root ?? null) ||
-      (defaultDir.trim() || null) !== (data.postprocess_default_output_dir ?? null) ||
+      (defaultDir || null) !== (data.postprocess_default_output_dir ?? null) ||
+      (defaultPeriod.trim() || null) !== (data.default_watch_period ?? null) ||
       deleteRaw !== data.delete_raw_after_pack);
 
   const save = () => {
@@ -65,8 +69,9 @@ export function ConfigPanel() {
     mutation.mutate({
       body: {
         postprocess_root: root.trim() || null,
-        postprocess_default_output_dir: defaultDir.trim() || null,
+        postprocess_default_output_dir: defaultDir || null,
         delete_raw_after_pack: deleteRaw,
+        default_watch_period: defaultPeriod.trim() || null,
       },
     });
   };
@@ -81,6 +86,8 @@ export function ConfigPanel() {
       </Card>
     );
   }
+
+  const hasRoot = Boolean(root.trim());
 
   return (
     <Card withBorder shadow="sm" padding="lg">
@@ -118,13 +125,14 @@ export function ConfigPanel() {
           onChange={(e) => setRoot(e.currentTarget.value)}
           disabled={mutation.isPending}
         />
-        <TextInput
+        <DirectoryPicker
           label="Default output directory"
           placeholder="/mnt/nas/Media/manga"
           description="Used when a download is submitted without an explicit output dir. Must be under the root."
           value={defaultDir}
-          onChange={(e) => setDefaultDir(e.currentTarget.value)}
-          disabled={mutation.isPending || !root.trim()}
+          onChange={setDefaultDir}
+          enabled={hasRoot}
+          disabled={mutation.isPending}
         />
         <Switch
           label="Delete raw images after packing"
@@ -132,6 +140,16 @@ export function ConfigPanel() {
           checked={deleteRaw}
           onChange={(e) => setDeleteRaw(e.currentTarget.checked)}
           disabled={mutation.isPending}
+        />
+        <Title order={3}>Watching</Title>
+        <TextInput
+          label="Default poll period"
+          placeholder="1d"
+          description="Per-target overrides win; otherwise watched targets re-poll on this cadence. Format: 30m, 2h, 1d, 1w (combinable, e.g. 1d12h)."
+          value={defaultPeriod}
+          onChange={(e) => setDefaultPeriod(e.currentTarget.value)}
+          disabled={mutation.isPending}
+          maw={260}
         />
         <Group>
           <Button onClick={save} loading={mutation.isPending} disabled={!dirty}>
