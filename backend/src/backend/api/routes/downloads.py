@@ -11,15 +11,24 @@ from backend.api.schemas import (
 )
 from backend.output_dirs import coerce_optional, validate_under_root
 from backend.progress import chapter_progress, chapter_progress_from_completed
+from backend.storage import Storage
 
 router = APIRouter(tags=["downloads"])
 
 
-async def _name_for(storage, target_id: int | None) -> str | None:
+async def _name_for(storage: Storage, target_id: int | None) -> str | None:
     if target_id is None:
         return None
     names = await storage.list_target_names([target_id])
     return names.get(target_id)
+
+
+async def _refresh_view(storage: Storage, download_id: int) -> DownloadOut:
+    """Reload a row we just mutated and return the DTO. 500 if it vanished."""
+    d = await storage.get(download_id)
+    if d is None:
+        raise HTTPException(status_code=500, detail=f"download {download_id} disappeared")
+    return DownloadOut.from_download(d, name=await _name_for(storage, d.target_id))
 
 
 @router.post("/downloads", operation_id="createDownload")
@@ -91,9 +100,7 @@ async def cancel_download(download_id: int, storage: StorageDep, worker: WorkerD
     # file callback. Independently flip a still-pending row directly.
     worker.request_cancel(download_id)
     await storage.cancel_pending(download_id)
-    refreshed = await storage.get(download_id)
-    assert refreshed is not None
-    return DownloadOut.from_download(refreshed, name=await _name_for(storage, refreshed.target_id))
+    return await _refresh_view(storage, download_id)
 
 
 @router.post("/downloads/{download_id}/requeue", operation_id="requeueDownload")
@@ -109,9 +116,7 @@ async def requeue_download(download_id: int, storage: StorageDep, worker: Worker
     if not await storage.reset_to_pending(download_id):
         raise HTTPException(status_code=409, detail="download is no longer terminal")
     worker.notify()
-    refreshed = await storage.get(download_id)
-    assert refreshed is not None
-    return DownloadOut.from_download(refreshed, name=await _name_for(storage, refreshed.target_id))
+    return await _refresh_view(storage, download_id)
 
 
 @router.get("/downloads/{download_id}/progress", operation_id="getDownloadProgress")
