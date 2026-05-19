@@ -1,17 +1,4 @@
-import {
-  ActionIcon,
-  Badge,
-  Card,
-  Group,
-  List,
-  Loader,
-  Select,
-  Stack,
-  Text,
-  TextInput,
-  Title,
-  Tooltip,
-} from "@mantine/core";
+import { ActionIcon, Badge, Card, Group, List, Select, Stack, Text, Tooltip } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -23,6 +10,7 @@ import {
 import type { DownloadOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
+import { makeNeedleMatcher } from "../lib/listFilters";
 import { useOptimisticCancelMany } from "../lib/optimisticCancel";
 import { REFETCH_LIST_MS } from "../lib/polling";
 import {
@@ -33,6 +21,8 @@ import {
   jobStep,
   statusColor,
 } from "../lib/status";
+import { ListHeader } from "./ListHeader";
+import { ListToolbar } from "./ListToolbar";
 
 type StatusFilter = "any" | "active" | "completed" | "failed" | "cancelled";
 type SortKey = "recent" | "status";
@@ -124,12 +114,13 @@ export function RecentList({
 
   const visible = useMemo(() => {
     if (!data) return [];
-    const needle = search.trim().toLowerCase();
+    const matchesNeedle = makeNeedleMatcher<DownloadOut>(
+      search,
+      (d) => d.name,
+      (d) => d.url,
+    );
     const filtered = data.filter((d) => {
-      if (needle) {
-        const haystack = `${d.name ?? ""} ${d.url}`.toLowerCase();
-        if (!haystack.includes(needle)) return false;
-      }
+      if (!matchesNeedle(d)) return false;
       if (statusFilter !== "any") {
         if (statusFilter === "active" && !isActive(d.status)) return false;
         if (statusFilter === "completed" && d.status !== "completed") return false;
@@ -155,26 +146,22 @@ export function RecentList({
   return (
     <Card withBorder shadow="sm" padding="lg">
       <Stack gap="xs">
-        <Group justify="space-between" align="center" wrap="wrap">
-          <Group gap="xs">
-            <Title order={4}>Recent</Title>
-            {totalCount > 0 && (
-              <Text size="sm" c="dimmed">
-                {filtersActive ? `${visible.length} of ${totalCount}` : `${totalCount}`}
-              </Text>
-            )}
-          </Group>
-          {isLoading && <Loader size="xs" />}
-        </Group>
+        <ListHeader
+          title="Recent"
+          titleOrder={4}
+          totalCount={totalCount}
+          visibleCount={visible.length}
+          filtersActive={filtersActive}
+          isLoading={isLoading}
+        />
         {totalCount > 0 && (
-          <Group gap="xs" align="flex-end" wrap="wrap">
-            <TextInput
-              placeholder="Search name or URL"
-              value={search}
-              onChange={(e) => setSearch(e.currentTarget.value)}
-              style={{ flex: 1, minWidth: 180 }}
-              aria-label="Filter downloads by name or URL"
-            />
+          <ListToolbar
+            search={search}
+            setSearch={setSearch}
+            searchPlaceholder="Search name or URL"
+            searchAriaLabel="Filter downloads by name or URL"
+            searchMinWidth={180}
+          >
             <Select
               label="Status"
               data={[
@@ -200,7 +187,7 @@ export function RecentList({
               w={150}
               comboboxProps={{ withinPortal: true }}
             />
-          </Group>
+          </ListToolbar>
         )}
         {totalCount === 0 && (
           <Text size="sm" c="dimmed">
