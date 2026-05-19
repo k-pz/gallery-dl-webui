@@ -22,12 +22,12 @@ class Worker:
         self._wakeup = asyncio.Event()
         self._stop = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
-        # `_cancelled_ids` is read from the gallery-dl worker thread and
-        # written from the asyncio loop (and cleared from both). `set` membership
-        # tests and single-element add/discard are safe under the GIL, which is
-        # all the synchronisation needed here.
-        self._cancelled_ids: set[int] = set()
+        # The worker processes one job at a time, so cancel state is a single
+        # bool: True iff request_cancel() fired for the current _current_id.
+        # Read from the gallery-dl worker thread, written from the asyncio
+        # loop — bool read/write is GIL-atomic, the only sync we need.
         self._current_id: int | None = None
+        self._cancel_requested: bool = False
 
     def start(self) -> None:
         self._task = asyncio.create_task(self._run(), name="downloads-worker")
@@ -47,7 +47,7 @@ class Worker:
     def request_cancel(self, id_: int) -> bool:
         """Flag the in-flight job for cancellation. Returns True if it matched."""
         if self._current_id == id_:
-            self._cancelled_ids.add(id_)
+            self._cancel_requested = True
             return True
         return False
 
@@ -59,10 +59,11 @@ class Worker:
                 await self._wakeup.wait()
                 continue
             self._current_id = job.id
+            self._cancel_requested = False
             try:
                 await self._process(job)
             finally:
-                self._cancelled_ids.discard(job.id)
+                self._cancel_requested = False
                 self._current_id = None
 
     async def _process(self, job: Download) -> None:
@@ -76,7 +77,7 @@ class Worker:
             relpaths = manifest.paths
             if job.target_id is not None and manifest.series_name:
                 await self._storage.set_target_name(job.target_id, manifest.series_name)
-            if job.id in self._cancelled_ids:
+            if self._cancel_requested:
                 await self._storage.mark_cancelled(job.id, 0)
                 return
             await self._storage.save_manifest(job.id, relpaths)
@@ -88,7 +89,7 @@ class Worker:
                     job.url,
                     self._make_progress_cb(job.id),
                 )
-                cancelled_during_download = job.id in self._cancelled_ids
+                cancelled_during_download = self._cancel_requested
                 present = await asyncio.to_thread(count_present, relpaths, downloads_dir)
                 if cancelled_during_download:
                     await self._storage.mark_cancelled(job.id, present)
@@ -120,7 +121,7 @@ class Worker:
         # and unwinds cleanly (it treats StopExtraction as a normal stop,
         # so job.run() still returns a status code).
         def cb(rel: str) -> None:
-            if job_id in self._cancelled_ids:
+            if self._cancel_requested:
                 raise StopExtraction()
             self._live.record(job_id, rel)
 
