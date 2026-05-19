@@ -260,6 +260,7 @@ venv.bak/
 
 # mkdocs documentation
 /site
+docs/reference/openapi.json
 
 # mypy
 .mypy_cache/
