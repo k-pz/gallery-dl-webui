@@ -13,8 +13,8 @@ import time
 
 from gallery_dl.exception import StopExtraction
 
-from backend.app import create_app
-from backend.settings import Settings
+from backend.config import Settings
+from backend.main import create_app
 
 from .fakes import FakeGallery, FakeGalleryConfig
 

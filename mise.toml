@@ -52,7 +52,7 @@ run = [
 [tasks."dev:backend"]
 description = "Backend dev server (uvicorn :8000, --reload)"
 dir = "{{config_root}}/backend"
-run = "uv run uvicorn backend.app:app --reload"
+run = "uv run uvicorn backend.main:app --reload"
 
 [tasks."dev:frontend"]
 description = "Frontend dev server (vite :5173, proxies /api → :8000)"

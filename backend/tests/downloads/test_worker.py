@@ -1,0 +1,616 @@
+import asyncio
+from pathlib import Path
+
+import aiosqlite
+import pytest
+
+from backend.app_config import service as app_config_service
+from backend.config import Settings
+from backend.database import open_database
+from backend.downloads import service as downloads_service
+from backend.downloads.gallery import Manifest, SkipChapterFn
+from backend.downloads.live_progress import LiveProgress
+from backend.downloads.postprocess import FileRecord
+from backend.downloads.worker import Worker
+from backend.targets import service as targets_service
+
+from tests.fakes import FakeGallery, FakeGalleryConfig
+
+
+@pytest.fixture
+def settings(tmp_path: Path) -> Settings:
+    s = Settings(data_dir=tmp_path / "data")
+    s.downloads_dir.mkdir(parents=True, exist_ok=True)
+    return s
+
+
+@pytest.fixture
+async def db(settings: Settings):
+    conn = await open_database(settings.data_dir / "jobs.db")
+    try:
+        yield conn
+    finally:
+        await conn.close()
+
+
+async def _wait_for(predicate, timeout: float = 2.0) -> None:
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+        if await predicate():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("timed out waiting for condition")
+
+
+async def test_worker_runs_pending_job_to_completion(
+    settings: Settings, db: aiosqlite.Connection
+) -> None:
+    config = FakeGalleryConfig()
+    config.extractor_for["https://example/x"] = "fake"
+    config.manifest_for["https://example/x"] = ["ch1/001.jpg", "ch1/002.jpg"]
+    gallery = FakeGallery(settings, config=config)
+    live = LiveProgress()
+    worker = Worker(db, gallery, live)  # type: ignore[arg-type]
+    worker.start()
+    try:
+        d = await downloads_service.insert_pending(db, "https://example/x", "fake")
+        worker.notify()
+
+        async def done() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.status in ("completed", "failed")
+
+        await _wait_for(done)
+
+        row = await downloads_service.get(db, d.id)
+        assert row is not None
+        assert row.status == "completed"
+        assert row.exit_code == 0
+        assert row.files_expected == 2
+        assert row.files_downloaded == 2
+        assert gallery.extract_calls == ["https://example/x"]
+        assert gallery.download_calls == ["https://example/x"]
+    finally:
+        await worker.stop()
+
+
+async def test_worker_cancels_running_job_mid_download(
+    settings: Settings, db: aiosqlite.Connection
+) -> None:
+    """Cancellation requested mid-flight unwinds gallery-dl and marks the job cancelled."""
+    config = FakeGalleryConfig()
+    # Six files; cancel after the first lands so the rest are skipped.
+    config.manifest_for["https://example/x"] = [f"ch1/{i:03d}.jpg" for i in range(6)]
+    gallery = FakeGallery(settings, config=config)
+    live = LiveProgress()
+    worker = Worker(db, gallery, live)  # type: ignore[arg-type]
+
+    # Wrap LiveProgress.record so we can request cancellation as soon as the
+    # first file completes, deterministically catching the job mid-download.
+    original_record = live.record
+    cancel_after = {"id": -1}
+
+    def record_and_cancel(download_id: int, relpath: str) -> None:
+        original_record(download_id, relpath)
+        if download_id == cancel_after["id"]:
+            worker.request_cancel(download_id)
+
+    live.record = record_and_cancel  # type: ignore[method-assign]
+
+    worker.start()
+    try:
+        d = await downloads_service.insert_pending(db, "https://example/x", "fake")
+        cancel_after["id"] = d.id
+        worker.notify()
+
+        async def done() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.status in {"cancelled", "completed", "failed"}
+
+        await _wait_for(done)
+
+        row = await downloads_service.get(db, d.id)
+        assert row is not None
+        assert row.status == "cancelled"
+        assert row.finished_at is not None
+        # The cancel arrives between file callbacks, so at least one file
+        # lands before unwinding, but the bulk of the manifest is skipped.
+        assert 1 <= row.files_downloaded < 6
+    finally:
+        await worker.stop()
+
+
+async def test_worker_cancel_after_extract_skips_download(
+    settings: Settings, db: aiosqlite.Connection
+) -> None:
+    """A cancel that lands between manifest extract and download is honoured."""
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["ch1/001.jpg"]
+    gallery = FakeGallery(settings, config=config)
+
+    # Stamp the cancel during extract_manifest so the worker sees it on the
+    # next check (right after extract returns).
+    real_extract = gallery.extract_manifest
+
+    def extract_and_request_cancel(url: str, skip_chapter: SkipChapterFn | None = None) -> Manifest:
+        result = real_extract(url, skip_chapter)
+        # The worker sets _current_id before starting extract, so this is safe.
+        if worker._current_id is not None:
+            worker.request_cancel(worker._current_id)
+        return result
+
+    gallery.extract_manifest = extract_and_request_cancel  # type: ignore[method-assign]
+
+    live = LiveProgress()
+    worker = Worker(db, gallery, live)  # type: ignore[arg-type]
+    worker.start()
+    try:
+        d = await downloads_service.insert_pending(db, "https://example/x", "fake")
+        worker.notify()
+
+        async def done() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.status in {"cancelled", "completed", "failed"}
+
+        await _wait_for(done)
+
+        row = await downloads_service.get(db, d.id)
+        assert row is not None
+        assert row.status == "cancelled"
+        # Download phase was skipped entirely.
+        assert gallery.download_calls == []
+    finally:
+        await worker.stop()
+
+
+async def test_worker_marks_failed_when_extract_raises(
+    settings: Settings, db: aiosqlite.Connection
+) -> None:
+    class Boom(FakeGallery):
+        def extract_manifest(  # type: ignore[override]
+            self, url: str, skip_chapter: SkipChapterFn | None = None
+        ) -> Manifest:
+            raise RuntimeError("nope")
+
+    gallery = Boom(settings, config=FakeGalleryConfig())
+    live = LiveProgress()
+    worker = Worker(db, gallery, live)  # type: ignore[arg-type]
+    worker.start()
+    try:
+        d = await downloads_service.insert_pending(db, "https://example/x", "fake")
+        worker.notify()
+
+        async def done() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.status == "failed"
+
+        await _wait_for(done)
+
+        row = await downloads_service.get(db, d.id)
+        assert row is not None
+        assert row.status == "failed"
+        assert row.error is not None and "nope" in row.error
+    finally:
+        await worker.stop()
+
+
+async def test_worker_captures_series_name_from_manifest(
+    settings: Settings, db: aiosqlite.Connection
+) -> None:
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["a/1.jpg"]
+    config.series_name_for["https://example/x"] = "Captured Series"
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await targets_service.upsert(db, "https://example/x", "fake", None)
+        d = await downloads_service.insert_pending(
+            db, "https://example/x", "fake", target_id=target.id
+        )
+        worker.notify()
+
+        async def done() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.status == "completed"
+
+        await _wait_for(done)
+        refreshed = await targets_service.get(db, target.id)
+        assert refreshed is not None
+        assert refreshed.name == "Captured Series"
+    finally:
+        await worker.stop()
+
+
+async def test_worker_captures_series_name_from_records_when_manifest_lacks_it(
+    settings: Settings, db: aiosqlite.Connection
+) -> None:
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]
+    config.records_for["https://example/x"] = [
+        FileRecord(
+            category="fake",
+            manga="From Records",
+            chapter="1",
+            title="",
+            volume="",
+            lang="",
+            author="",
+            date="",
+            path=settings.downloads_dir / "fake" / "S" / "c1" / "001.jpg",
+        )
+    ]
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await targets_service.upsert(db, "https://example/x", "fake", None)
+        d = await downloads_service.insert_pending(
+            db, "https://example/x", "fake", target_id=target.id
+        )
+        worker.notify()
+
+        async def done() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.status == "completed"
+
+        await _wait_for(done)
+        refreshed = await targets_service.get(db, target.id)
+        assert refreshed is not None
+        assert refreshed.name == "From Records"
+    finally:
+        await worker.stop()
+
+
+async def test_worker_clears_live_progress_when_done(
+    settings: Settings, db: aiosqlite.Connection
+) -> None:
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["a/1.jpg"]
+    gallery = FakeGallery(settings, config=config)
+    live = LiveProgress()
+    worker = Worker(db, gallery, live)  # type: ignore[arg-type]
+    worker.start()
+    try:
+        d = await downloads_service.insert_pending(db, "https://example/x", "fake")
+        worker.notify()
+
+        async def done() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.status == "completed"
+
+        await _wait_for(done)
+        assert live.snapshot(d.id) is None
+    finally:
+        await worker.stop()
+
+
+def _make_records_for_chapter(downloads_dir: Path, manga: str, chapter: str) -> list[FileRecord]:
+    ch_dir = downloads_dir / "fake" / manga / f"c{chapter}"
+    ch_dir.mkdir(parents=True, exist_ok=True)
+    records: list[FileRecord] = []
+    for name in ("001.jpg", "002.jpg"):
+        p = ch_dir / name
+        p.write_bytes(b"x")
+        records.append(
+            FileRecord(
+                category="fake",
+                manga=manga,
+                chapter=chapter,
+                title="",
+                volume="",
+                lang="",
+                author="",
+                date="",
+                path=p,
+            )
+        )
+    return records
+
+
+async def test_worker_runs_postprocess_when_default_dir_set(
+    settings: Settings, db: aiosqlite.Connection, tmp_path: Path
+) -> None:
+    root = tmp_path / "media"
+    default = root / "manga"
+    default.mkdir(parents=True)
+    await app_config_service.set_many(
+        db,
+        {
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": str(default),
+            "delete_raw_after_pack": True,
+        },
+    )
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg", "fake/S/c1/002.jpg"]
+    config.records_for["https://example/x"] = _make_records_for_chapter(
+        settings.downloads_dir, "S", "1"
+    )
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        d = await downloads_service.insert_pending(db, "https://example/x", "fake")
+        worker.notify()
+
+        async def packed() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.postprocess_status == "completed"
+
+        await _wait_for(packed)
+
+        row = await downloads_service.get(db, d.id)
+        assert row is not None
+        assert row.status == "completed"
+        assert row.postprocess_status == "completed"
+        assert row.postprocess_chapters_packed == 1
+        assert (default / "S" / "S - c001.cbz").is_file()
+    finally:
+        await worker.stop()
+
+
+async def test_worker_prefers_per_job_output_dir_over_default(
+    settings: Settings, db: aiosqlite.Connection, tmp_path: Path
+) -> None:
+    root = tmp_path / "media"
+    default = root / "manga"
+    override = root / "comics"
+    default.mkdir(parents=True)
+    override.mkdir(parents=True)
+    await app_config_service.set_many(
+        db,
+        {
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": str(default),
+            "delete_raw_after_pack": True,
+        },
+    )
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]
+    config.records_for["https://example/x"] = _make_records_for_chapter(
+        settings.downloads_dir, "S", "1"
+    )
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        d = await downloads_service.insert_pending(
+            db, "https://example/x", "fake", output_dir=str(override)
+        )
+        worker.notify()
+
+        async def packed() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.postprocess_status == "completed"
+
+        await _wait_for(packed)
+
+        assert (override / "S" / "S - c001.cbz").is_file()
+        assert not (default / "S" / "S - c001.cbz").exists()
+    finally:
+        await worker.stop()
+
+
+async def test_worker_creates_missing_per_job_output_dir(
+    settings: Settings, db: aiosqlite.Connection, tmp_path: Path
+) -> None:
+    root = tmp_path / "media"
+    root.mkdir()
+    new_dir = root / "freshly" / "made"
+    await app_config_service.set_many(
+        db,
+        {
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+        },
+    )
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]
+    config.records_for["https://example/x"] = _make_records_for_chapter(
+        settings.downloads_dir, "S", "1"
+    )
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        d = await downloads_service.insert_pending(
+            db, "https://example/x", "fake", output_dir=str(new_dir)
+        )
+        worker.notify()
+
+        async def packed() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.postprocess_status == "completed"
+
+        await _wait_for(packed)
+        assert (new_dir / "S" / "S - c001.cbz").is_file()
+    finally:
+        await worker.stop()
+
+
+async def test_worker_skips_postprocess_when_output_dir_not_set(
+    settings: Settings, db: aiosqlite.Connection
+) -> None:
+    # No root, no default, no per-job dir → postprocess should skip cleanly.
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]
+    config.records_for["https://example/x"] = _make_records_for_chapter(
+        settings.downloads_dir, "S", "1"
+    )
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        d = await downloads_service.insert_pending(db, "https://example/x", "fake")
+        worker.notify()
+
+        async def done() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.postprocess_status == "skipped"
+
+        await _wait_for(done)
+        row = await downloads_service.get(db, d.id)
+        assert row is not None
+        assert row.status == "completed"
+        assert row.postprocess_status == "skipped"
+    finally:
+        await worker.stop()
+
+
+async def test_worker_skips_already_packed_chapter_for_watched_target(
+    settings: Settings, db: aiosqlite.Connection, tmp_path: Path
+) -> None:
+    """A watched target's subsequent poll should drop chapters whose CBZ
+    already lives in the output dir, both from the manifest and the download."""
+    root = tmp_path / "media"
+    default = root / "manga"
+    default.mkdir(parents=True)
+    # Pre-existing CBZ for chapter 1 — should be skipped this run.
+    series_dir = default / "S"
+    series_dir.mkdir()
+    (series_dir / "S - c001.cbz").write_bytes(b"already-packed")
+    await app_config_service.set_many(
+        db,
+        {
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": str(default),
+            "delete_raw_after_pack": True,
+        },
+    )
+
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = [
+        "fake/S/c1/001.jpg",
+        "fake/S/c1/002.jpg",
+        "fake/S/c2/001.jpg",
+    ]
+    config.records_for["https://example/x"] = [
+        *_make_records_for_chapter(settings.downloads_dir, "S", "1"),
+        *_make_records_for_chapter(settings.downloads_dir, "S", "2"),
+    ]
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await targets_service.upsert(db, "https://example/x", "fake", None)
+        await targets_service.update(db, target.id, watched=True)
+        d = await downloads_service.insert_pending(
+            db, "https://example/x", "fake", target_id=target.id
+        )
+        worker.notify()
+
+        async def packed() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.postprocess_status in ("completed", "failed")
+
+        await _wait_for(packed)
+
+        row = await downloads_service.get(db, d.id)
+        assert row is not None
+        assert row.status == "completed"
+        # Only c2 should appear in the manifest — c1 was filtered out.
+        manifest = await downloads_service.get_manifest(db, d.id)
+        assert manifest == ["fake/S/c2/001.jpg"]
+        # And only c2 should have been newly packed.
+        assert row.postprocess_chapters_packed == 1
+        # The pre-existing CBZ wasn't overwritten.
+        assert (series_dir / "S - c001.cbz").read_bytes() == b"already-packed"
+        # And c2's CBZ shows up.
+        assert (series_dir / "S - c002.cbz").is_file()
+    finally:
+        await worker.stop()
+
+
+async def test_worker_does_not_skip_for_unwatched_target(
+    settings: Settings, db: aiosqlite.Connection, tmp_path: Path
+) -> None:
+    """Unwatched targets keep the existing re-download behavior — gallery-dl's
+    own archive.db is still the source of truth there."""
+    root = tmp_path / "media"
+    default = root / "manga"
+    default.mkdir(parents=True)
+    series_dir = default / "S"
+    series_dir.mkdir()
+    (series_dir / "S - c001.cbz").write_bytes(b"old")
+    await app_config_service.set_many(
+        db,
+        {
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": str(default),
+            "delete_raw_after_pack": True,
+        },
+    )
+
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]
+    config.records_for["https://example/x"] = _make_records_for_chapter(
+        settings.downloads_dir, "S", "1"
+    )
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await targets_service.upsert(db, "https://example/x", "fake", None)
+        # Target is NOT watched.
+        d = await downloads_service.insert_pending(
+            db, "https://example/x", "fake", target_id=target.id
+        )
+        worker.notify()
+
+        async def packed() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.postprocess_status in ("completed", "failed")
+
+        await _wait_for(packed)
+
+        manifest = await downloads_service.get_manifest(db, d.id)
+        # Full manifest preserved.
+        assert manifest == ["fake/S/c1/001.jpg"]
+    finally:
+        await worker.stop()
+
+
+async def test_worker_isolates_postprocess_failure_from_download_status(
+    settings: Settings, db: aiosqlite.Connection, tmp_path: Path
+) -> None:
+    # Point output dir at a file (not a directory) so the postprocess pass fails.
+    root = tmp_path / "media"
+    root.mkdir()
+    blocking_file = root / "not-a-dir"
+    blocking_file.write_bytes(b"x")
+    await app_config_service.set_many(
+        db,
+        {
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": str(blocking_file),
+            "delete_raw_after_pack": False,
+        },
+    )
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]
+    config.records_for["https://example/x"] = _make_records_for_chapter(
+        settings.downloads_dir, "S", "1"
+    )
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        d = await downloads_service.insert_pending(db, "https://example/x", "fake")
+        worker.notify()
+
+        async def settled() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.postprocess_status in ("completed", "failed")
+
+        await _wait_for(settled)
+        row = await downloads_service.get(db, d.id)
+        assert row is not None
+        # Download itself succeeded.
+        assert row.status == "completed"
+        # Postprocess pass surfaces failure in its own column.
+        assert row.postprocess_status == "failed"
+        assert row.postprocess_error is not None
+    finally:
+        await worker.stop()

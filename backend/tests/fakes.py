@@ -5,9 +5,9 @@ from pathlib import Path
 
 from gallery_dl.exception import StopExtraction
 
-from backend.gallery import Manifest, SkipChapterFn
-from backend.postprocess import FileRecord
-from backend.settings import Settings
+from backend.config import Settings
+from backend.downloads.gallery import Manifest, SkipChapterFn
+from backend.downloads.postprocess import FileRecord
 
 
 class FakeGalleryConfig:
