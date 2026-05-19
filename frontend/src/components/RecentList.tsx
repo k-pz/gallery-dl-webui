@@ -5,14 +5,16 @@ import {
   Group,
   List,
   Loader,
+  Select,
   Stack,
   Text,
+  TextInput,
   Title,
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   cancelDownloadMutation,
   getDownloadQueryKey,
@@ -20,9 +22,24 @@ import {
   listDownloadsQueryKey,
   requeueDownloadMutation,
 } from "../api/@tanstack/react-query.gen";
+import type { DownloadOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { REFETCH_LIST_MS } from "../lib/polling";
-import { CANCELLING_LABEL, isCancellable, isTerminal, statusColor } from "../lib/status";
+import { CANCELLING_LABEL, isCancellable, isTerminal, jobStep, statusColor } from "../lib/status";
+
+type StatusFilter = "any" | "active" | "completed" | "failed" | "cancelled";
+type SortKey = "recent" | "status";
+
+const STATUS_ORDER: Record<string, number> = {
+  pending: 0,
+  extracting: 1,
+  running: 2,
+  completed: 3,
+  failed: 4,
+  cancelled: 5,
+};
+
+const ACTIVE_STATUSES = new Set(["pending", "extracting", "running"]);
 
 export function RecentList({
   onSelect,
@@ -38,6 +55,9 @@ export function RecentList({
   });
 
   const [cancellingIds, setCancellingIds] = useState<Set<number>>(() => new Set());
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("any");
+  const [sortKey, setSortKey] = useState<SortKey>("recent");
 
   // Prune the optimistic-cancelling set once the row reaches terminal state,
   // so the badge stops lying after the worker has reflected the cancel.
@@ -133,90 +153,224 @@ export function RecentList({
         ? requeue.variables.path.download_id
         : null;
 
+  const visible = useMemo(() => {
+    if (!data) return [];
+    const needle = search.trim().toLowerCase();
+    const filtered = data.filter((d) => {
+      if (needle) {
+        const haystack = `${d.name ?? ""} ${d.url}`.toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
+      if (statusFilter !== "any") {
+        if (statusFilter === "active" && !ACTIVE_STATUSES.has(d.status)) return false;
+        if (statusFilter === "completed" && d.status !== "completed") return false;
+        if (statusFilter === "failed" && d.status !== "failed") return false;
+        if (statusFilter === "cancelled" && d.status !== "cancelled") return false;
+      }
+      return true;
+    });
+    if (sortKey === "status") {
+      return [...filtered].sort((a, b) => {
+        const aOrder = STATUS_ORDER[a.status] ?? 99;
+        const bOrder = STATUS_ORDER[b.status] ?? 99;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return b.created_at.localeCompare(a.created_at);
+      });
+    }
+    return filtered;
+  }, [data, search, statusFilter, sortKey]);
+
+  const totalCount = data?.length ?? 0;
+  const filtersActive = search.trim().length > 0 || statusFilter !== "any";
+
   return (
     <Card withBorder shadow="sm" padding="lg">
       <Stack gap="xs">
-        <Title order={4}>Recent</Title>
-        {isLoading && <Loader size="xs" />}
-        {data && data.length === 0 && (
+        <Group justify="space-between" align="center" wrap="wrap">
+          <Group gap="xs">
+            <Title order={4}>Recent</Title>
+            {totalCount > 0 && (
+              <Text size="sm" c="dimmed">
+                {filtersActive ? `${visible.length} of ${totalCount}` : `${totalCount}`}
+              </Text>
+            )}
+          </Group>
+          {isLoading && <Loader size="xs" />}
+        </Group>
+        {totalCount > 0 && (
+          <Group gap="xs" align="flex-end" wrap="wrap">
+            <TextInput
+              placeholder="Search name or URL"
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+              style={{ flex: 1, minWidth: 180 }}
+              aria-label="Filter downloads by name or URL"
+            />
+            <Select
+              label="Status"
+              data={[
+                { value: "any", label: "Any" },
+                { value: "active", label: "Active" },
+                { value: "completed", label: "Completed" },
+                { value: "failed", label: "Failed" },
+                { value: "cancelled", label: "Cancelled" },
+              ]}
+              value={statusFilter}
+              onChange={(v) => setStatusFilter((v as StatusFilter) ?? "any")}
+              w={140}
+              comboboxProps={{ withinPortal: true }}
+            />
+            <Select
+              label="Sort by"
+              data={[
+                { value: "recent", label: "Most recent" },
+                { value: "status", label: "Status" },
+              ]}
+              value={sortKey}
+              onChange={(v) => setSortKey((v as SortKey) ?? "recent")}
+              w={150}
+              comboboxProps={{ withinPortal: true }}
+            />
+          </Group>
+        )}
+        {totalCount === 0 && (
           <Text size="sm" c="dimmed">
             No downloads yet.
           </Text>
         )}
-        {data && data.length > 0 && (
+        {totalCount > 0 && visible.length === 0 && (
+          <Text size="sm" c="dimmed">
+            No downloads match the current filters.
+          </Text>
+        )}
+        {visible.length > 0 && (
           <List spacing="xs" listStyleType="none" withPadding={false}>
-            {data.map((item) => {
-              const inflight = inflightId === item.id;
-              const showCancelling = cancellingIds.has(item.id) && !isTerminal(item.status);
-              const displayStatus = showCancelling ? CANCELLING_LABEL : item.status;
-              const canCancel = isCancellable(item.status) && !showCancelling;
-              return (
-                <List.Item key={item.id}>
-                  <Group gap="sm" wrap="nowrap" align="center">
-                    <Group
-                      gap="sm"
-                      wrap="nowrap"
-                      style={{
-                        cursor: "pointer",
-                        flex: 1,
-                        minWidth: 0,
-                        fontWeight: item.id === selectedId ? 600 : 400,
-                      }}
-                      onClick={() => onSelect(item.id)}
-                    >
-                      <Badge color={statusColor(displayStatus)} variant="light">
-                        {displayStatus}
-                      </Badge>
-                      <Text
-                        size="sm"
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          flex: 1,
-                        }}
-                        title={item.url}
-                      >
-                        #{item.id} {item.url}
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        {item.files_downloaded}/{item.files_expected ?? "?"}
-                      </Text>
-                    </Group>
-                    {(canCancel || showCancelling) && (
-                      <Tooltip label={showCancelling ? "Cancelling…" : "Cancel"} withArrow>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          loading={(inflight && cancel.isPending) || showCancelling}
-                          disabled={inflight || showCancelling}
-                          onClick={() => cancel.mutate({ path: { download_id: item.id } })}
-                          aria-label={`Cancel #${item.id}`}
-                        >
-                          ✕
-                        </ActionIcon>
-                      </Tooltip>
-                    )}
-                    {isTerminal(item.status) && (
-                      <Tooltip label="Requeue" withArrow>
-                        <ActionIcon
-                          variant="subtle"
-                          loading={inflight && requeue.isPending}
-                          disabled={inflight}
-                          onClick={() => requeue.mutate({ path: { download_id: item.id } })}
-                          aria-label={`Requeue #${item.id}`}
-                        >
-                          ↻
-                        </ActionIcon>
-                      </Tooltip>
-                    )}
-                  </Group>
-                </List.Item>
-              );
-            })}
+            {visible.map((item) => (
+              <RecentRow
+                key={item.id}
+                item={item}
+                selected={item.id === selectedId}
+                cancelling={cancellingIds.has(item.id)}
+                inflight={inflightId === item.id}
+                isCancelPending={cancel.isPending}
+                isRequeuePending={requeue.isPending}
+                onSelect={onSelect}
+                onCancel={() => cancel.mutate({ path: { download_id: item.id } })}
+                onRequeue={() => requeue.mutate({ path: { download_id: item.id } })}
+              />
+            ))}
           </List>
         )}
       </Stack>
     </Card>
+  );
+}
+
+function RecentRow({
+  item,
+  selected,
+  cancelling,
+  inflight,
+  isCancelPending,
+  isRequeuePending,
+  onSelect,
+  onCancel,
+  onRequeue,
+}: {
+  item: DownloadOut;
+  selected: boolean;
+  cancelling: boolean;
+  inflight: boolean;
+  isCancelPending: boolean;
+  isRequeuePending: boolean;
+  onSelect: (id: number) => void;
+  onCancel: () => void;
+  onRequeue: () => void;
+}) {
+  const showCancelling = cancelling && !isTerminal(item.status);
+  const displayStatus = showCancelling ? CANCELLING_LABEL : item.status;
+  const step = jobStep(item.status, item.postprocess_status, showCancelling);
+  const canCancel = isCancellable(item.status) && !showCancelling;
+  const displayName = item.name ?? item.url;
+  const showUrlSubtitle = Boolean(item.name);
+
+  return (
+    <List.Item>
+      <Group gap="sm" wrap="nowrap" align="flex-start">
+        <Stack
+          gap={2}
+          style={{
+            cursor: "pointer",
+            flex: 1,
+            minWidth: 0,
+            fontWeight: selected ? 600 : 400,
+          }}
+          onClick={() => onSelect(item.id)}
+        >
+          <Group gap="xs" wrap="nowrap" align="center">
+            <Badge color={statusColor(displayStatus)} variant="light">
+              {step.label}
+            </Badge>
+            <Text
+              size="sm"
+              fw={500}
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                flex: 1,
+              }}
+              title={displayName}
+            >
+              #{item.id} {displayName}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {item.files_downloaded}/{item.files_expected ?? "?"}
+            </Text>
+          </Group>
+          {showUrlSubtitle && (
+            <Text
+              size="xs"
+              c="dimmed"
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={item.url}
+            >
+              {item.url}
+            </Text>
+          )}
+        </Stack>
+        {(canCancel || showCancelling) && (
+          <Tooltip label={showCancelling ? "Cancelling…" : "Cancel"} withArrow>
+            <ActionIcon
+              variant="subtle"
+              color="red"
+              loading={(inflight && isCancelPending) || showCancelling}
+              disabled={inflight || showCancelling}
+              onClick={onCancel}
+              aria-label={`Cancel #${item.id}`}
+            >
+              ✕
+            </ActionIcon>
+          </Tooltip>
+        )}
+        {isTerminal(item.status) && (
+          <Tooltip label="Requeue" withArrow>
+            <ActionIcon
+              variant="subtle"
+              loading={inflight && isRequeuePending}
+              disabled={inflight}
+              onClick={onRequeue}
+              aria-label={`Requeue #${item.id}`}
+            >
+              ↻
+            </ActionIcon>
+          </Tooltip>
+        )}
+      </Group>
+    </List.Item>
   );
 }

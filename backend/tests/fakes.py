@@ -5,6 +5,7 @@ from pathlib import Path
 
 from gallery_dl.exception import StopExtraction
 
+from backend.gallery import Manifest
 from backend.postprocess import FileRecord
 from backend.settings import Settings
 
@@ -24,6 +25,9 @@ class FakeGalleryConfig:
         # Optional per-URL metadata; when set, FakeGallery.run_download returns
         # these as records. When unset, no records are emitted.
         self.records_for: dict[str, list[FileRecord]] = {}
+        # Optional per-URL series name surfaced by extract_manifest, mirroring
+        # the metadata gallery-dl's simulation job exposes via kwdict.
+        self.series_name_for: dict[str, str | None] = {}
         self.default_extractor: str | None = "fake"
         self.write_files: bool = True
 
@@ -55,9 +59,12 @@ class FakeGallery:
             return self._config.extractor_for[url]
         return self._config.default_extractor
 
-    def extract_manifest(self, url: str) -> list[str]:
+    def extract_manifest(self, url: str) -> Manifest:
         self.extract_calls.append(url)
-        return list(self._config.manifest_for.get(url, []))
+        return Manifest(
+            paths=list(self._config.manifest_for.get(url, [])),
+            series_name=self._config.series_name_for.get(url),
+        )
 
     def run_download(
         self,

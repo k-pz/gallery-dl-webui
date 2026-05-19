@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelDownload, createDownload, createOutputDir, deleteTarget, getConfig, getDownload, getDownloadProgress, getHealth, getTarget, listDownloads, listOutputDirs, listTargets, type Options, pollTarget, putConfig, requeueDownload, updateTarget } from '../sdk.gen';
-import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetTargetData, GetTargetError, GetTargetResponse, ListDownloadsData, ListDownloadsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
+import { cancelDownload, createDownload, createOutputDir, deleteTarget, exportLibrary, getConfig, getDownload, getDownloadProgress, getHealth, getTarget, importLibrary, listDownloads, listOutputDirs, listTargets, type Options, pollTarget, putConfig, requeueDownload, updateTarget } from '../sdk.gen';
+import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, ExportLibraryData, ExportLibraryResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetTargetData, GetTargetError, GetTargetResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -309,6 +309,41 @@ export const putConfigMutation = (options?: Partial<Options<PutConfigData>>): Us
     const mutationOptions: UseMutationOptions<PutConfigResponse, PutConfigError, Options<PutConfigData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await putConfig({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const exportLibraryQueryKey = (options?: Options<ExportLibraryData>) => createQueryKey('exportLibrary', options);
+
+/**
+ * Export Library
+ */
+export const exportLibraryOptions = (options?: Options<ExportLibraryData>) => queryOptions<ExportLibraryResponse, DefaultError, ExportLibraryResponse, ReturnType<typeof exportLibraryQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await exportLibrary({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: exportLibraryQueryKey(options)
+});
+
+/**
+ * Import Library
+ */
+export const importLibraryMutation = (options?: Partial<Options<ImportLibraryData>>): UseMutationOptions<ImportLibraryResponse, DefaultError, Options<ImportLibraryData>> => {
+    const mutationOptions: UseMutationOptions<ImportLibraryResponse, DefaultError, Options<ImportLibraryData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await importLibrary({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

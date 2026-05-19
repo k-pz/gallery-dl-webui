@@ -5,6 +5,8 @@ import {
   Card,
   Group,
   Loader,
+  SegmentedControl,
+  Select,
   Stack,
   Switch,
   Text,
@@ -14,7 +16,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   deleteTargetMutation,
   getConfigOptions,
@@ -27,6 +29,13 @@ import type { TargetOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { REFETCH_LIST_MS } from "../lib/polling";
 import { statusColor } from "../lib/status";
+import { formatRel } from "../lib/time";
+
+type WatchedFilter = "any" | "watched" | "unwatched";
+type StatusFilter = "any" | "completed" | "failed" | "active" | "no-runs";
+type SortKey = "recent" | "name" | "created";
+
+const ACTIVE_STATUSES = new Set(["pending", "extracting", "running"]);
 
 export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void }) {
   const { data: targets, isLoading } = useQuery({
@@ -36,21 +45,150 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
   const { data: config } = useQuery(getConfigOptions());
   const defaultPeriod = config?.default_watch_period ?? "1d";
 
+  const [search, setSearch] = useState("");
+  const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>("any");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("any");
+  const [extractorFilter, setExtractorFilter] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("recent");
+
+  const extractorOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const t of targets ?? []) if (t.extractor) names.add(t.extractor);
+    return Array.from(names).sort();
+  }, [targets]);
+
+  const visible = useMemo(() => {
+    if (!targets) return [];
+    const needle = search.trim().toLowerCase();
+    const filtered = targets.filter((t) => {
+      if (needle) {
+        const haystack = `${t.name ?? ""} ${t.url}`.toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
+      if (watchedFilter === "watched" && !t.watched) return false;
+      if (watchedFilter === "unwatched" && t.watched) return false;
+      if (extractorFilter && t.extractor !== extractorFilter) return false;
+      if (statusFilter !== "any") {
+        const status = t.last_status;
+        const active = status !== null && ACTIVE_STATUSES.has(status);
+        if (statusFilter === "active" && !active) return false;
+        if (statusFilter === "completed" && status !== "completed") return false;
+        if (statusFilter === "failed" && status !== "failed") return false;
+        if (statusFilter === "no-runs" && t.download_count > 0) return false;
+      }
+      return true;
+    });
+    const sorted = [...filtered];
+    if (sortKey === "name") {
+      sorted.sort((a, b) =>
+        (a.name ?? a.url).localeCompare(b.name ?? b.url, undefined, { sensitivity: "base" }),
+      );
+    } else if (sortKey === "created") {
+      sorted.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    } else {
+      // recent: prefer last_finished_at; fall back to last_created_at; then created_at.
+      sorted.sort((a, b) => recencyKey(b) - recencyKey(a));
+    }
+    return sorted;
+  }, [targets, search, watchedFilter, statusFilter, extractorFilter, sortKey]);
+
+  const totalCount = targets?.length ?? 0;
+  const filtersActive =
+    search.trim().length > 0 ||
+    watchedFilter !== "any" ||
+    statusFilter !== "any" ||
+    extractorFilter !== null;
+
   return (
     <Card withBorder shadow="sm" padding="lg">
       <Stack gap="sm">
-        <Group justify="space-between" align="center">
-          <Title order={3}>Library</Title>
+        <Group justify="space-between" align="center" wrap="wrap">
+          <Group gap="xs" align="center">
+            <Title order={3}>Library</Title>
+            {totalCount > 0 && (
+              <Text size="sm" c="dimmed">
+                {filtersActive
+                  ? `${visible.length} of ${totalCount}`
+                  : `${totalCount} ${totalCount === 1 ? "series" : "series"}`}
+              </Text>
+            )}
+          </Group>
           {isLoading && <Loader size="xs" />}
         </Group>
-        {targets && targets.length === 0 && (
+        {totalCount > 0 && (
+          <Stack gap="xs">
+            <Group gap="xs" align="flex-end" wrap="wrap">
+              <TextInput
+                placeholder="Search name or URL"
+                value={search}
+                onChange={(e) => setSearch(e.currentTarget.value)}
+                style={{ flex: 1, minWidth: 200 }}
+                aria-label="Filter library by name or URL"
+              />
+              <Select
+                label="Status"
+                data={[
+                  { value: "any", label: "Any" },
+                  { value: "completed", label: "Completed" },
+                  { value: "failed", label: "Failed" },
+                  { value: "active", label: "Active" },
+                  { value: "no-runs", label: "Never run" },
+                ]}
+                value={statusFilter}
+                onChange={(v) => setStatusFilter((v as StatusFilter) ?? "any")}
+                w={140}
+                comboboxProps={{ withinPortal: true }}
+              />
+              <Select
+                label="Extractor"
+                data={[
+                  { value: "", label: "Any" },
+                  ...extractorOptions.map((e) => ({ value: e, label: e })),
+                ]}
+                value={extractorFilter ?? ""}
+                onChange={(v) => setExtractorFilter(v ? v : null)}
+                w={160}
+                comboboxProps={{ withinPortal: true }}
+                disabled={extractorOptions.length === 0}
+              />
+              <Select
+                label="Sort by"
+                data={[
+                  { value: "recent", label: "Last downloaded" },
+                  { value: "name", label: "Name" },
+                  { value: "created", label: "Added" },
+                ]}
+                value={sortKey}
+                onChange={(v) => setSortKey((v as SortKey) ?? "recent")}
+                w={170}
+                comboboxProps={{ withinPortal: true }}
+              />
+            </Group>
+            <SegmentedControl
+              value={watchedFilter}
+              onChange={(v) => setWatchedFilter(v as WatchedFilter)}
+              data={[
+                { value: "any", label: "All" },
+                { value: "watched", label: "Watched" },
+                { value: "unwatched", label: "Unwatched" },
+              ]}
+              size="xs"
+            />
+          </Stack>
+        )}
+        {totalCount === 0 && (
           <Text size="sm" c="dimmed">
             No targets yet. Submit a gallery URL above to add one.
           </Text>
         )}
-        {targets && targets.length > 0 && (
+        {totalCount > 0 && visible.length === 0 && (
+          <Text size="sm" c="dimmed">
+            No series match the current filters.
+          </Text>
+        )}
+        {visible.length > 0 && (
           <Stack gap="sm">
-            {targets.map((t) => (
+            {visible.map((t) => (
               <TargetRow
                 key={t.id}
                 target={t}
@@ -63,6 +201,16 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
       </Stack>
     </Card>
   );
+}
+
+function recencyKey(t: TargetOut): number {
+  const candidates = [t.last_finished_at, t.last_created_at, t.created_at];
+  for (const v of candidates) {
+    if (!v) continue;
+    const n = Date.parse(v);
+    if (!Number.isNaN(n)) return n;
+  }
+  return 0;
 }
 
 function TargetRow({
@@ -144,15 +292,29 @@ function TargetRow({
 
   const status = target.last_status ?? "pending";
   const busy = update.isPending || poll.isPending || del.isPending;
+  const displayName = target.name ?? target.url;
+  const showUrlSubtitle = Boolean(target.name);
 
   return (
     <Card withBorder padding="sm" radius="md">
       <Stack gap={6}>
         <Group justify="space-between" wrap="nowrap" align="flex-start">
           <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
-            <Text fw={500} style={{ wordBreak: "break-all" }}>
-              {target.url}
+            <Text fw={600} style={{ wordBreak: "break-word" }}>
+              {displayName}
             </Text>
+            {showUrlSubtitle && (
+              <Anchor
+                href={target.url}
+                target="_blank"
+                rel="noreferrer"
+                size="xs"
+                c="dimmed"
+                style={{ wordBreak: "break-all" }}
+              >
+                {target.url}
+              </Anchor>
+            )}
             <Group gap="xs">
               <Badge color={statusColor(status)} variant="light" size="sm">
                 {status}
@@ -164,13 +326,8 @@ function TargetRow({
                 {target.download_count} run{target.download_count === 1 ? "" : "s"}
               </Text>
               <Text size="xs" c="dimmed">
-                last: {formatRel(target.last_finished_at ?? target.last_created_at)}
+                Last downloaded: {formatRel(target.last_finished_at)}
               </Text>
-              {target.last_polled_at && (
-                <Text size="xs" c="dimmed">
-                  polled: {formatRel(target.last_polled_at)}
-                </Text>
-              )}
               {target.last_download_id !== null && onOpenJob && (
                 <Anchor
                   size="xs"
@@ -205,7 +362,7 @@ function TargetRow({
                 disabled={busy}
                 loading={del.isPending}
                 onClick={() => {
-                  if (confirm(`Remove ${target.url} from the library?`)) {
+                  if (confirm(`Remove ${displayName} from the library?`)) {
                     del.mutate({ path: { target_id: target.id } });
                   }
                 }}
@@ -253,21 +410,4 @@ function TargetRow({
       </Stack>
     </Card>
   );
-}
-
-function formatRel(iso: string | null): string {
-  if (!iso) return "—";
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso;
-  const diff = Date.now() - t;
-  if (diff < 0) return "just now";
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(t).toLocaleDateString();
 }

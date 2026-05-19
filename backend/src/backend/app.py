@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.api.routes import config, downloads, health, output_dirs, targets
+from backend.api.routes import config, downloads, health, library, output_dirs, targets
 from backend.gallery import Gallery
 from backend.live_progress import LiveProgress
 from backend.poller import Poller
@@ -68,6 +68,7 @@ def create_app(
     app.include_router(targets.router, prefix="/api")
     app.include_router(output_dirs.router, prefix="/api")
     app.include_router(config.router, prefix="/api")
+    app.include_router(library.router, prefix="/api")
 
     if serve_frontend and FRONTEND_DIST.is_dir():
         app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")

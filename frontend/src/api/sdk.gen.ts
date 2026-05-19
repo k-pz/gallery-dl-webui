@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetTargetData, GetTargetErrors, GetTargetResponses, ListDownloadsData, ListDownloadsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
+import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, ExportLibraryData, ExportLibraryResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetTargetData, GetTargetErrors, GetTargetResponses, ImportLibraryData, ImportLibraryResponses, ListDownloadsData, ListDownloadsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -125,3 +125,13 @@ export const putConfig = <ThrowOnError extends boolean = false>(options: Options
         ...options.headers
     }
 });
+
+/**
+ * Export Library
+ */
+export const exportLibrary = <ThrowOnError extends boolean = false>(options?: Options<ExportLibraryData, ThrowOnError>) => (options?.client ?? client).get<ExportLibraryResponses, unknown, ThrowOnError>({ url: '/api/library/export', ...options });
+
+/**
+ * Import Library
+ */
+export const importLibrary = <ThrowOnError extends boolean = false>(options?: Options<ImportLibraryData, ThrowOnError>) => (options?.client ?? client).post<ImportLibraryResponses, unknown, ThrowOnError>({ url: '/api/library/import', ...options });

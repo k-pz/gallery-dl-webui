@@ -10,6 +10,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS targets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     url TEXT NOT NULL UNIQUE,
+    name TEXT,
     extractor TEXT,
     output_dir TEXT,
     watched INTEGER NOT NULL DEFAULT 0,
@@ -81,6 +82,7 @@ class Download:
 class Target:
     id: int
     url: str
+    name: str | None
     extractor: str | None
     output_dir: str | None
     watched: bool
@@ -133,6 +135,7 @@ def _row_to_target(row: aiosqlite.Row) -> Target:
     return Target(
         id=row["id"],
         url=row["url"],
+        name=row["name"],
         extractor=row["extractor"],
         output_dir=row["output_dir"],
         watched=bool(row["watched"]),
@@ -185,6 +188,11 @@ class Storage:
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_downloads_target_id ON downloads(target_id)"
         )
+
+        async with db.execute("PRAGMA table_info(targets)") as cur:
+            target_cols = {row["name"] for row in await cur.fetchall()}
+        if "name" not in target_cols:
+            await db.execute("ALTER TABLE targets ADD COLUMN name TEXT")
 
     @staticmethod
     async def _backfill_targets(db: aiosqlite.Connection) -> None:
@@ -446,6 +454,7 @@ class Storage:
         return Target(
             id=new_id,
             url=url,
+            name=None,
             extractor=extractor,
             output_dir=output_dir,
             watched=False,
@@ -456,6 +465,11 @@ class Storage:
 
     async def get_target(self, id_: int) -> Target | None:
         async with self._db.execute("SELECT * FROM targets WHERE id = ?", (id_,)) as cur:
+            row = await cur.fetchone()
+        return _row_to_target(row) if row else None
+
+    async def get_target_by_url(self, url: str) -> Target | None:
+        async with self._db.execute("SELECT * FROM targets WHERE url = ?", (url,)) as cur:
             row = await cur.fetchone()
         return _row_to_target(row) if row else None
 
@@ -516,6 +530,29 @@ class Storage:
         await self._db.execute(f"UPDATE targets SET {', '.join(updates)} WHERE id = ?", params)
         await self._db.commit()
         return await self.get_target(id_)
+
+    async def set_target_name(self, id_: int, name: str) -> Target | None:
+        """Capture or refresh the human-readable series name (no-op when empty)."""
+        cleaned = name.strip() if isinstance(name, str) else ""
+        if not cleaned:
+            return await self.get_target(id_)
+        await self._db.execute(
+            "UPDATE targets SET name = ? WHERE id = ?",
+            (cleaned, id_),
+        )
+        await self._db.commit()
+        return await self.get_target(id_)
+
+    async def list_target_names(self, ids: list[int]) -> dict[int, str | None]:
+        if not ids:
+            return {}
+        placeholders = ",".join("?" * len(ids))
+        async with self._db.execute(
+            f"SELECT id, name FROM targets WHERE id IN ({placeholders})",
+            ids,
+        ) as cur:
+            rows = await cur.fetchall()
+        return {row["id"]: row["name"] for row in rows}
 
     async def mark_target_polled(self, id_: int) -> None:
         await self._db.execute(

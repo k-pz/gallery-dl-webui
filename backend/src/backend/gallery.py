@@ -1,6 +1,7 @@
 import logging
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,21 +12,38 @@ from backend.postprocess import FileRecord, coerce_record_from_kwdict
 from backend.settings import Settings
 
 
+@dataclass
+class Manifest:
+    """Result of a simulation pass: which files we expect, plus discovered metadata.
+
+    `series_name` is the first non-empty `manga` (or `series`) value seen in any
+    directory's kwdict — gallery-dl exposes a per-source metadata dict before
+    pages are enumerated, so we capture it without running a real download.
+    """
+
+    paths: list[str]
+    series_name: str | None = None
+
+
 class _ManifestSimulationJob(SimulationJob):
     """SimulationJob variant that records every would-be file path.
 
-    Child jobs spawned for nested extractors share the same _manifest list so a
-    single run accumulates all expected paths.
+    Child jobs spawned for nested extractors share the same _manifest list and
+    series-name box so a single run accumulates all expected paths and the
+    first-seen series name.
     """
 
     _manifest: list[str]
+    _series_box: list[str | None]
 
     def __init__(self, url: Any, parent: SimulationJob | None = None) -> None:
         super().__init__(url, parent)
         if isinstance(parent, _ManifestSimulationJob):
             self._manifest = parent._manifest
+            self._series_box = parent._series_box
         else:
             self._manifest = []
+            self._series_box = [None]
 
     def handle_directory(self, kwdict: dict[str, Any]) -> None:
         # SimulationJob.handle_directory only calls initialize() and never sets
@@ -35,6 +53,12 @@ class _ManifestSimulationJob(SimulationJob):
             self.initialize(kwdict)
         else:
             self.pathfmt.set_directory(kwdict)
+        if self._series_box[0] is None:
+            for key in ("manga", "series", "title"):
+                value = kwdict.get(key)
+                if isinstance(value, str) and value.strip():
+                    self._series_box[0] = value.strip()
+                    break
 
     def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
         pathfmt = self.pathfmt
@@ -125,16 +149,17 @@ class Gallery:
             return None
         return getattr(found, "category", None)
 
-    def extract_manifest(self, url: str) -> list[str]:
-        """Run gallery-dl in simulate mode; return expected files as paths
-        relative to the configured downloads directory."""
+    def extract_manifest(self, url: str) -> Manifest:
+        """Run gallery-dl in simulate mode; return the expected files (as paths
+        relative to the configured downloads directory) plus the first series
+        name we observed in any directory's metadata."""
         job = _ManifestSimulationJob(url)
         job.run()
         base = str(self._downloads_dir).rstrip(os.sep) + os.sep
-        out: list[str] = []
+        paths: list[str] = []
         for full in job._manifest:
-            out.append(full[len(base) :] if full.startswith(base) else full)
-        return out
+            paths.append(full[len(base) :] if full.startswith(base) else full)
+        return Manifest(paths=paths, series_name=job._series_box[0])
 
     def run_download(
         self,

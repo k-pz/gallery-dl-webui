@@ -2,7 +2,9 @@ import {
   Alert,
   Button,
   Card,
+  FileButton,
   Group,
+  List,
   Loader,
   type MantineColorScheme,
   SegmentedControl,
@@ -18,6 +20,7 @@ import { useEffect, useState } from "react";
 import {
   getConfigOptions,
   getConfigQueryKey,
+  listTargetsQueryKey,
   putConfigMutation,
 } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
@@ -151,16 +154,18 @@ export function ConfigPanel() {
           disabled={mutation.isPending}
           maw={260}
         />
-        <Group>
-          <Button onClick={save} loading={mutation.isPending} disabled={!dirty}>
-            Save
-          </Button>
-          {savedAt !== null && !dirty && !submitError && (
-            <Text size="sm" c="green">
-              Saved.
-            </Text>
-          )}
-        </Group>
+        {(dirty || mutation.isPending) && (
+          <Group>
+            <Button onClick={save} loading={mutation.isPending} disabled={!dirty}>
+              Save
+            </Button>
+          </Group>
+        )}
+        {savedAt !== null && !dirty && !submitError && (
+          <Text size="sm" c="green">
+            Saved.
+          </Text>
+        )}
         {submitError && (
           <Alert color="red" variant="light">
             {submitError}
@@ -180,7 +185,126 @@ export function ConfigPanel() {
             </Stack>
           </Stack>
         )}
+        <Title order={3}>Library backup</Title>
+        <LibraryBackup />
       </Stack>
     </Card>
+  );
+}
+
+function LibraryBackup() {
+  const queryClient = useQueryClient();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<{
+    imported: number;
+    updated: number;
+    errors: string[];
+  } | null>(null);
+
+  const doExport = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const resp = await fetch("/api/library/export");
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const text = await resp.text();
+      const blob = new Blob([text], { type: "application/yaml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `gallery-dl-library-${stamp}.yaml`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const doImport = async (file: File | null) => {
+    if (!file) return;
+    setImportBusy(true);
+    setImportError(null);
+    setImportResult(null);
+    try {
+      const text = await file.text();
+      const resp = await fetch("/api/library/import", {
+        method: "POST",
+        headers: { "content-type": "application/yaml" },
+        body: text,
+      });
+      if (!resp.ok) {
+        const body = await resp.text();
+        throw new Error(body || `HTTP ${resp.status}`);
+      }
+      const json = (await resp.json()) as {
+        imported: number;
+        updated: number;
+        errors: string[];
+      };
+      setImportResult(json);
+      queryClient.invalidateQueries({ queryKey: listTargetsQueryKey() });
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  return (
+    <Stack gap="xs">
+      <Text size="sm" c="dimmed">
+        Save and restore the library as a YAML file (URL, name, output dir, watch state).
+      </Text>
+      <Group>
+        <Button variant="light" onClick={doExport} loading={exporting}>
+          Export library
+        </Button>
+        <FileButton onChange={doImport} accept=".yaml,.yml,application/yaml,text/yaml,text/plain">
+          {(props) => (
+            <Button variant="light" loading={importBusy} {...props}>
+              Import library…
+            </Button>
+          )}
+        </FileButton>
+      </Group>
+      {exportError && (
+        <Alert color="red" variant="light">
+          Export failed: {exportError}
+        </Alert>
+      )}
+      {importError && (
+        <Alert color="red" variant="light">
+          Import failed: {importError}
+        </Alert>
+      )}
+      {importResult && (
+        <Alert
+          color={importResult.errors.length > 0 ? "yellow" : "green"}
+          variant="light"
+          title={`Imported ${importResult.imported}, updated ${importResult.updated}`}
+        >
+          {importResult.errors.length === 0 ? (
+            <Text size="sm">Done.</Text>
+          ) : (
+            <Stack gap={4}>
+              <Text size="sm">{importResult.errors.length} entries had problems:</Text>
+              <List size="sm" withPadding>
+                {importResult.errors.map((e) => (
+                  <List.Item key={e}>{e}</List.Item>
+                ))}
+              </List>
+            </Stack>
+          )}
+        </Alert>
+      )}
+    </Stack>
   );
 }

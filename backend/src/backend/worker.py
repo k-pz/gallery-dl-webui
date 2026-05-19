@@ -72,7 +72,10 @@ class Worker:
         exit_code = 1
         cancelled_during_download = False
         try:
-            relpaths = await asyncio.to_thread(self._gallery.extract_manifest, job.url)
+            manifest = await asyncio.to_thread(self._gallery.extract_manifest, job.url)
+            relpaths = manifest.paths
+            if job.target_id is not None and manifest.series_name:
+                await self._storage.set_target_name(job.target_id, manifest.series_name)
             if job.id in self._cancelled_ids:
                 await self._storage.mark_cancelled(job.id, 0)
                 return
@@ -103,6 +106,11 @@ class Worker:
                     present = 0
             await self._storage.mark_failed(job.id, repr(exc), present)
             return
+
+        if records and job.target_id is not None:
+            manga = next((r.manga for r in records if r.manga), None)
+            if manga:
+                await self._storage.set_target_name(job.target_id, manga)
 
         if exit_code == 0 and not cancelled_during_download:
             await self._run_postprocess(job, records, downloads_dir)

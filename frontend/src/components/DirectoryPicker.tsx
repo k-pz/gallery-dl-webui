@@ -123,9 +123,9 @@ export function DirectoryPicker({
         <Group align="flex-end" gap="xs" wrap="nowrap">
           <TextInput
             style={{ flex: 1 }}
-            label="New folder path"
-            description="Absolute, or relative to the root."
-            placeholder="manga/new-series"
+            label="New folder name"
+            description="A single folder under the root — no slashes."
+            placeholder="manga"
             value={createPath}
             onChange={(e) => setCreatePath(e.currentTarget.value)}
             disabled={create.isPending}

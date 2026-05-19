@@ -15,6 +15,13 @@ from backend.progress import chapter_progress, chapter_progress_from_completed
 router = APIRouter(tags=["downloads"])
 
 
+async def _name_for(storage, target_id: int | None) -> str | None:
+    if target_id is None:
+        return None
+    names = await storage.list_target_names([target_id])
+    return names.get(target_id)
+
+
 @router.post("/downloads", operation_id="createDownload")
 async def create_download(
     body: DownloadCreate,
@@ -51,13 +58,15 @@ async def create_download(
         url, category, output_dir=output_dir_str, target_id=target.id
     )
     worker.notify()
-    return DownloadOut.from_download(download)
+    return DownloadOut.from_download(download, name=target.name)
 
 
 @router.get("/downloads", operation_id="listDownloads")
 async def list_downloads(storage: StorageDep) -> list[DownloadOut]:
     rows = await storage.list_recent(50)
-    return [DownloadOut.from_download(d) for d in rows]
+    ids = [d.target_id for d in rows if d.target_id is not None]
+    names = await storage.list_target_names(ids)
+    return [DownloadOut.from_download(d, name=names.get(d.target_id or -1)) for d in rows]
 
 
 @router.get("/downloads/{download_id}", operation_id="getDownload")
@@ -65,7 +74,7 @@ async def get_download(download_id: int, storage: StorageDep) -> DownloadOut:
     d = await storage.get(download_id)
     if d is None:
         raise HTTPException(status_code=404, detail="download not found")
-    return DownloadOut.from_download(d)
+    return DownloadOut.from_download(d, name=await _name_for(storage, d.target_id))
 
 
 @router.post("/downloads/{download_id}/cancel", operation_id="cancelDownload")
@@ -84,7 +93,7 @@ async def cancel_download(download_id: int, storage: StorageDep, worker: WorkerD
     await storage.cancel_pending(download_id)
     refreshed = await storage.get(download_id)
     assert refreshed is not None
-    return DownloadOut.from_download(refreshed)
+    return DownloadOut.from_download(refreshed, name=await _name_for(storage, refreshed.target_id))
 
 
 @router.post("/downloads/{download_id}/requeue", operation_id="requeueDownload")
@@ -102,7 +111,7 @@ async def requeue_download(download_id: int, storage: StorageDep, worker: Worker
     worker.notify()
     refreshed = await storage.get(download_id)
     assert refreshed is not None
-    return DownloadOut.from_download(refreshed)
+    return DownloadOut.from_download(refreshed, name=await _name_for(storage, refreshed.target_id))
 
 
 @router.get("/downloads/{download_id}/progress", operation_id="getDownloadProgress")
