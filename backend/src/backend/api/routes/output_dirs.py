@@ -19,10 +19,8 @@ from backend.output_dirs import validate_under_root
 
 router = APIRouter(tags=["output_dirs"])
 
-MAX_ENTRIES = 500
 
-
-async def _resolve_root(storage) -> Path:
+async def _resolve_root(storage: StorageDep) -> Path:
     cfg = await storage.get_app_config()
     root_raw = cfg.get("postprocess_root")
     if not isinstance(root_raw, str) or not root_raw:
@@ -36,14 +34,11 @@ def _list_direct_children(root: Path) -> list[DirEntry]:
         children = sorted(p for p in root.iterdir() if p.is_dir())
     except OSError:
         return []
-    entries: list[DirEntry] = []
-    for child in children:
-        if child.name.startswith("."):
-            continue
-        entries.append(DirEntry(path=str(child), name=child.name, depth=1))
-        if len(entries) >= MAX_ENTRIES:
-            break
-    return entries
+    return [
+        DirEntry(path=str(child), name=child.name, depth=1)
+        for child in children
+        if not child.name.startswith(".")
+    ]
 
 
 @router.get("/output-dirs", operation_id="listOutputDirs")
