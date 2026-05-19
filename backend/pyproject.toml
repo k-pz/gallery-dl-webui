@@ -29,14 +29,11 @@ dev = [
     "ruff>=0.15.13",
     "ty>=0.0.37",
 ]
-# Build-time only — needed to render the docs site (CI + `mise run docs:*`).
-# mkdocstrings reads the backend source directly, so it shares this venv to
-# pick up the live package import.
+# Build-time only — pydoc-markdown produces the per-module reference for the
+# GitHub wiki (CI: .github/workflows/wiki.yml, local: `mise run wiki:build`).
+# It must share the backend venv so it can import the live package.
 docs = [
-    "mkdocs>=1.6",
-    "mkdocs-material>=9.5",
-    "mkdocs-include-markdown-plugin>=7.0",
-    "mkdocstrings[python]>=0.27",
+    "pydoc-markdown>=4.8",
 ]
 
 [tool.ruff]
