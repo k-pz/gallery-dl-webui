@@ -11,6 +11,8 @@ from __future__ import annotations
 import os
 import time
 
+from gallery_dl.exception import StopExtraction
+
 from backend.app import create_app
 from backend.settings import Settings
 
@@ -56,7 +58,10 @@ class _SlowFakeGallery(FakeGallery):
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_bytes(b"x")
             if on_file_complete is not None:
-                on_file_complete(rel)
+                try:
+                    on_file_complete(rel)
+                except StopExtraction:
+                    break
             if "slow" in url:
                 time.sleep(0.4)
         return 0, list(self._config.records_for.get(url, []))

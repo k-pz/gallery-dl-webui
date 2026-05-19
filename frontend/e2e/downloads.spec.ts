@@ -54,4 +54,58 @@ test.describe("downloads UI", () => {
     // freeze where polling stopped before the final progress fetch landed.
     await expect(page.getByText(/5\s*\/\s*5\s+files/i)).toBeVisible({ timeout: 30_000 });
   });
+
+  test("cancels a slow download from the active job card", async ({ page }) => {
+    await page.getByLabel(/gallery url/i).fill(SLOW_URL);
+    await page.getByRole("button", { name: /^download$/i }).click();
+
+    // Wait for the slow URL to appear in the active job card.
+    await expect(page.getByTitle(SLOW_URL).first()).toBeVisible();
+
+    // The Cancel button is only visible while the job is non-terminal.
+    const cancelBtn = page.getByRole("button", { name: /^cancel$/i });
+    await expect(cancelBtn).toBeVisible({ timeout: 10_000 });
+    await cancelBtn.click();
+
+    // Once cancelled, the active card swaps Cancel for Requeue and the badge
+    // turns into "cancelled".
+    await expect(page.getByRole("button", { name: /^requeue$/i }).first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      page
+        .locator(".mantine-Badge-root")
+        .getByText(/^cancelled$/i)
+        .first(),
+    ).toBeVisible();
+  });
+
+  test("requeues a completed download back to running", async ({ page }) => {
+    await page.getByLabel(/gallery url/i).fill(OK_URL);
+    await page.getByRole("button", { name: /^download$/i }).click();
+
+    // Wait for completion of the first run.
+    await expect(page.getByText(/files:\s*3\s*\/\s*3/i)).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page
+        .locator(".mantine-Badge-root")
+        .getByText(/^completed$/i)
+        .first(),
+    ).toBeVisible();
+
+    // Click Requeue and watch the badge return to a non-terminal state.
+    await page.getByRole("button", { name: /^requeue$/i }).click();
+    const badge = page.locator(".mantine-Badge-root").first();
+    await expect(badge).not.toHaveText(/completed/i, { timeout: 5_000 });
+
+    // It should complete again.
+    await expect(
+      page
+        .locator(".mantine-Badge-root")
+        .getByText(/^completed$/i)
+        .first(),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
+  });
 });

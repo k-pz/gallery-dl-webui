@@ -219,6 +219,45 @@ class Storage:
         )
         await self._db.commit()
 
+    async def cancel_pending(self, id_: int) -> bool:
+        """Atomically flip a still-pending row to cancelled. Returns True if changed."""
+        cursor = await self._db.execute(
+            "UPDATE downloads SET status = 'cancelled', finished_at = ? "
+            "WHERE id = ? AND status = 'pending'",
+            (_now(), id_),
+        )
+        await self._db.commit()
+        return (cursor.rowcount or 0) > 0
+
+    async def mark_cancelled(self, id_: int, files_downloaded: int) -> None:
+        await self._db.execute(
+            "UPDATE downloads SET status = 'cancelled', finished_at = ?, "
+            "files_downloaded = ? WHERE id = ?",
+            (_now(), files_downloaded, id_),
+        )
+        await self._db.commit()
+
+    async def reset_to_pending(self, id_: int) -> bool:
+        """Reset a terminal row back to pending so the worker can re-pick it up.
+
+        Also clears the cached manifest so the next run re-extracts (the gallery
+        may have grown new chapters since the last attempt).
+        """
+        cursor = await self._db.execute(
+            "UPDATE downloads SET status = 'pending', started_at = NULL, "
+            "finished_at = NULL, exit_code = NULL, files_downloaded = 0, "
+            "files_expected = NULL, error = NULL, postprocess_status = NULL, "
+            "postprocess_chapters_packed = NULL, postprocess_error = NULL "
+            "WHERE id = ? AND status IN ('completed', 'failed', 'cancelled')",
+            (id_,),
+        )
+        if (cursor.rowcount or 0) == 0:
+            await self._db.commit()
+            return False
+        await self._db.execute("DELETE FROM download_files WHERE download_id = ?", (id_,))
+        await self._db.commit()
+        return True
+
     async def mark_interrupted_on_boot(self) -> int:
         cursor = await self._db.execute(
             "UPDATE downloads SET status = 'failed', finished_at = ?, "
