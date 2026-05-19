@@ -4,14 +4,12 @@ import {
   Badge,
   Card,
   Group,
-  Loader,
   SegmentedControl,
   Select,
   Stack,
   Switch,
   Text,
   TextInput,
-  Title,
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
@@ -27,9 +25,12 @@ import {
 import type { TargetOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
+import { makeNeedleMatcher } from "../lib/listFilters";
 import { REFETCH_LIST_MS } from "../lib/polling";
 import { isActive, statusColor } from "../lib/status";
 import { formatRel } from "../lib/time";
+import { ListHeader } from "./ListHeader";
+import { ListToolbar } from "./ListToolbar";
 
 type WatchedFilter = "any" | "watched" | "unwatched";
 type StatusFilter = "any" | "completed" | "failed" | "active" | "no-runs";
@@ -57,12 +58,13 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
 
   const visible = useMemo(() => {
     if (!targets) return [];
-    const needle = search.trim().toLowerCase();
+    const matchesNeedle = makeNeedleMatcher<TargetOut>(
+      search,
+      (t) => t.name,
+      (t) => t.url,
+    );
     const filtered = targets.filter((t) => {
-      if (needle) {
-        const haystack = `${t.name ?? ""} ${t.url}`.toLowerCase();
-        if (!haystack.includes(needle)) return false;
-      }
+      if (!matchesNeedle(t)) return false;
       if (watchedFilter === "watched" && !t.watched) return false;
       if (watchedFilter === "unwatched" && t.watched) return false;
       if (extractorFilter && t.extractor !== extractorFilter) return false;
@@ -100,79 +102,74 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
   return (
     <Card withBorder shadow="sm" padding="lg">
       <Stack gap="sm">
-        <Group justify="space-between" align="center" wrap="wrap">
-          <Group gap="xs" align="center">
-            <Title order={3}>Library</Title>
-            {totalCount > 0 && (
-              <Text size="sm" c="dimmed">
-                {filtersActive
-                  ? `${visible.length} of ${totalCount}`
-                  : `${totalCount} ${totalCount === 1 ? "series" : "series"}`}
-              </Text>
-            )}
-          </Group>
-          {isLoading && <Loader size="xs" />}
-        </Group>
+        <ListHeader
+          title="Library"
+          titleOrder={3}
+          totalCount={totalCount}
+          visibleCount={visible.length}
+          filtersActive={filtersActive}
+          isLoading={isLoading}
+          formatTotal={(n) => `${n} series`}
+        />
         {totalCount > 0 && (
-          <Stack gap="xs">
-            <Group gap="xs" align="flex-end" wrap="wrap">
-              <TextInput
-                placeholder="Search name or URL"
-                value={search}
-                onChange={(e) => setSearch(e.currentTarget.value)}
-                style={{ flex: 1, minWidth: 200 }}
-                aria-label="Filter library by name or URL"
-              />
-              <Select
-                label="Status"
+          <ListToolbar
+            search={search}
+            setSearch={setSearch}
+            searchPlaceholder="Search name or URL"
+            searchAriaLabel="Filter library by name or URL"
+            searchMinWidth={200}
+            belowChildren={
+              <SegmentedControl
+                value={watchedFilter}
+                onChange={(v) => setWatchedFilter(v as WatchedFilter)}
                 data={[
-                  { value: "any", label: "Any" },
-                  { value: "completed", label: "Completed" },
-                  { value: "failed", label: "Failed" },
-                  { value: "active", label: "Active" },
-                  { value: "no-runs", label: "Never run" },
+                  { value: "any", label: "All" },
+                  { value: "watched", label: "Watched" },
+                  { value: "unwatched", label: "Unwatched" },
                 ]}
-                value={statusFilter}
-                onChange={(v) => setStatusFilter((v as StatusFilter) ?? "any")}
-                w={140}
-                comboboxProps={{ withinPortal: true }}
+                size="xs"
               />
-              <Select
-                label="Extractor"
-                data={[
-                  { value: "", label: "Any" },
-                  ...extractorOptions.map((e) => ({ value: e, label: e })),
-                ]}
-                value={extractorFilter ?? ""}
-                onChange={(v) => setExtractorFilter(v ? v : null)}
-                w={160}
-                comboboxProps={{ withinPortal: true }}
-                disabled={extractorOptions.length === 0}
-              />
-              <Select
-                label="Sort by"
-                data={[
-                  { value: "recent", label: "Last downloaded" },
-                  { value: "name", label: "Name" },
-                  { value: "created", label: "Added" },
-                ]}
-                value={sortKey}
-                onChange={(v) => setSortKey((v as SortKey) ?? "recent")}
-                w={170}
-                comboboxProps={{ withinPortal: true }}
-              />
-            </Group>
-            <SegmentedControl
-              value={watchedFilter}
-              onChange={(v) => setWatchedFilter(v as WatchedFilter)}
+            }
+          >
+            <Select
+              label="Status"
               data={[
-                { value: "any", label: "All" },
-                { value: "watched", label: "Watched" },
-                { value: "unwatched", label: "Unwatched" },
+                { value: "any", label: "Any" },
+                { value: "completed", label: "Completed" },
+                { value: "failed", label: "Failed" },
+                { value: "active", label: "Active" },
+                { value: "no-runs", label: "Never run" },
               ]}
-              size="xs"
+              value={statusFilter}
+              onChange={(v) => setStatusFilter((v as StatusFilter) ?? "any")}
+              w={140}
+              comboboxProps={{ withinPortal: true }}
             />
-          </Stack>
+            <Select
+              label="Extractor"
+              data={[
+                { value: "", label: "Any" },
+                ...extractorOptions.map((e) => ({ value: e, label: e })),
+              ]}
+              value={extractorFilter ?? ""}
+              onChange={(v) => setExtractorFilter(v ? v : null)}
+              w={160}
+              comboboxProps={{ withinPortal: true }}
+              disabled={extractorOptions.length === 0}
+            />
+            <Select
+              label="Sort by"
+              data={[
+                { value: "recent", label: "Last downloaded" },
+                { value: "name", label: "Name" },
+                { value: "created", label: "Added" },
+              ]}
+              value={sortKey}
+              onChange={(v) => setSortKey((v as SortKey) ?? "recent")}
+              w={170}
+              comboboxProps={{ withinPortal: true }}
+            />
+          </ListToolbar>
         )}
         {totalCount === 0 && (
           <Text size="sm" c="dimmed">
