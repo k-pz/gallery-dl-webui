@@ -247,11 +247,13 @@ def _pack_chapter_sync(
     part = target.with_suffix(target.suffix + ".part")
     if part.exists():
         part.unlink()
-    pages = list(ch.pages)
-    if not pages:
-        pages = sorted(
-            p for p in ch.dir.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES
-        )
+    # Enumerate the chapter directory rather than reuse `ch.pages`: gallery-dl
+    # may rewrite a file's extension mid-download when the body's signature
+    # disagrees with the URL (e.g. a `.png` URL serving JPEG bytes), so the
+    # path captured at handle_url time can be stale.
+    pages = sorted(
+        p for p in ch.dir.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES
+    )
     if not pages:
         raise RuntimeError(f"no image pages found in {ch.dir}")
 

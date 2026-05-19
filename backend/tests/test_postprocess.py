@@ -55,6 +55,30 @@ async def test_run_packs_chapter_into_cbz(tmp_path: Path) -> None:
     assert sorted([n for n in names if n != "ComicInfo.xml"]) == ["001.jpg", "002.jpg"]
 
 
+async def test_run_uses_disk_files_when_recorded_extension_is_stale(tmp_path: Path) -> None:
+    # gallery-dl rewrites a file's extension mid-download when the body's
+    # signature disagrees with the URL — the record captured at handle_url
+    # time can therefore point at a name that no longer exists on disk.
+    downloads_dir = tmp_path / "downloads"
+    output_dir = tmp_path / "out"
+    ch_dir = downloads_dir / "fake" / "My Series" / "c1"
+    ch_dir.mkdir(parents=True)
+    (ch_dir / "001.jpg").write_bytes(b"\xff\xd8\xff")
+    (ch_dir / "002.jpg").write_bytes(b"\xff\xd8\xff")
+    stale_records = [
+        FileRecord("fake", "My Series", "1", "", "", "", "", "", ch_dir / "001.png"),
+        FileRecord("fake", "My Series", "1", "", "", "", "", "", ch_dir / "002.png"),
+    ]
+
+    result = await run(stale_records, output_dir, downloads_dir, delete_raw=False)
+
+    assert result.failed == 0
+    assert result.succeeded == 1
+    with zipfile.ZipFile(output_dir / "My Series" / "My Series - c001.cbz") as zf:
+        names = zf.namelist()
+    assert sorted(n for n in names if n != "ComicInfo.xml") == ["001.jpg", "002.jpg"]
+
+
 async def test_run_deletes_raw_when_toggle_on(tmp_path: Path) -> None:
     downloads_dir = tmp_path / "downloads"
     output_dir = tmp_path / "out"
