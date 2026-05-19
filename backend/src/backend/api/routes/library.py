@@ -131,20 +131,10 @@ async def import_library(
                     f"series[{idx}] ({url}): output_dir requires postprocess_root to be set"
                 )
                 continue
-            # Pre-check that the path is under root before calling
-            # validate_under_root, which mkdirs as a side effect.
+            # Two-phase: validate (no mkdir) first so a bad path doesn't leave a
+            # stray directory behind, then create + probe.
             try:
-                candidate = Path(output_dir_raw).resolve()
-            except OSError as exc:
-                errors.append(f"series[{idx}] ({url}): bad output_dir: {exc}")
-                continue
-            root_resolved = root.resolve()
-            if candidate != root_resolved and root_resolved not in candidate.parents:
-                errors.append(
-                    f"series[{idx}] ({url}): output_dir must be under root ({root_resolved})"
-                )
-                continue
-            try:
+                validate_under_root(output_dir_raw, root, field="output_dir", create=False)
                 output_dir = str(validate_under_root(output_dir_raw, root, field="output_dir"))
             except HTTPException as exc:
                 errors.append(f"series[{idx}] ({url}): {exc.detail}")
