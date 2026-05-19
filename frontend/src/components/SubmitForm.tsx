@@ -1,4 +1,5 @@
 import { Autocomplete, Button, Card, Group, Stack, Text, TextInput, Title } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -47,11 +48,22 @@ export function SubmitForm({ onCreated }: { onCreated: (id: number) => void }) {
       setSubmitError(null);
       setTouched(false);
       onCreated(data.id);
+      notifications.show({
+        title: "Download queued",
+        message: `Job #${data.id} added to the queue.`,
+        color: "green",
+      });
       queryClient.invalidateQueries({ queryKey: listDownloadsQueryKey() });
       queryClient.invalidateQueries({ queryKey: getConfigQueryKey() });
     },
     onError: (err) => {
-      setSubmitError(extractErrorMessage(err));
+      const msg = extractErrorMessage(err);
+      setSubmitError(msg);
+      notifications.show({
+        title: "Submission failed",
+        message: msg,
+        color: "red",
+      });
     },
   });
 

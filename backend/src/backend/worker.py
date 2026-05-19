@@ -2,6 +2,8 @@ import asyncio
 import logging
 from pathlib import Path
 
+from gallery_dl.exception import StopExtraction
+
 from backend import postprocess
 from backend.gallery import Gallery
 from backend.live_progress import LiveProgress
@@ -20,6 +22,12 @@ class Worker:
         self._wakeup = asyncio.Event()
         self._stop = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
+        # `_cancelled_ids` is read from the gallery-dl worker thread and
+        # written from the asyncio loop (and cleared from both). `set` membership
+        # tests and single-element add/discard are safe under the GIL, which is
+        # all the synchronisation needed here.
+        self._cancelled_ids: set[int] = set()
+        self._current_id: int | None = None
 
     def start(self) -> None:
         self._task = asyncio.create_task(self._run(), name="downloads-worker")
@@ -36,6 +44,13 @@ class Worker:
     def notify(self) -> None:
         self._wakeup.set()
 
+    def request_cancel(self, id_: int) -> bool:
+        """Flag the in-flight job for cancellation. Returns True if it matched."""
+        if self._current_id == id_:
+            self._cancelled_ids.add(id_)
+            return True
+        return False
+
     async def _run(self) -> None:
         while not self._stop.is_set():
             self._wakeup.clear()
@@ -43,15 +58,24 @@ class Worker:
             if job is None:
                 await self._wakeup.wait()
                 continue
-            await self._process(job)
+            self._current_id = job.id
+            try:
+                await self._process(job)
+            finally:
+                self._cancelled_ids.discard(job.id)
+                self._current_id = None
 
     async def _process(self, job: Download) -> None:
         downloads_dir = self._gallery.downloads_dir
         relpaths: list[str] = []
         records: list[FileRecord] = []
         exit_code = 1
+        cancelled_during_download = False
         try:
             relpaths = await asyncio.to_thread(self._gallery.extract_manifest, job.url)
+            if job.id in self._cancelled_ids:
+                await self._storage.mark_cancelled(job.id, 0)
+                return
             await self._storage.save_manifest(job.id, relpaths)
             await self._storage.mark_running(job.id)
             self._live.start(job.id)
@@ -59,10 +83,14 @@ class Worker:
                 exit_code, records = await asyncio.to_thread(
                     self._gallery.run_download,
                     job.url,
-                    lambda rel: self._live.record(job.id, rel),
+                    self._make_progress_cb(job.id),
                 )
+                cancelled_during_download = job.id in self._cancelled_ids
                 present = await asyncio.to_thread(count_present, relpaths, downloads_dir)
-                await self._storage.finish_job(job.id, exit_code, present)
+                if cancelled_during_download:
+                    await self._storage.mark_cancelled(job.id, present)
+                else:
+                    await self._storage.finish_job(job.id, exit_code, present)
             finally:
                 self._live.clear(job.id)
         except Exception as exc:
@@ -76,8 +104,19 @@ class Worker:
             await self._storage.mark_failed(job.id, repr(exc), present)
             return
 
-        if exit_code == 0:
+        if exit_code == 0 and not cancelled_during_download:
             await self._run_postprocess(job, records, downloads_dir)
+
+    def _make_progress_cb(self, job_id: int):
+        # Raise StopExtraction so gallery-dl's own dispatcher catches it
+        # and unwinds cleanly (it treats StopExtraction as a normal stop,
+        # so job.run() still returns a status code).
+        def cb(rel: str) -> None:
+            if job_id in self._cancelled_ids:
+                raise StopExtraction()
+            self._live.record(job_id, rel)
+
+        return cb
 
     async def _run_postprocess(
         self, job: Download, records: list[FileRecord], downloads_dir: Path

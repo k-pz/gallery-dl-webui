@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { createDownload, getConfig, getDownload, getDownloadProgress, getHealth, listDownloads, type Options, putConfig } from '../sdk.gen';
-import type { CreateDownloadData, CreateDownloadError, CreateDownloadResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, ListDownloadsData, ListDownloadsResponse, PutConfigData, PutConfigError, PutConfigResponse } from '../types.gen';
+import { cancelDownload, createDownload, getConfig, getDownload, getDownloadProgress, getHealth, listDownloads, type Options, putConfig, requeueDownload } from '../sdk.gen';
+import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, ListDownloadsData, ListDownloadsResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -109,6 +109,40 @@ export const getDownloadOptions = (options: Options<GetDownloadData>) => queryOp
     },
     queryKey: getDownloadQueryKey(options)
 });
+
+/**
+ * Cancel Download
+ */
+export const cancelDownloadMutation = (options?: Partial<Options<CancelDownloadData>>): UseMutationOptions<CancelDownloadResponse, CancelDownloadError, Options<CancelDownloadData>> => {
+    const mutationOptions: UseMutationOptions<CancelDownloadResponse, CancelDownloadError, Options<CancelDownloadData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await cancelDownload({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Requeue Download
+ */
+export const requeueDownloadMutation = (options?: Partial<Options<RequeueDownloadData>>): UseMutationOptions<RequeueDownloadResponse, RequeueDownloadError, Options<RequeueDownloadData>> => {
+    const mutationOptions: UseMutationOptions<RequeueDownloadResponse, RequeueDownloadError, Options<RequeueDownloadData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await requeueDownload({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 export const getDownloadProgressQueryKey = (options: Options<GetDownloadProgressData>) => createQueryKey('getDownloadProgress', options);
 

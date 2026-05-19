@@ -65,6 +65,43 @@ async def get_download(download_id: int, storage: StorageDep) -> DownloadOut:
     return DownloadOut.from_download(d)
 
 
+@router.post("/downloads/{download_id}/cancel", operation_id="cancelDownload")
+async def cancel_download(download_id: int, storage: StorageDep, worker: WorkerDep) -> DownloadOut:
+    download = await storage.get(download_id)
+    if download is None:
+        raise HTTPException(status_code=404, detail="download not found")
+    if download.status in {"completed", "failed", "cancelled"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"download already in terminal state: {download.status}",
+        )
+    # Best-effort: tell the worker so an in-flight job unwinds on its next
+    # file callback. Independently flip a still-pending row directly.
+    worker.request_cancel(download_id)
+    await storage.cancel_pending(download_id)
+    refreshed = await storage.get(download_id)
+    assert refreshed is not None
+    return DownloadOut.from_download(refreshed)
+
+
+@router.post("/downloads/{download_id}/requeue", operation_id="requeueDownload")
+async def requeue_download(download_id: int, storage: StorageDep, worker: WorkerDep) -> DownloadOut:
+    download = await storage.get(download_id)
+    if download is None:
+        raise HTTPException(status_code=404, detail="download not found")
+    if download.status not in {"completed", "failed", "cancelled"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"can only requeue terminal jobs (current: {download.status})",
+        )
+    if not await storage.reset_to_pending(download_id):
+        raise HTTPException(status_code=409, detail="download is no longer terminal")
+    worker.notify()
+    refreshed = await storage.get(download_id)
+    assert refreshed is not None
+    return DownloadOut.from_download(refreshed)
+
+
 @router.get("/downloads/{download_id}/progress", operation_id="getDownloadProgress")
 async def get_progress(
     download_id: int,

@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, ListDownloadsData, ListDownloadsResponses, PutConfigData, PutConfigErrors, PutConfigResponses } from './types.gen';
+import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, ListDownloadsData, ListDownloadsResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -44,6 +44,16 @@ export const createDownload = <ThrowOnError extends boolean = false>(options: Op
  * Get Download
  */
 export const getDownload = <ThrowOnError extends boolean = false>(options: Options<GetDownloadData, ThrowOnError>) => (options.client ?? client).get<GetDownloadResponses, GetDownloadErrors, ThrowOnError>({ url: '/api/downloads/{download_id}', ...options });
+
+/**
+ * Cancel Download
+ */
+export const cancelDownload = <ThrowOnError extends boolean = false>(options: Options<CancelDownloadData, ThrowOnError>) => (options.client ?? client).post<CancelDownloadResponses, CancelDownloadErrors, ThrowOnError>({ url: '/api/downloads/{download_id}/cancel', ...options });
+
+/**
+ * Requeue Download
+ */
+export const requeueDownload = <ThrowOnError extends boolean = false>(options: Options<RequeueDownloadData, ThrowOnError>) => (options.client ?? client).post<RequeueDownloadResponses, RequeueDownloadErrors, ThrowOnError>({ url: '/api/downloads/{download_id}/requeue', ...options });
 
 /**
  * Get Progress

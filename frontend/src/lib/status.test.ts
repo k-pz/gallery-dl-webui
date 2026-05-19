@@ -8,6 +8,8 @@ describe("statusColor", () => {
     expect(statusColor("running")).toBe("blue");
     expect(statusColor("completed")).toBe("green");
     expect(statusColor("failed")).toBe("red");
+    expect(statusColor("cancelled")).toBe("orange");
+    expect(statusColor("cancelling")).toBe("orange");
   });
 
   it("falls back to gray for unknown statuses", () => {
@@ -17,9 +19,10 @@ describe("statusColor", () => {
 });
 
 describe("isTerminal", () => {
-  it("returns true only for completed and failed", () => {
+  it("returns true for terminal statuses", () => {
     expect(isTerminal("completed")).toBe(true);
     expect(isTerminal("failed")).toBe(true);
+    expect(isTerminal("cancelled")).toBe(true);
   });
 
   it("returns false for in-progress statuses", () => {

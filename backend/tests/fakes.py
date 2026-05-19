@@ -3,6 +3,8 @@
 from collections.abc import Callable
 from pathlib import Path
 
+from gallery_dl.exception import StopExtraction
+
 from backend.postprocess import FileRecord
 from backend.settings import Settings
 
@@ -69,5 +71,10 @@ class FakeGallery:
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_bytes(b"x")
             if on_file_complete is not None:
-                on_file_complete(rel)
+                try:
+                    on_file_complete(rel)
+                except StopExtraction:
+                    # Mirror gallery-dl: StopExtraction unwinds the job cleanly
+                    # and run() returns the current status code.
+                    break
         return 0, list(self._config.records_for.get(url, []))

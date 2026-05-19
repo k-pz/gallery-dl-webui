@@ -1,4 +1,5 @@
 import { MantineProvider } from "@mantine/core";
+import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -6,6 +7,7 @@ import App from "./App.tsx";
 import { client } from "./api/client.gen";
 
 import "@mantine/core/styles.css";
+import "@mantine/notifications/styles.css";
 
 client.setConfig({ baseUrl: "" });
 
@@ -19,6 +21,7 @@ if (!root) {
 createRoot(root).render(
   <StrictMode>
     <MantineProvider>
+      <Notifications position="top-right" />
       <QueryClientProvider client={queryClient}>
         <App />
       </QueryClientProvider>

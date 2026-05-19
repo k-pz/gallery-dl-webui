@@ -67,6 +67,95 @@ async def test_worker_runs_pending_job_to_completion(settings: Settings, storage
         await worker.stop()
 
 
+async def test_worker_cancels_running_job_mid_download(
+    settings: Settings, storage: Storage
+) -> None:
+    """Cancellation requested mid-flight unwinds gallery-dl and marks the job cancelled."""
+    config = FakeGalleryConfig()
+    # Six files; cancel after the first lands so the rest are skipped.
+    config.manifest_for["https://example/x"] = [f"ch1/{i:03d}.jpg" for i in range(6)]
+    gallery = FakeGallery(settings, config=config)
+    live = LiveProgress()
+    worker = Worker(storage, gallery, live)  # type: ignore[arg-type]
+
+    # Wrap LiveProgress.record so we can request cancellation as soon as the
+    # first file completes, deterministically catching the job mid-download.
+    original_record = live.record
+    cancel_after = {"id": -1}
+
+    def record_and_cancel(download_id: int, relpath: str) -> None:
+        original_record(download_id, relpath)
+        if download_id == cancel_after["id"]:
+            worker.request_cancel(download_id)
+
+    live.record = record_and_cancel  # type: ignore[method-assign]
+
+    worker.start()
+    try:
+        d = await storage.insert_pending("https://example/x", "fake")
+        cancel_after["id"] = d.id
+        worker.notify()
+
+        async def done() -> bool:
+            row = await storage.get(d.id)
+            return row is not None and row.status in {"cancelled", "completed", "failed"}
+
+        await _wait_for(done)
+
+        row = await storage.get(d.id)
+        assert row is not None
+        assert row.status == "cancelled"
+        assert row.finished_at is not None
+        # The cancel arrives between file callbacks, so at least one file
+        # lands before unwinding, but the bulk of the manifest is skipped.
+        assert 1 <= row.files_downloaded < 6
+    finally:
+        await worker.stop()
+
+
+async def test_worker_cancel_after_extract_skips_download(
+    settings: Settings, storage: Storage
+) -> None:
+    """A cancel that lands between manifest extract and download is honoured."""
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["ch1/001.jpg"]
+    gallery = FakeGallery(settings, config=config)
+
+    # Stamp the cancel during extract_manifest so the worker sees it on the
+    # next check (right after extract returns).
+    real_extract = gallery.extract_manifest
+
+    def extract_and_request_cancel(url: str) -> list[str]:
+        result = real_extract(url)
+        # The worker sets _current_id before starting extract, so this is safe.
+        if worker._current_id is not None:
+            worker.request_cancel(worker._current_id)
+        return result
+
+    gallery.extract_manifest = extract_and_request_cancel  # type: ignore[method-assign]
+
+    live = LiveProgress()
+    worker = Worker(storage, gallery, live)  # type: ignore[arg-type]
+    worker.start()
+    try:
+        d = await storage.insert_pending("https://example/x", "fake")
+        worker.notify()
+
+        async def done() -> bool:
+            row = await storage.get(d.id)
+            return row is not None and row.status in {"cancelled", "completed", "failed"}
+
+        await _wait_for(done)
+
+        row = await storage.get(d.id)
+        assert row is not None
+        assert row.status == "cancelled"
+        # Download phase was skipped entirely.
+        assert gallery.download_calls == []
+    finally:
+        await worker.stop()
+
+
 async def test_worker_marks_failed_when_extract_raises(
     settings: Settings, storage: Storage
 ) -> None:

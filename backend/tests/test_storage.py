@@ -248,6 +248,86 @@ async def test_migrate_adds_new_columns_to_legacy_db(tmp_path: Path) -> None:
         await s.close()
 
 
+async def test_cancel_pending_flips_status_atomically(storage: Storage) -> None:
+    d = await storage.insert_pending("https://example/x", "fake")
+    assert await storage.cancel_pending(d.id) is True
+
+    fetched = await storage.get(d.id)
+    assert fetched is not None
+    assert fetched.status == "cancelled"
+    assert fetched.finished_at is not None
+
+    # Second call is a no-op (no longer pending).
+    assert await storage.cancel_pending(d.id) is False
+
+
+async def test_cancel_pending_skips_already_running_rows(storage: Storage) -> None:
+    d = await storage.insert_pending("https://example/x", "fake")
+    await storage.claim_next_pending()  # → extracting
+
+    assert await storage.cancel_pending(d.id) is False
+    fetched = await storage.get(d.id)
+    assert fetched is not None
+    assert fetched.status == "extracting"
+
+
+async def test_mark_cancelled_records_finished_at_and_files(storage: Storage) -> None:
+    d = await storage.insert_pending("https://example/x", "fake")
+    await storage.claim_next_pending()
+    await storage.mark_cancelled(d.id, files_downloaded=3)
+
+    fetched = await storage.get(d.id)
+    assert fetched is not None
+    assert fetched.status == "cancelled"
+    assert fetched.files_downloaded == 3
+    assert fetched.finished_at is not None
+
+
+async def test_reset_to_pending_clears_terminal_fields_and_manifest(
+    storage: Storage,
+) -> None:
+    d = await storage.insert_pending("https://example/x", "fake")
+    await storage.save_manifest(d.id, ["a.jpg", "b.jpg"])
+    await storage.finish_job(d.id, exit_code=1, files_downloaded=1)
+    await storage.mark_postprocess(d.id, "failed", chapters_packed=0, error="boom")
+
+    assert await storage.reset_to_pending(d.id) is True
+
+    fetched = await storage.get(d.id)
+    assert fetched is not None
+    assert fetched.status == "pending"
+    assert fetched.started_at is None
+    assert fetched.finished_at is None
+    assert fetched.exit_code is None
+    assert fetched.files_downloaded == 0
+    assert fetched.files_expected is None
+    assert fetched.error is None
+    assert fetched.postprocess_status is None
+    assert fetched.postprocess_chapters_packed is None
+    assert fetched.postprocess_error is None
+    assert await storage.get_manifest(d.id) == []
+
+
+async def test_reset_to_pending_refuses_non_terminal(storage: Storage) -> None:
+    d = await storage.insert_pending("https://example/x", "fake")
+    # Still pending; reset must refuse.
+    assert await storage.reset_to_pending(d.id) is False
+
+    fetched = await storage.get(d.id)
+    assert fetched is not None
+    assert fetched.status == "pending"
+
+
+async def test_reset_to_pending_accepts_cancelled(storage: Storage) -> None:
+    d = await storage.insert_pending("https://example/x", "fake")
+    assert await storage.cancel_pending(d.id) is True
+    assert await storage.reset_to_pending(d.id) is True
+
+    fetched = await storage.get(d.id)
+    assert fetched is not None
+    assert fetched.status == "pending"
+
+
 async def test_manifest_cascades_on_download_delete(tmp_path: Path) -> None:
     """download_files has ON DELETE CASCADE; verify with a manual DELETE.
 
