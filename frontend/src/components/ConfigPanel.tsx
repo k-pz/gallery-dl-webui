@@ -4,11 +4,14 @@ import {
   Card,
   Group,
   Loader,
+  type MantineColorScheme,
+  SegmentedControl,
   Stack,
   Switch,
   Text,
   TextInput,
   Title,
+  useMantineColorScheme,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -22,6 +25,7 @@ import { extractErrorMessage } from "../lib/apiError";
 export function ConfigPanel() {
   const { data, isLoading } = useQuery(getConfigOptions());
   const queryClient = useQueryClient();
+  const { colorScheme, setColorScheme } = useMantineColorScheme();
 
   const [root, setRoot] = useState("");
   const [defaultDir, setDefaultDir] = useState("");
@@ -81,6 +85,25 @@ export function ConfigPanel() {
   return (
     <Card withBorder shadow="sm" padding="lg">
       <Stack gap="md">
+        <Title order={3}>Appearance</Title>
+        <Stack gap={4}>
+          <Text size="sm" fw={500}>
+            Theme
+          </Text>
+          <Text size="xs" c="dimmed">
+            Auto follows your system preference.
+          </Text>
+          <SegmentedControl
+            aria-label="Theme"
+            value={colorScheme}
+            onChange={(value) => setColorScheme(value as MantineColorScheme)}
+            data={[
+              { label: "Auto", value: "auto" },
+              { label: "Light", value: "light" },
+              { label: "Dark", value: "dark" },
+            ]}
+          />
+        </Stack>
         <Title order={3}>Postprocessing</Title>
         <Text size="sm" c="dimmed">
           When a root is set, finished downloads are packed into Komga-compatible CBZs at{" "}

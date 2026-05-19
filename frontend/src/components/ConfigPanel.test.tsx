@@ -153,6 +153,26 @@ describe("ConfigPanel", () => {
     await waitFor(() => expect(defaultInput).not.toBeDisabled());
   });
 
+  it("persists theme choice in localStorage and applies it to <html>", async () => {
+    mockFetch(async () => jsonResponse(emptyConfig));
+    window.localStorage.removeItem("mantine-color-scheme-value");
+
+    renderWithProviders(<ConfigPanel />);
+
+    const segment = (await screen.findByRole("radiogroup", {
+      name: /theme/i,
+    })) as HTMLElement;
+    fireEvent.click(screen.getByRole("radio", { name: /^dark$/i }));
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem("mantine-color-scheme-value")).toBe("dark");
+    });
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute("data-mantine-color-scheme")).toBe("dark");
+    });
+    expect(segment).toBeInTheDocument();
+  });
+
   it("sends null when both path fields are cleared", async () => {
     let stored: unknown = {
       postprocess_root: "/old",

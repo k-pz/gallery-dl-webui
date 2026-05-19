@@ -20,7 +20,7 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <MantineProvider>
+    <MantineProvider defaultColorScheme="auto">
       <Notifications position="top-right" />
       <QueryClientProvider client={queryClient}>
         <App />

@@ -18,7 +18,7 @@ export function renderWithProviders(
 ) {
   const client = options?.client ?? makeClient();
   const Wrapper = ({ children }: { children: ReactNode }) => (
-    <MantineProvider>
+    <MantineProvider defaultColorScheme="auto">
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     </MantineProvider>
   );
