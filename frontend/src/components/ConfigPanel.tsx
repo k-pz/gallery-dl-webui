@@ -18,8 +18,10 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { getConfigOptions, putConfigMutation } from "../api/@tanstack/react-query.gen";
+import type { LibraryImportResult } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
+import { exportLibrary, importLibrary } from "../lib/libraryBackup";
 import { DirectoryPicker } from "./DirectoryPicker";
 
 export function ConfigPanel() {
@@ -194,29 +196,13 @@ function LibraryBackup() {
   const [exportError, setExportError] = useState<string | null>(null);
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
-  const [importResult, setImportResult] = useState<{
-    imported: number;
-    updated: number;
-    errors: string[];
-  } | null>(null);
+  const [importResult, setImportResult] = useState<LibraryImportResult | null>(null);
 
   const doExport = async () => {
     setExporting(true);
     setExportError(null);
     try {
-      const resp = await fetch("/api/library/export");
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const text = await resp.text();
-      const blob = new Blob([text], { type: "application/yaml" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      const stamp = new Date().toISOString().slice(0, 10);
-      a.href = url;
-      a.download = `gallery-dl-library-${stamp}.yaml`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      await exportLibrary();
     } catch (err) {
       setExportError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -230,22 +216,8 @@ function LibraryBackup() {
     setImportError(null);
     setImportResult(null);
     try {
-      const text = await file.text();
-      const resp = await fetch("/api/library/import", {
-        method: "POST",
-        headers: { "content-type": "application/yaml" },
-        body: text,
-      });
-      if (!resp.ok) {
-        const body = await resp.text();
-        throw new Error(body || `HTTP ${resp.status}`);
-      }
-      const json = (await resp.json()) as {
-        imported: number;
-        updated: number;
-        errors: string[];
-      };
-      setImportResult(json);
+      const result = await importLibrary(file);
+      setImportResult(result);
       invalidate.targets();
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
