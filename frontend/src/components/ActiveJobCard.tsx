@@ -11,22 +11,21 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
   cancelDownloadMutation,
   getDownloadOptions,
-  getDownloadQueryKey,
-  listDownloadsQueryKey,
   requeueDownloadMutation,
 } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
+import { useDataInvalidators } from "../lib/invalidate";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
 import { isCancellable, isTerminal, JOB_STEPS, jobStep, statusColor } from "../lib/status";
 import { ProgressCard } from "./ProgressCard";
 
 export function ActiveJobCard({ jobId }: { jobId: number }) {
-  const queryClient = useQueryClient();
+  const invalidate = useDataInvalidators();
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelIntent, setCancelIntent] = useState(false);
 
@@ -53,11 +52,9 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
     setActionError(null);
   }, [jobId]);
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: listDownloadsQueryKey() });
-    queryClient.invalidateQueries({
-      queryKey: getDownloadQueryKey({ path: { download_id: jobId } }),
-    });
+  const refresh = () => {
+    invalidate.downloads();
+    invalidate.download(jobId);
   };
 
   const cancel = useMutation({
@@ -72,7 +69,7 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
         message: `Job #${jobId} is being cancelled.`,
         color: "orange",
       });
-      invalidate();
+      refresh();
     },
     onError: (err) => {
       setCancelIntent(false);
@@ -98,7 +95,7 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
         message: `Job #${jobId} has been queued again.`,
         color: "blue",
       });
-      invalidate();
+      refresh();
     },
     onError: (err) => {
       const msg = extractErrorMessage(err);

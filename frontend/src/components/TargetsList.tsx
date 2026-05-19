@@ -15,18 +15,18 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import {
   deleteTargetMutation,
   getConfigOptions,
   listTargetsOptions,
-  listTargetsQueryKey,
   pollTargetMutation,
   updateTargetMutation,
 } from "../api/@tanstack/react-query.gen";
 import type { TargetOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
+import { useDataInvalidators } from "../lib/invalidate";
 import { REFETCH_LIST_MS } from "../lib/polling";
 import { isActive, statusColor } from "../lib/status";
 import { formatRel } from "../lib/time";
@@ -220,7 +220,7 @@ function TargetRow({
   defaultPeriod: string;
   onOpenJob?: (jobId: number) => void;
 }) {
-  const queryClient = useQueryClient();
+  const invalidate = useDataInvalidators();
   const [period, setPeriod] = useState(target.watch_period ?? "");
   const [periodDirty, setPeriodDirty] = useState(false);
   const [periodError, setPeriodError] = useState<string | null>(null);
@@ -230,16 +230,12 @@ function TargetRow({
     if (!periodDirty) setPeriod(target.watch_period ?? "");
   }, [target.watch_period, periodDirty]);
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: listTargetsQueryKey() });
-  };
-
   const update = useMutation({
     ...updateTargetMutation(),
     onSuccess: () => {
       setPeriodDirty(false);
       setPeriodError(null);
-      invalidate();
+      invalidate.targets();
     },
     onError: (err) => setPeriodError(extractErrorMessage(err)),
   });
@@ -252,7 +248,7 @@ function TargetRow({
         message: `Queued a fresh download for ${target.url}`,
         color: "blue",
       });
-      invalidate();
+      invalidate.targets();
     },
     onError: (err) =>
       notifications.show({
@@ -270,7 +266,7 @@ function TargetRow({
         message: target.url,
         color: "gray",
       });
-      invalidate();
+      invalidate.targets();
     },
     onError: (err) =>
       notifications.show({
