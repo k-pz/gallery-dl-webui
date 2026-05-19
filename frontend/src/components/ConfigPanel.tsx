@@ -15,20 +15,16 @@ import {
   Title,
   useMantineColorScheme,
 } from "@mantine/core";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import {
-  getConfigOptions,
-  getConfigQueryKey,
-  listTargetsQueryKey,
-  putConfigMutation,
-} from "../api/@tanstack/react-query.gen";
+import { getConfigOptions, putConfigMutation } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
+import { useDataInvalidators } from "../lib/invalidate";
 import { DirectoryPicker } from "./DirectoryPicker";
 
 export function ConfigPanel() {
   const { data, isLoading } = useQuery(getConfigOptions());
-  const queryClient = useQueryClient();
+  const invalidate = useDataInvalidators();
   const { colorScheme, setColorScheme } = useMantineColorScheme();
 
   const [root, setRoot] = useState("");
@@ -52,7 +48,7 @@ export function ConfigPanel() {
     onSuccess: () => {
       setSubmitError(null);
       setSavedAt(Date.now());
-      queryClient.invalidateQueries({ queryKey: getConfigQueryKey() });
+      invalidate.config();
     },
     onError: (err) => {
       setSubmitError(extractErrorMessage(err));
@@ -193,7 +189,7 @@ export function ConfigPanel() {
 }
 
 function LibraryBackup() {
-  const queryClient = useQueryClient();
+  const invalidate = useDataInvalidators();
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [importBusy, setImportBusy] = useState(false);
@@ -250,7 +246,7 @@ function LibraryBackup() {
         errors: string[];
       };
       setImportResult(json);
-      queryClient.invalidateQueries({ queryKey: listTargetsQueryKey() });
+      invalidate.targets();
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
     } finally {

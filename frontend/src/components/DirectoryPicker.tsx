@@ -9,14 +9,11 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import {
-  createOutputDirMutation,
-  listOutputDirsOptions,
-  listOutputDirsQueryKey,
-} from "../api/@tanstack/react-query.gen";
+import { createOutputDirMutation, listOutputDirsOptions } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
+import { useDataInvalidators } from "../lib/invalidate";
 
 export interface DirectoryPickerProps {
   label: string;
@@ -42,7 +39,7 @@ export function DirectoryPicker({
   enabled,
   extraOption,
 }: DirectoryPickerProps) {
-  const queryClient = useQueryClient();
+  const invalidate = useDataInvalidators();
   const { data, isLoading } = useQuery({
     ...listOutputDirsOptions(),
     enabled,
@@ -74,7 +71,7 @@ export function DirectoryPicker({
       setShowCreate(false);
       setCreatePath("");
       onChange(entry.path);
-      queryClient.invalidateQueries({ queryKey: listOutputDirsQueryKey() });
+      invalidate.outputDirs();
     },
     onError: (err) => setCreateError(extractErrorMessage(err)),
   });

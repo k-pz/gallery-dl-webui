@@ -1,22 +1,17 @@
 import { Button, Card, Group, Stack, Text, TextInput, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import {
-  createDownloadMutation,
-  getConfigOptions,
-  getConfigQueryKey,
-  listDownloadsQueryKey,
-  listTargetsQueryKey,
-} from "../api/@tanstack/react-query.gen";
+import { createDownloadMutation, getConfigOptions } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
+import { useDataInvalidators } from "../lib/invalidate";
 import { DirectoryPicker } from "./DirectoryPicker";
 
 export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } = {}) {
   const [url, setUrl] = useState("");
   const [outputDir, setOutputDir] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const queryClient = useQueryClient();
+  const invalidate = useDataInvalidators();
   const { data: config } = useQuery(getConfigOptions());
 
   // Seed the output-dir field with the default whenever the config arrives or changes,
@@ -40,9 +35,9 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
         message: `Job #${data.id} added to the queue.`,
         color: "green",
       });
-      queryClient.invalidateQueries({ queryKey: listDownloadsQueryKey() });
-      queryClient.invalidateQueries({ queryKey: listTargetsQueryKey() });
-      queryClient.invalidateQueries({ queryKey: getConfigQueryKey() });
+      invalidate.downloads();
+      invalidate.targets();
+      invalidate.config();
     },
     onError: (err) => {
       const msg = extractErrorMessage(err);

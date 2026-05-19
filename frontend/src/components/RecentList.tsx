@@ -13,17 +13,16 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import {
   cancelDownloadMutation,
-  getDownloadQueryKey,
   listDownloadsOptions,
-  listDownloadsQueryKey,
   requeueDownloadMutation,
 } from "../api/@tanstack/react-query.gen";
 import type { DownloadOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
+import { useDataInvalidators } from "../lib/invalidate";
 import { REFETCH_LIST_MS } from "../lib/polling";
 import {
   CANCELLING_LABEL,
@@ -53,7 +52,7 @@ export function RecentList({
   onSelect: (id: number) => void;
   selectedId: number | null;
 }) {
-  const queryClient = useQueryClient();
+  const invalidate = useDataInvalidators();
   const { data, isLoading } = useQuery({
     ...listDownloadsOptions(),
     refetchInterval: REFETCH_LIST_MS,
@@ -83,11 +82,9 @@ export function RecentList({
     });
   }, [data]);
 
-  const invalidate = (id: number) => {
-    queryClient.invalidateQueries({ queryKey: listDownloadsQueryKey() });
-    queryClient.invalidateQueries({
-      queryKey: getDownloadQueryKey({ path: { download_id: id } }),
-    });
+  const refresh = (id: number) => {
+    invalidate.downloads();
+    invalidate.download(id);
   };
 
   const cancel = useMutation({
@@ -106,7 +103,7 @@ export function RecentList({
         message: `Job #${d.id} is being cancelled.`,
         color: "orange",
       });
-      invalidate(d.id);
+      refresh(d.id);
     },
     onError: (err, vars) => {
       const id = vars.path.download_id;
@@ -140,7 +137,7 @@ export function RecentList({
         message: `Job #${d.id} has been queued again.`,
         color: "blue",
       });
-      invalidate(d.id);
+      refresh(d.id);
     },
     onError: (err, vars) => {
       notifications.show({
