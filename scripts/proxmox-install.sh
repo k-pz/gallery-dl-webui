@@ -22,6 +22,16 @@
 # Komga-friendly CBZ output. If that path is outside DATA_DIR, it must appear
 # in EXTRA_RW_PATHS — otherwise the systemd sandbox will refuse writes (the UI
 # surfaces this as a 400 from a save-time write-probe).
+#
+# CIFS / NAS share: by default the script asks at install time whether to
+# mount a CIFS share from a NAS on the Proxmox host and bind-mount it into
+# the CT (at /mnt/nas). Follows
+# https://forum.proxmox.com/threads/tutorial-unprivileged-lxcs-mount-cifs-shares.101795/
+# To skip the prompt non-interactively, set NAS_SHARE="" explicitly. To
+# pre-fill answers, set NAS_SHARE / NAS_USER / NAS_PASS (and optionally
+# NAS_MOUNT, NAS_HOST_DIR, NAS_LXC_GID). When configured, NAS_MOUNT is added
+# to EXTRA_RW_PATHS automatically and the service user is added to the
+# in-CT 'lxc_shares' group.
 
 set -euo pipefail
 
@@ -51,6 +61,16 @@ WEBUI_PORT="${WEBUI_PORT:-8000}"
 # write to (added to systemd's ReadWritePaths via a drop-in).
 EXTRA_RW_PATHS="${EXTRA_RW_PATHS:-}"
 
+# CIFS / NAS share. NAS_SHARE is left _unset_ (not empty) by default so we
+# know whether to prompt interactively. To explicitly skip without a prompt,
+# run with NAS_SHARE="" (note: the empty string opts out).
+NAS_SHARE="${NAS_SHARE-__PROMPT__}"
+NAS_USER="${NAS_USER-}"
+NAS_PASS="${NAS_PASS-}"
+NAS_MOUNT="${NAS_MOUNT:-/mnt/nas}"
+NAS_HOST_DIR="${NAS_HOST_DIR:-/mnt/lxc_shares/${CT_HOSTNAME}}"
+NAS_LXC_GID="${NAS_LXC_GID:-10000}"
+
 # ---- Helpers --------------------------------------------------------------
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -67,6 +87,90 @@ command -v pveam >/dev/null || die "pveam not found (run this on a Proxmox VE ho
 
 if pct status "$CTID" >/dev/null 2>&1; then
     die "CT $CTID already exists — pick a different CTID or destroy it first"
+fi
+
+# ---- NAS share prompt -----------------------------------------------------
+
+if [[ "$NAS_SHARE" == "__PROMPT__" ]]; then
+    if [[ -t 0 ]]; then
+        read -r -p "Mount a CIFS NAS share into the CT at ${NAS_MOUNT}? [y/N] " _ans
+        case "${_ans,,}" in
+            y|yes)
+                read -r -p "  NAS share (e.g. //nas.local/media): " NAS_SHARE
+                read -r -p "  SMB username: "                       NAS_USER
+                read -r -s -p "  SMB password: "                    NAS_PASS
+                echo
+                ;;
+            *)
+                NAS_SHARE=""
+                ;;
+        esac
+    else
+        NAS_SHARE=""
+    fi
+fi
+
+if [[ -n "$NAS_SHARE" ]]; then
+    [[ "$NAS_SHARE" == //* ]] || die "NAS_SHARE must look like //host/share (got: $NAS_SHARE)"
+    [[ -n "$NAS_USER" ]] || die "NAS_USER must be set when NAS_SHARE is provided"
+    [[ -n "$NAS_PASS" ]] || die "NAS_PASS must be set when NAS_SHARE is provided"
+fi
+
+# ---- Host: CIFS share -----------------------------------------------------
+#
+# On unprivileged LXCs, UID/GID 0 inside the CT maps to 100000 on the host.
+# We mount the CIFS share on the host as uid=100000 (=root in CT) and
+# gid=10000+100000=110000 (=lxc_shares group in CT), then bind-mount the
+# host dir into the CT. dir/file_mode 0770 gives r/w/x to root and to the
+# in-CT lxc_shares group (which $APP_USER will be added to).
+
+if [[ -n "$NAS_SHARE" ]]; then
+    log "preparing CIFS share $NAS_SHARE on Proxmox host"
+
+    if ! command -v mount.cifs >/dev/null 2>&1; then
+        log "installing cifs-utils on host"
+        apt-get update -q
+        apt-get install -y --no-install-recommends cifs-utils
+    fi
+
+    mkdir -p "$NAS_HOST_DIR"
+
+    CREDS_FILE="/root/.smbcredentials-${CT_HOSTNAME}"
+    ( umask 077 && cat > "$CREDS_FILE" <<EOF
+username=${NAS_USER}
+password=${NAS_PASS}
+EOF
+    )
+    chmod 0600 "$CREDS_FILE"
+
+    NAS_HOST_GID=$((100000 + NAS_LXC_GID))
+
+    FSTAB_OPTS="_netdev,x-systemd.automount,noatime,uid=100000,gid=${NAS_HOST_GID},dir_mode=0770,file_mode=0770,credentials=${CREDS_FILE}"
+    FSTAB_LINE="${NAS_SHARE} ${NAS_HOST_DIR} cifs ${FSTAB_OPTS} 0 0"
+
+    if grep -qE "^[^#].* ${NAS_HOST_DIR} cifs " /etc/fstab; then
+        log "fstab already has a cifs entry for $NAS_HOST_DIR — leaving it as-is"
+    else
+        log "adding fstab entry for $NAS_HOST_DIR"
+        printf '\n# CIFS share for LXC %s (added by proxmox-install.sh)\n%s\n' \
+            "$CTID" "$FSTAB_LINE" >> /etc/fstab
+    fi
+
+    systemctl daemon-reload
+
+    if mountpoint -q "$NAS_HOST_DIR"; then
+        log "$NAS_HOST_DIR is already mounted"
+    else
+        log "mounting $NAS_HOST_DIR (validating credentials)"
+        mount "$NAS_HOST_DIR" || die "failed to mount $NAS_SHARE at $NAS_HOST_DIR — check share path/credentials"
+    fi
+
+    # Make the in-CT mount path writable by the systemd sandbox.
+    if [[ -z "$EXTRA_RW_PATHS" ]]; then
+        EXTRA_RW_PATHS="$NAS_MOUNT"
+    else
+        EXTRA_RW_PATHS="${EXTRA_RW_PATHS}:${NAS_MOUNT}"
+    fi
 fi
 
 # ---- Template -------------------------------------------------------------
@@ -118,6 +222,11 @@ pct create "$CTID" "$TEMPLATE_REF" \
     --features     nesting=1 \
     --ostype       debian
 
+if [[ -n "$NAS_SHARE" ]]; then
+    log "bind-mounting $NAS_HOST_DIR into CT at $NAS_MOUNT"
+    pct set "$CTID" -mp0 "${NAS_HOST_DIR},mp=${NAS_MOUNT}"
+fi
+
 log "starting CT $CTID"
 pct start "$CTID"
 
@@ -144,6 +253,12 @@ in_ct_sh "id -u '$APP_USER' >/dev/null 2>&1 || \
     useradd --system --home-dir '$DATA_DIR' --create-home --shell /usr/sbin/nologin '$APP_USER'"
 in_ct_sh "mkdir -p '$APP_DIR' '$DATA_DIR/downloads' && \
     chown -R '$APP_USER:$APP_USER' '$APP_DIR' '$DATA_DIR'"
+
+if [[ -n "$NAS_SHARE" ]]; then
+    log "creating 'lxc_shares' group (GID ${NAS_LXC_GID}) and adding $APP_USER to it"
+    in_ct_sh "getent group lxc_shares >/dev/null || groupadd -g ${NAS_LXC_GID} lxc_shares"
+    in_ct_sh "usermod -aG lxc_shares '${APP_USER}'"
+fi
 
 log "installing mise into /usr/local/bin"
 in_ct_sh "curl -fsSL https://mise.run | sh"
@@ -272,3 +387,8 @@ echo "  URL:     http://${CT_IP}:${WEBUI_PORT}"
 echo
 echo "  Logs:    pct exec $CTID -- journalctl -u gallery-dl-webui -f"
 echo "  Shell:   pct enter $CTID"
+if [[ -n "$NAS_SHARE" ]]; then
+    echo
+    echo "  NAS:     $NAS_SHARE → ${NAS_HOST_DIR} (host) → ${NAS_MOUNT} (in CT)"
+    echo "           creds at /root/.smbcredentials-${CT_HOSTNAME} on the host"
+fi
