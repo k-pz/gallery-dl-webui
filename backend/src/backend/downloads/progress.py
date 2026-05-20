@@ -4,11 +4,11 @@ from pathlib import Path
 from typing import Literal
 
 # downloading: at least one expected file is still missing on disk / in-memory.
-# processing:  all files present but pack-into-CBZ hasn't completed yet for this
-#              chapter — either postprocess is running or it has yet to begin.
+# downloaded: all files are present, but postprocess has not started yet.
+# processing: all files are present and postprocess is actively running.
 # completed:   the chapter has been packed (CBZ exists or chapter dir gone after
 #              delete_raw) OR the whole job's postprocess has finished.
-ChapterStage = Literal["downloading", "processing", "completed"]
+ChapterStage = Literal["downloading", "downloaded", "processing", "completed"]
 
 
 @dataclass(frozen=True)
@@ -68,7 +68,9 @@ def _stage_for(
     if files_total > 0 and not dir_existed:
         return "completed"
     if files_total > 0 and files_present >= files_total:
-        return "processing"
+        if postprocess_status == "running":
+            return "processing"
+        return "downloaded"
     return "downloading"
 
 

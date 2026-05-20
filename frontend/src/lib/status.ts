@@ -36,14 +36,39 @@ export function isCancellable(status: Status): boolean {
   return !isTerminal(status);
 }
 
-// User-facing job lifecycle. We collapse the backend's three-stage main run
-// (pending → extracting → running) plus the separate postprocess pass into a
-// five-step picture: Scheduled → Fetching metadata → Downloading → Processing
-// → Completed.
+const JOB_STATUS_LABELS: Record<string, string> = {
+  pending: "Scheduled",
+  extracting: "Fetching metadata",
+  running: "Downloading",
+  completed: "Completed",
+  failed: "Failed",
+  cancelled: "Cancelled",
+  [CANCELLING_LABEL]: "Cancelling…",
+};
+
+export function jobStatusLabel(status: string): string {
+  return JOB_STATUS_LABELS[status] ?? status;
+}
+
+const CHAPTER_STAGE_LABELS: Record<string, string> = {
+  downloading: "Downloading",
+  downloaded: "Downloaded",
+  processing: "Processing",
+  completed: "Completed",
+};
+
+export function chapterStageLabel(stage: string): string {
+  return CHAPTER_STAGE_LABELS[stage] ?? stage;
+}
+
+// User-facing job lifecycle. We collapse the backend's main run and
+// postprocess pass into six stages:
+// Scheduled → Fetching metadata → Downloading → Downloaded → Processing → Completed.
 export const JOB_STEPS = [
   "Scheduled",
   "Fetching metadata",
   "Downloading",
+  "Downloaded",
   "Processing",
   "Completed",
 ] as const;
@@ -103,9 +128,10 @@ function stepIndexFor(status: string, postprocessStatus: string | null | undefin
     case "running":
       return 2;
     case "completed":
-      if (postprocessStatus === "running") return 3;
-      // skipped / completed / failed / null all mean the post-download work is done.
-      return 4;
+      if (postprocessStatus === null || postprocessStatus === undefined) return 3;
+      if (postprocessStatus === "running") return 4;
+      // skipped / completed / failed all mean the post-download work is done.
+      return 5;
     case "failed":
     case "cancelled":
       // Land on whatever step we were on at the time. We don't track that

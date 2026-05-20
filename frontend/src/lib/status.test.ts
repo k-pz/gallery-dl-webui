@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isTerminal, statusColor } from "./status";
+import { chapterStageLabel, isTerminal, jobStatusLabel, jobStep, statusColor } from "./status";
 
 describe("statusColor", () => {
   it("maps each known status to its color", () => {
@@ -29,5 +29,33 @@ describe("isTerminal", () => {
     expect(isTerminal("pending")).toBe(false);
     expect(isTerminal("extracting")).toBe(false);
     expect(isTerminal("running")).toBe(false);
+  });
+});
+
+describe("jobStatusLabel", () => {
+  it("maps backend job states to lifecycle labels", () => {
+    expect(jobStatusLabel("pending")).toBe("Scheduled");
+    expect(jobStatusLabel("extracting")).toBe("Fetching metadata");
+    expect(jobStatusLabel("running")).toBe("Downloading");
+    expect(jobStatusLabel("completed")).toBe("Completed");
+  });
+});
+
+describe("jobStep", () => {
+  it("shows downloaded when files are done but postprocess has not started", () => {
+    expect(jobStep("completed", null)).toMatchObject({ label: "Downloaded", index: 3 });
+  });
+
+  it("shows processing while postprocess is running", () => {
+    expect(jobStep("completed", "running")).toMatchObject({ label: "Processing", index: 4 });
+  });
+});
+
+describe("chapterStageLabel", () => {
+  it("maps chapter stage names to title case labels", () => {
+    expect(chapterStageLabel("downloading")).toBe("Downloading");
+    expect(chapterStageLabel("downloaded")).toBe("Downloaded");
+    expect(chapterStageLabel("processing")).toBe("Processing");
+    expect(chapterStageLabel("completed")).toBe("Completed");
   });
 });

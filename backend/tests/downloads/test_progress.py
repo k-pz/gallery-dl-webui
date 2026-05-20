@@ -99,11 +99,23 @@ def test_chapter_progress_marks_partial_chapter_as_downloading(tmp_path: Path) -
     assert chapters[0].stage == "downloading"
 
 
-def test_chapter_progress_marks_full_chapter_as_processing(tmp_path: Path) -> None:
+def test_chapter_progress_marks_full_chapter_as_downloaded(tmp_path: Path) -> None:
     manifest = ["ch1/001.jpg", "ch1/002.jpg"]
     _write(tmp_path, "ch1/001.jpg", "ch1/002.jpg")
 
     chapters = chapter_progress(manifest, tmp_path)
+    assert chapters[0].stage == "downloaded"
+
+
+def test_chapter_progress_marks_full_chapter_as_processing_when_postprocess_running(
+    tmp_path: Path,
+) -> None:
+    manifest = ["ch1/001.jpg", "ch1/002.jpg"]
+    _write(tmp_path, "ch1/001.jpg", "ch1/002.jpg")
+
+    chapters = chapter_progress(
+        manifest, tmp_path, download_status="completed", postprocess_status="running"
+    )
     assert chapters[0].stage == "processing"
 
 
@@ -145,7 +157,7 @@ def test_chapter_progress_from_completed_stage_uses_in_memory_progress() -> None
     chapters = chapter_progress_from_completed(manifest, completed)
     by_name = {c.name: c for c in chapters}
 
-    assert by_name["ch1"].stage == "processing"
+    assert by_name["ch1"].stage == "downloaded"
     assert by_name["ch2"].stage == "downloading"
 
 
