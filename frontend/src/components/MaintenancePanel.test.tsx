@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { methodOf, mockFetch, urlOf } from "../test/mocks";
+import { jsonResponse, methodOf, mockFetch, urlOf } from "../test/mocks";
 import { renderWithProviders } from "../test/render";
 import { MaintenancePanel } from "./MaintenancePanel";
 
@@ -49,9 +49,9 @@ describe("MaintenancePanel", () => {
             error: null,
           };
           jobs.unshift(created);
-          return new Response(JSON.stringify(created), { status: 200 });
+          return jsonResponse(created);
         }
-        return new Response(JSON.stringify(jobs), { status: 200 });
+        return jsonResponse(jobs);
       }
       return new Response("not found", { status: 404 });
     });

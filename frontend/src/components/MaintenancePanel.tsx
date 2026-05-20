@@ -10,47 +10,23 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  listMaintenanceJobsOptions,
+  listMaintenanceJobsQueryKey,
+  scheduleMaintenanceJobMutation,
+} from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
 
-type MaintenanceJob = {
-  id: number;
-  kind: string;
-  status: string;
-  created_at: string;
-  started_at: string | null;
-  finished_at: string | null;
-  result: Record<string, unknown> | null;
-  error: string | null;
-};
-
-async function listJobs(): Promise<MaintenanceJob[]> {
-  const res = await fetch("/api/maintenance/jobs");
-  if (!res.ok) throw new Error(await res.text());
-  return (await res.json()) as MaintenanceJob[];
-}
-
-async function scheduleRenameJob(): Promise<MaintenanceJob> {
-  const res = await fetch("/api/maintenance/jobs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind: "rename_chapters" }),
-  });
-  if (!res.ok) throw new Error(await res.text());
-  return (await res.json()) as MaintenanceJob;
-}
-
 export function MaintenancePanel() {
+  const qc = useQueryClient();
   const jobs = useQuery({
-    queryKey: ["maintenance-jobs"],
-    queryFn: listJobs,
+    ...listMaintenanceJobsOptions(),
     refetchInterval: 3000,
   });
   const schedule = useMutation({
-    mutationFn: scheduleRenameJob,
-    onSuccess: async () => {
-      await jobs.refetch();
-    },
+    ...scheduleMaintenanceJobMutation(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: listMaintenanceJobsQueryKey() }),
   });
 
   return (
@@ -61,7 +37,10 @@ export function MaintenancePanel() {
           Schedule background maintenance jobs.
         </Text>
         <Group>
-          <Button onClick={() => schedule.mutate()} loading={schedule.isPending}>
+          <Button
+            onClick={() => schedule.mutate({ body: { kind: "rename_chapters" } })}
+            loading={schedule.isPending}
+          >
             Schedule chapter rename
           </Button>
         </Group>
