@@ -128,7 +128,7 @@ function stepIndexFor(status: string, postprocessStatus: string | null | undefin
     case "running":
       return 2;
     case "completed":
-      if (postprocessStatus == null) return 3;
+      if (postprocessStatus === null || postprocessStatus === undefined) return 3;
       if (postprocessStatus === "running") return 4;
       // skipped / completed / failed all mean the post-download work is done.
       return 5;
