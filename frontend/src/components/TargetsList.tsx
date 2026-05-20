@@ -27,7 +27,7 @@ import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
 import { makeNeedleMatcher } from "../lib/listFilters";
 import { REFETCH_LIST_MS } from "../lib/polling";
-import { isActive, statusColor } from "../lib/status";
+import { isActive, jobStatusLabel, statusColor } from "../lib/status";
 import { formatRel } from "../lib/time";
 import { ListHeader } from "./ListHeader";
 import { ListToolbar } from "./ListToolbar";
@@ -308,7 +308,7 @@ function TargetRow({
             )}
             <Group gap="xs">
               <Badge color={statusColor(status)} variant="light" size="sm">
-                {status}
+                {jobStatusLabel(status)}
               </Badge>
               <Text size="xs" c="dimmed">
                 {target.extractor ?? "—"}
