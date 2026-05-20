@@ -1,4 +1,4 @@
-import { ActionIcon, Badge, Card, Group, List, Select, Stack, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Box, Card, Group, Select, Stack, Text, Tooltip } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -25,6 +25,7 @@ import {
 import { ListHeader } from "./ListHeader";
 import { ListPagination } from "./ListPagination";
 import { ListToolbar } from "./ListToolbar";
+import { type SortDir, SortDirToggle } from "./SortDirToggle";
 
 type StatusFilter = "any" | "active" | "completed" | "failed" | "cancelled";
 type SortKey = "recent" | "status";
@@ -63,6 +64,7 @@ export function RecentList({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("any");
   const [sortKey, setSortKey] = useState<SortKey>("recent");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const refresh = (id: number) => {
     invalidate.downloads();
@@ -139,33 +141,37 @@ export function RecentList({
       }
       return true;
     });
+    const dir = sortDir === "asc" ? 1 : -1;
     if (sortKey === "status") {
       return [...filtered].sort((a, b) => {
         const aOrder = STATUS_ORDER[a.status] ?? 99;
         const bOrder = STATUS_ORDER[b.status] ?? 99;
-        if (aOrder !== bOrder) return aOrder - bOrder;
+        if (aOrder !== bOrder) return dir * (aOrder - bOrder);
         return b.created_at.localeCompare(a.created_at);
       });
     }
-    return filtered;
-  }, [data, search, statusFilter, sortKey]);
+    return [...filtered].sort((a, b) => dir * a.created_at.localeCompare(b.created_at));
+  }, [data, search, statusFilter, sortKey, sortDir]);
 
   const totalCount = data?.length ?? 0;
   const filtersActive = search.trim().length > 0 || statusFilter !== "any";
 
-  const pagination = usePagination(visible, `${search}|${statusFilter}|${sortKey}`);
+  const pagination = usePagination(visible, `${search}|${statusFilter}|${sortKey}|${sortDir}`);
 
   return (
-    <Card withBorder shadow="sm" padding="lg">
-      <Stack gap="xs">
-        <ListHeader
-          title="Recent"
-          titleOrder={4}
-          totalCount={totalCount}
-          visibleCount={visible.length}
-          filtersActive={filtersActive}
-          isLoading={isLoading}
-        />
+    <Card>
+      <Stack gap="md">
+        <Stack gap={4}>
+          <span className="app-section-kicker">history</span>
+          <ListHeader
+            title="Recent downloads"
+            titleOrder={4}
+            totalCount={totalCount}
+            visibleCount={visible.length}
+            filtersActive={filtersActive}
+            isLoading={isLoading}
+          />
+        </Stack>
         {totalCount > 0 && (
           <ListToolbar
             search={search}
@@ -188,23 +194,36 @@ export function RecentList({
               w={140}
               comboboxProps={{ withinPortal: true }}
             />
-            <Select
-              label="Sort by"
-              data={[
-                { value: "recent", label: "Most recent" },
-                { value: "status", label: "Status" },
-              ]}
-              value={sortKey}
-              onChange={(v) => setSortKey((v as SortKey) ?? "recent")}
-              w={150}
-              comboboxProps={{ withinPortal: true }}
-            />
+            <Group gap={4} align="flex-end" wrap="nowrap">
+              <Select
+                label="Sort by"
+                data={[
+                  { value: "recent", label: "Most recent" },
+                  { value: "status", label: "Status" },
+                ]}
+                value={sortKey}
+                onChange={(v) => setSortKey((v as SortKey) ?? "recent")}
+                w={150}
+                comboboxProps={{ withinPortal: true }}
+              />
+              <SortDirToggle dir={sortDir} sortKey={sortKey} onToggle={setSortDir} />
+            </Group>
           </ListToolbar>
         )}
         {totalCount === 0 && (
-          <Text size="sm" c="dimmed">
-            No downloads yet.
-          </Text>
+          <Box
+            style={{
+              padding: "1.5rem 1rem",
+              textAlign: "center",
+              border: "1px dashed var(--app-border-subtle)",
+              borderRadius: "var(--mantine-radius-md)",
+              background: "var(--app-surface-muted)",
+            }}
+          >
+            <Text size="sm" c="dimmed">
+              No downloads yet.
+            </Text>
+          </Box>
         )}
         {totalCount > 0 && visible.length === 0 && (
           <Text size="sm" c="dimmed">
@@ -212,7 +231,7 @@ export function RecentList({
           </Text>
         )}
         {visible.length > 0 && (
-          <List spacing="xs" listStyleType="none" withPadding={false}>
+          <Stack gap={2}>
             {pagination.pageItems.map((item) => (
               <RecentRow
                 key={item.id}
@@ -227,7 +246,7 @@ export function RecentList({
                 onRequeue={() => requeue.mutate({ path: { download_id: item.id } })}
               />
             ))}
-          </List>
+          </Stack>
         )}
         <ListPagination
           page={pagination.page}
@@ -272,54 +291,59 @@ function RecentRow({
   const showUrlSubtitle = Boolean(item.name);
 
   return (
-    <List.Item>
-      <Group gap="sm" wrap="nowrap" align="flex-start">
-        <Stack
-          gap={2}
-          style={{
-            cursor: "pointer",
-            flex: 1,
-            minWidth: 0,
-            fontWeight: selected ? 600 : 400,
-          }}
-          onClick={() => onSelect(item.id)}
-        >
-          <Group gap="xs" wrap="nowrap" align="center">
-            <Badge color={statusColor(displayStatus)} variant="light">
-              {step.label}
-            </Badge>
-            <Text
-              size="sm"
-              fw={500}
-              style={{
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                flex: 1,
-              }}
-              title={displayName}
-            >
-              #{item.id} {displayName}
-            </Text>
-            <Text size="xs" c="dimmed">
-              {chapterCountLabel(item)}
-            </Text>
-          </Group>
-          {showUrlSubtitle && (
-            <Text
-              size="xs"
-              c="dimmed"
-              style={{
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-              title={item.url}
-            >
-              {item.url}
-            </Text>
-          )}
-        </Stack>
+    <Box
+      className="app-row"
+      data-selected={selected ? "true" : undefined}
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(item.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect(item.id);
+        }
+      }}
+    >
+      <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+        <Group gap="xs" wrap="nowrap" align="center">
+          <Badge color={statusColor(displayStatus)} variant="light" size="sm">
+            {step.label}
+          </Badge>
+          <Text size="xs" c="dimmed" ff="monospace">
+            #{item.id}
+          </Text>
+          <Text
+            size="sm"
+            fw={selected ? 600 : 500}
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              flex: 1,
+            }}
+            title={displayName}
+          >
+            {displayName}
+          </Text>
+          <Text size="xs" c="dimmed" ff="monospace" style={{ whiteSpace: "nowrap" }}>
+            {chapterCountLabel(item)}
+          </Text>
+        </Group>
+        {showUrlSubtitle && (
+          <Text
+            className="app-url"
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={item.url}
+          >
+            {item.url}
+          </Text>
+        )}
+      </Stack>
+      <Group gap={4} wrap="nowrap" onClick={(e) => e.stopPropagation()}>
         {(canCancel || showCancelling) && (
           <Tooltip label={showCancelling ? "Cancelling…" : "Cancel"} withArrow>
             <ActionIcon
@@ -338,6 +362,7 @@ function RecentRow({
           <Tooltip label="Requeue" withArrow>
             <ActionIcon
               variant="subtle"
+              color="amber"
               loading={inflight && isRequeuePending}
               disabled={inflight}
               onClick={onRequeue}
@@ -348,6 +373,6 @@ function RecentRow({
           </Tooltip>
         )}
       </Group>
-    </List.Item>
+    </Box>
   );
 }

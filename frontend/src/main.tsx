@@ -5,9 +5,11 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import { client } from "./api/client.gen";
+import { cssVariablesResolver, theme } from "./theme";
 
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
+import "./styles/global.css";
 
 client.setConfig({ baseUrl: "" });
 
@@ -20,7 +22,11 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <MantineProvider defaultColorScheme="auto">
+    <MantineProvider
+      theme={theme}
+      defaultColorScheme="auto"
+      cssVariablesResolver={cssVariablesResolver}
+    >
       <Notifications position="top-right" />
       <QueryClientProvider client={queryClient}>
         <App />

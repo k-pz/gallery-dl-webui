@@ -2,6 +2,7 @@ import {
   ActionIcon,
   Anchor,
   Badge,
+  Box,
   Card,
   Group,
   SegmentedControl,
@@ -35,6 +36,7 @@ import { formatRel } from "../lib/time";
 import { ListHeader } from "./ListHeader";
 import { ListPagination } from "./ListPagination";
 import { ListToolbar } from "./ListToolbar";
+import { type SortDir, SortDirToggle } from "./SortDirToggle";
 
 type WatchedFilter = "any" | "watched" | "unwatched";
 type StatusFilter = "any" | "completed" | "failed" | "active" | "no-runs";
@@ -53,6 +55,7 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("any");
   const [extractorFilter, setExtractorFilter] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("recent");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const extractorOptions = useMemo(() => {
     const names = new Set<string>();
@@ -83,18 +86,20 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
       return true;
     });
     const sorted = [...filtered];
+    const dir = sortDir === "asc" ? 1 : -1;
     if (sortKey === "name") {
-      sorted.sort((a, b) =>
-        (a.name ?? a.url).localeCompare(b.name ?? b.url, undefined, { sensitivity: "base" }),
+      sorted.sort(
+        (a, b) =>
+          dir *
+          (a.name ?? a.url).localeCompare(b.name ?? b.url, undefined, { sensitivity: "base" }),
       );
     } else if (sortKey === "created") {
-      sorted.sort((a, b) => b.created_at.localeCompare(a.created_at));
+      sorted.sort((a, b) => dir * a.created_at.localeCompare(b.created_at));
     } else {
-      // recent: prefer last_finished_at; fall back to last_created_at; then created_at.
-      sorted.sort((a, b) => recencyKey(b) - recencyKey(a));
+      sorted.sort((a, b) => dir * (recencyKey(a) - recencyKey(b)));
     }
     return sorted;
-  }, [targets, search, watchedFilter, statusFilter, extractorFilter, sortKey]);
+  }, [targets, search, watchedFilter, statusFilter, extractorFilter, sortKey, sortDir]);
 
   const totalCount = targets?.length ?? 0;
   const filtersActive =
@@ -105,21 +110,24 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
 
   const pagination = usePagination(
     visible,
-    `${search}|${watchedFilter}|${statusFilter}|${extractorFilter ?? ""}|${sortKey}`,
+    `${search}|${watchedFilter}|${statusFilter}|${extractorFilter ?? ""}|${sortKey}|${sortDir}`,
   );
 
   return (
-    <Card withBorder shadow="sm" padding="lg">
-      <Stack gap="sm">
-        <ListHeader
-          title="Library"
-          titleOrder={3}
-          totalCount={totalCount}
-          visibleCount={visible.length}
-          filtersActive={filtersActive}
-          isLoading={isLoading}
-          formatTotal={(n) => `${n} series`}
-        />
+    <Card>
+      <Stack gap="md">
+        <Stack gap={4}>
+          <span className="app-section-kicker">library</span>
+          <ListHeader
+            title="Series"
+            titleOrder={3}
+            totalCount={totalCount}
+            visibleCount={visible.length}
+            filtersActive={filtersActive}
+            isLoading={isLoading}
+            formatTotal={(n) => `${n} series`}
+          />
+        </Stack>
         {totalCount > 0 && (
           <ListToolbar
             search={search}
@@ -166,38 +174,38 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
               comboboxProps={{ withinPortal: true }}
               disabled={extractorOptions.length === 0}
             />
-            <Select
-              label="Sort by"
-              data={[
-                { value: "recent", label: "Last downloaded" },
-                { value: "name", label: "Name" },
-                { value: "created", label: "Added" },
-              ]}
-              value={sortKey}
-              onChange={(v) => setSortKey((v as SortKey) ?? "recent")}
-              w={170}
-              comboboxProps={{ withinPortal: true }}
-            />
+            <Group gap={4} align="flex-end" wrap="nowrap">
+              <Select
+                label="Sort by"
+                data={[
+                  { value: "recent", label: "Last downloaded" },
+                  { value: "name", label: "Name" },
+                  { value: "created", label: "Added" },
+                ]}
+                value={sortKey}
+                onChange={(v) => setSortKey((v as SortKey) ?? "recent")}
+                w={170}
+                comboboxProps={{ withinPortal: true }}
+              />
+              <SortDirToggle dir={sortDir} sortKey={sortKey} onToggle={setSortDir} />
+            </Group>
           </ListToolbar>
         )}
         {totalCount === 0 && (
-          <Text size="sm" c="dimmed">
-            No targets yet. Submit a gallery URL above to add one.
-          </Text>
+          <EmptyHint>No targets yet. Submit a gallery URL above to add one.</EmptyHint>
         )}
         {totalCount > 0 && visible.length === 0 && (
-          <Text size="sm" c="dimmed">
-            No series match the current filters.
-          </Text>
+          <EmptyHint>No series match the current filters.</EmptyHint>
         )}
         {visible.length > 0 && (
-          <Stack gap="sm">
-            {pagination.pageItems.map((t) => (
+          <Stack gap={0}>
+            {pagination.pageItems.map((t, i) => (
               <TargetRow
                 key={t.id}
                 target={t}
                 defaultPeriod={defaultPeriod}
                 onOpenJob={onOpenJob}
+                divider={i > 0}
               />
             ))}
           </Stack>
@@ -216,6 +224,24 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
   );
 }
 
+function EmptyHint({ children }: { children: React.ReactNode }) {
+  return (
+    <Box
+      style={{
+        padding: "1.5rem 1rem",
+        textAlign: "center",
+        border: "1px dashed var(--app-border-subtle)",
+        borderRadius: "var(--mantine-radius-md)",
+        background: "var(--app-surface-muted)",
+      }}
+    >
+      <Text size="sm" c="dimmed">
+        {children}
+      </Text>
+    </Box>
+  );
+}
+
 function recencyKey(t: TargetOut): number {
   const candidates = [t.last_finished_at, t.last_created_at, t.created_at];
   for (const v of candidates) {
@@ -230,17 +256,18 @@ function TargetRow({
   target,
   defaultPeriod,
   onOpenJob,
+  divider,
 }: {
   target: TargetOut;
   defaultPeriod: string;
   onOpenJob?: (jobId: number) => void;
+  divider: boolean;
 }) {
   const invalidate = useDataInvalidators();
   const [period, setPeriod] = useState(target.watch_period ?? "");
   const [periodDirty, setPeriodDirty] = useState(false);
   const [periodError, setPeriodError] = useState<string | null>(null);
 
-  // Reset local period state when the upstream value changes (e.g. another tab edited it).
   useEffect(() => {
     if (!periodDirty) setPeriod(target.watch_period ?? "");
   }, [target.watch_period, periodDirty]);
@@ -305,146 +332,156 @@ function TargetRow({
   const showUrlSubtitle = Boolean(target.name);
 
   return (
-    <Card withBorder padding="sm" radius="md">
-      <Stack gap={6}>
-        <Group justify="space-between" wrap="nowrap" align="flex-start">
-          <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
-            <Text fw={600} style={{ wordBreak: "break-word" }}>
+    <Stack
+      gap="sm"
+      py="md"
+      style={{
+        borderTop: divider ? "1px solid var(--app-border-subtle)" : undefined,
+      }}
+    >
+      <Group justify="space-between" wrap="nowrap" align="flex-start">
+        <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
+          <Group gap="xs" wrap="wrap" align="center">
+            <Badge color={statusColor(status)} variant="light" size="sm">
+              {jobStatusLabel(status)}
+            </Badge>
+            <Text fw={600} size="md" style={{ wordBreak: "break-word" }}>
               {displayName}
             </Text>
-            {showUrlSubtitle && (
+          </Group>
+          {showUrlSubtitle && (
+            <Anchor href={target.url} target="_blank" rel="noreferrer" className="app-url">
+              {target.url}
+            </Anchor>
+          )}
+          <Group gap="md" wrap="wrap" mt={2}>
+            <MetaLabel label="Extractor" value={target.extractor ?? "—"} mono />
+            <MetaLabel
+              label="Runs"
+              value={`${target.download_count}${target.download_count === 1 ? " run" : " runs"}`}
+            />
+            <MetaLabel label="Last" value={formatRel(target.last_finished_at) ?? "—"} />
+            {target.last_download_id !== null && onOpenJob && (
               <Anchor
-                href={target.url}
-                target="_blank"
-                rel="noreferrer"
                 size="xs"
-                c="dimmed"
-                style={{ wordBreak: "break-all" }}
+                component="button"
+                type="button"
+                onClick={() =>
+                  target.last_download_id !== null && onOpenJob(target.last_download_id)
+                }
               >
-                {target.url}
+                open job #{target.last_download_id} →
               </Anchor>
             )}
-            <Group gap="xs">
-              <Badge color={statusColor(status)} variant="light" size="sm">
-                {jobStatusLabel(status)}
-              </Badge>
-              <Text size="xs" c="dimmed">
-                {target.extractor ?? "—"}
-              </Text>
-              <Text size="xs" c="dimmed">
-                {target.download_count} run{target.download_count === 1 ? "" : "s"}
-              </Text>
-              <Text size="xs" c="dimmed">
-                Last downloaded: {formatRel(target.last_finished_at)}
-              </Text>
-              {target.last_download_id !== null && onOpenJob && (
-                <Anchor
-                  size="xs"
-                  component="button"
-                  type="button"
-                  onClick={() =>
-                    target.last_download_id !== null && onOpenJob(target.last_download_id)
-                  }
-                >
-                  open job #{target.last_download_id}
-                </Anchor>
-              )}
-            </Group>
-          </Stack>
-          <Group gap="xs" wrap="nowrap">
-            <Tooltip label="Poll now" withArrow>
-              <ActionIcon
-                variant="light"
-                color="blue"
-                disabled={busy}
-                loading={poll.isPending}
-                onClick={() => poll.mutate({ path: { target_id: target.id } })}
-                aria-label={`Poll target ${target.id}`}
-              >
-                ▶
-              </ActionIcon>
-            </Tooltip>
-            <Tooltip label="Remove from library" withArrow>
-              <ActionIcon
-                variant="subtle"
-                color="red"
-                disabled={busy}
-                loading={del.isPending}
-                onClick={() => {
-                  if (confirm(`Remove ${displayName} from the library?`)) {
-                    del.mutate({ path: { target_id: target.id } });
-                  }
-                }}
-                aria-label={`Delete target ${target.id}`}
-              >
-                ✕
-              </ActionIcon>
-            </Tooltip>
           </Group>
+        </Stack>
+        <Group gap="xs" wrap="nowrap">
+          <Tooltip label="Poll now" withArrow>
+            <ActionIcon
+              variant="light"
+              color="amber"
+              disabled={busy}
+              loading={poll.isPending}
+              onClick={() => poll.mutate({ path: { target_id: target.id } })}
+              aria-label={`Poll target ${target.id}`}
+            >
+              ▶
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label="Remove from library" withArrow>
+            <ActionIcon
+              variant="subtle"
+              color="red"
+              disabled={busy}
+              loading={del.isPending}
+              onClick={() => {
+                if (confirm(`Remove ${displayName} from the library?`)) {
+                  del.mutate({ path: { target_id: target.id } });
+                }
+              }}
+              aria-label={`Delete target ${target.id}`}
+            >
+              ✕
+            </ActionIcon>
+          </Tooltip>
         </Group>
-        <Group gap="md" align="center" wrap="wrap">
-          <Switch
-            label="Watch"
-            checked={target.watched}
-            disabled={update.isPending}
-            onChange={(e) =>
-              update.mutate({
-                path: { target_id: target.id },
-                body: { watched: e.currentTarget.checked },
-              })
-            }
-          />
-          <TextInput
-            label="Poll every"
-            placeholder={defaultPeriod}
-            value={period}
-            disabled={!target.watched || update.isPending}
-            onChange={(e) => {
-              setPeriod(e.currentTarget.value);
-              setPeriodDirty(true);
-            }}
-            onBlur={submitPeriod}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submitPeriod();
-            }}
-            description={
-              target.watch_period
-                ? "Per-target override. Clear to fall back to default."
-                : `Default: ${defaultPeriod}`
-            }
-            w={170}
-            error={periodError ?? undefined}
-          />
-          <Select
-            label="Reading direction"
-            value={target.reading_direction ?? ""}
-            data={[{ value: "", label: "Use default" }, ...READING_DIRECTION_OPTIONS]}
-            onChange={(v) =>
-              update.mutate({
-                path: { target_id: target.id },
-                body: { reading_direction: v ?? "" },
-              })
-            }
-            disabled={update.isPending}
-            w={170}
-            comboboxProps={{ withinPortal: true }}
-            allowDeselect={false}
-          />
-        </Group>
-        <TagsInput
-          label="Tags"
-          placeholder="Enter to add"
-          value={target.tags}
-          onChange={(next) =>
+      </Group>
+      <Group gap="md" align="flex-end" wrap="wrap">
+        <Switch
+          label="Watch"
+          checked={target.watched}
+          disabled={update.isPending}
+          onChange={(e) =>
             update.mutate({
               path: { target_id: target.id },
-              body: { tags: next },
+              body: { watched: e.currentTarget.checked },
+            })
+          }
+        />
+        <TextInput
+          label="Poll every"
+          placeholder={defaultPeriod}
+          value={period}
+          disabled={!target.watched || update.isPending}
+          onChange={(e) => {
+            setPeriod(e.currentTarget.value);
+            setPeriodDirty(true);
+          }}
+          onBlur={submitPeriod}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submitPeriod();
+          }}
+          description={
+            target.watch_period
+              ? "Per-target override. Clear to fall back."
+              : `Default: ${defaultPeriod}`
+          }
+          w={170}
+          error={periodError ?? undefined}
+        />
+        <Select
+          label="Reading direction"
+          value={target.reading_direction ?? ""}
+          data={[{ value: "", label: "Use default" }, ...READING_DIRECTION_OPTIONS]}
+          onChange={(v) =>
+            update.mutate({
+              path: { target_id: target.id },
+              body: { reading_direction: v ?? "" },
             })
           }
           disabled={update.isPending}
-          clearable
+          w={180}
+          comboboxProps={{ withinPortal: true }}
+          allowDeselect={false}
         />
-      </Stack>
-    </Card>
+      </Group>
+      <TagsInput
+        label="Tags"
+        placeholder="Enter to add"
+        value={target.tags}
+        onChange={(next) =>
+          update.mutate({
+            path: { target_id: target.id },
+            body: { tags: next },
+          })
+        }
+        disabled={update.isPending}
+        clearable
+      />
+    </Stack>
+  );
+}
+
+function MetaLabel({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <Text size="xs" c="dimmed" component="span">
+      <Text span fz="xs" c="dimmed" style={{ letterSpacing: "0.06em", textTransform: "uppercase" }}>
+        {label}
+      </Text>
+      {"  "}
+      <Text span fz="xs" c="var(--app-text-muted)" ff={mono ? "monospace" : undefined}>
+        {value}
+      </Text>
+    </Text>
   );
 }

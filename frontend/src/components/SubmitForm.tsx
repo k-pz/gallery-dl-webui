@@ -2,6 +2,7 @@ import {
   Button,
   Card,
   Checkbox,
+  Divider,
   Group,
   Select,
   Stack,
@@ -30,8 +31,6 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
   const invalidate = useDataInvalidators();
   const { data: config } = useQuery(getConfigOptions());
 
-  // Seed the output-dir field with the default whenever the config arrives or changes,
-  // but only while the user hasn't picked something themselves.
   const [touched, setTouched] = useState(false);
   useEffect(() => {
     if (!touched && config) {
@@ -39,8 +38,6 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
     }
   }, [config, touched]);
 
-  // Sync the reading-direction default from server config until the user
-  // picks one themselves (mirrors the output-dir seeding above).
   useEffect(() => {
     if (!readingDirectionTouched && config?.default_reading_direction) {
       setReadingDirection(config.default_reading_direction);
@@ -97,14 +94,17 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
   const hasRoot = Boolean(config?.postprocess_root);
 
   return (
-    <Card withBorder shadow="sm" padding="lg">
-      <Stack gap="sm">
-        <Title order={3}>Add a download</Title>
+    <Card>
+      <Stack gap="lg">
+        <Stack gap={4}>
+          <span className="app-section-kicker">new download</span>
+          <Title order={3}>Add a gallery</Title>
+        </Stack>
         <Group align="flex-end" gap="sm" wrap="nowrap">
           <TextInput
             style={{ flex: 1 }}
             label="Gallery URL"
-            placeholder="https://mangadex.org/title/..."
+            placeholder="https://mangadex.org/title/…"
             value={url}
             onChange={(e) => setUrl(e.currentTarget.value)}
             onKeyDown={(e) => {
@@ -113,11 +113,24 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
               }
             }}
             disabled={mutation.isPending}
+            size="md"
           />
-          <Button onClick={submit} loading={mutation.isPending}>
+          <Button onClick={submit} loading={mutation.isPending} size="md">
             Download
           </Button>
         </Group>
+        {submitError && (
+          <Text size="sm" c="red">
+            {submitError}
+          </Text>
+        )}
+        <Divider />
+        <Stack gap={2}>
+          <span className="app-section-kicker">destination &amp; metadata</span>
+          <Text size="xs" c="dimmed">
+            Optional — leave alone to use the configured defaults.
+          </Text>
+        </Stack>
         <DirectoryPicker
           label="Output directory"
           placeholder={hasRoot ? "/mnt/nas/Media/manga" : "Set a root in Config first"}
@@ -135,40 +148,37 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
           disabled={mutation.isPending}
           extraOption={config?.postprocess_default_output_dir ?? null}
         />
-        <TagsInput
-          label="Tags"
-          placeholder="Enter to add — e.g. action, romance"
-          description="Applied to series.json + ComicInfo. Existing tags are replaced on every submit."
-          value={tags}
-          onChange={setTags}
-          disabled={mutation.isPending}
-          clearable
-        />
-        <Select
-          label="Reading direction"
-          description="Overrides the default for this series. RTL becomes ComicInfo Manga=YesAndRightToLeft."
-          value={readingDirection}
-          onChange={(v) => {
-            if (!v) return;
-            setReadingDirectionTouched(true);
-            setReadingDirection(v);
-          }}
-          data={READING_DIRECTION_OPTIONS}
-          disabled={mutation.isPending}
-          maw={260}
-          allowDeselect={false}
-        />
+        <Group align="flex-start" gap="md" grow wrap="wrap">
+          <TagsInput
+            label="Tags"
+            placeholder="Enter to add — e.g. action, romance"
+            description="Applied to series.json + ComicInfo. Existing tags are replaced on every submit."
+            value={tags}
+            onChange={setTags}
+            disabled={mutation.isPending}
+            clearable
+          />
+          <Select
+            label="Reading direction"
+            description="RTL becomes ComicInfo Manga=YesAndRightToLeft."
+            value={readingDirection}
+            onChange={(v) => {
+              if (!v) return;
+              setReadingDirectionTouched(true);
+              setReadingDirection(v);
+            }}
+            data={READING_DIRECTION_OPTIONS}
+            disabled={mutation.isPending}
+            allowDeselect={false}
+          />
+        </Group>
         <Checkbox
           label="Watch"
+          description="Re-poll this gallery on the default cadence for new chapters."
           checked={watched}
           onChange={(e) => setWatched(e.currentTarget.checked)}
           disabled={mutation.isPending}
         />
-        {submitError && (
-          <Text size="sm" c="red">
-            {submitError}
-          </Text>
-        )}
       </Stack>
     </Card>
   );

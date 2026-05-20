@@ -1,0 +1,291 @@
+/* Editorial typeface stack — Fraunces (display serif), IBM Plex Sans (body),
+   IBM Plex Mono (paths / numerics). Variable axes are pulled in where the
+   font supports them so headings can use a heavier optical size. */
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+html,
+body,
+#root {
+  background-color: var(--app-bg);
+  color: var(--app-text);
+  min-height: 100vh;
+}
+
+body {
+  font-feature-settings:
+    "ss01" 1,
+    "ss02" 1,
+    "cv11" 1;
+  font-variation-settings: "opsz" 18;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(200, 145, 52, 0.28);
+  color: var(--app-text);
+}
+
+a {
+  color: var(--app-accent);
+}
+
+/* All Card/Paper instances inherit this — surface colour follows the scheme,
+   borders go subtle, shadow stays minimal. Heavy elevation reads "Bootstrap
+   admin template" and is the first thing we want to retire. */
+.app-surface {
+  background-color: var(--app-surface);
+  border-color: var(--app-border);
+  box-shadow: var(--app-shadow);
+}
+
+/* App shell — sticky header with a hairline divider that follows the scheme. */
+.app-shell-header {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: color-mix(in srgb, var(--app-bg) 88%, transparent);
+  backdrop-filter: saturate(140%) blur(10px);
+  -webkit-backdrop-filter: saturate(140%) blur(10px);
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+
+.app-shell-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-md);
+  padding: var(--mantine-spacing-md) 0;
+}
+
+.app-brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  user-select: none;
+}
+
+.app-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 6px;
+  background: var(--app-accent);
+  color: var(--app-bg);
+  font-family: var(--app-serif);
+  font-weight: 600;
+  font-size: 1.1rem;
+  line-height: 1;
+  transform: translateY(0.15rem);
+  font-feature-settings: "ss01" 1;
+}
+
+.app-brand-word {
+  font-family: var(--app-serif);
+  font-weight: 500;
+  font-size: 1.35rem;
+  letter-spacing: -0.01em;
+  color: var(--app-text);
+  margin: 0;
+  padding: 0;
+  line-height: 1;
+}
+
+.app-brand-tag {
+  font-family: var(--app-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--app-text-faint);
+  padding-left: 0.45rem;
+  border-left: 1px solid var(--app-border);
+  margin-left: 0.1rem;
+}
+
+/* Tab bar — a single hairline above the panel, no boxy backgrounds. */
+.app-tabs[data-variant="default"] {
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+.app-tabs .mantine-Tabs-list {
+  border-bottom: none;
+  gap: 0.25rem;
+}
+.app-tabs .mantine-Tabs-tab {
+  font-family: var(--app-serif);
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  padding: 0.6rem 0.95rem;
+  margin-bottom: -1px;
+  color: var(--app-text-muted);
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  transition:
+    color 0.18s ease,
+    border-color 0.18s ease;
+}
+.app-tabs .mantine-Tabs-tab[data-active] {
+  color: var(--app-text);
+  border-bottom-color: var(--app-accent);
+  background: transparent;
+}
+.app-tabs .mantine-Tabs-tab:hover {
+  background: transparent;
+  color: var(--app-text);
+}
+
+/* Card section helpers — a tiny "kicker" label + heading + optional rule. */
+.app-section-kicker {
+  font-family: var(--app-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--app-text-faint);
+}
+
+.app-rule {
+  height: 1px;
+  background: var(--app-border-subtle);
+  margin: 0;
+}
+
+/* Monospaced URL strip used in row subtitles. */
+.app-url {
+  font-family: var(--app-mono);
+  font-size: 0.78rem;
+  color: var(--app-text-faint);
+  word-break: break-all;
+}
+
+/* Health pill in the header — calmer than Mantine's filled badge. */
+.app-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--app-border);
+  background: var(--app-bg-elevated);
+  font-family: var(--app-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--app-text-muted);
+}
+
+.app-health-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--app-text-faint);
+  box-shadow: 0 0 0 0 currentColor;
+}
+.app-health[data-state="ok"] .app-health-dot {
+  background: #4f9e62;
+  box-shadow: 0 0 0 3px rgba(79, 158, 98, 0.18);
+}
+.app-health[data-state="ok"] {
+  color: #4f9e62;
+}
+.app-health[data-state="down"] .app-health-dot {
+  background: #c14d3a;
+  box-shadow: 0 0 0 3px rgba(193, 77, 58, 0.18);
+}
+.app-health[data-state="down"] {
+  color: #c14d3a;
+}
+.app-health[data-state="loading"] .app-health-dot {
+  background: var(--app-text-faint);
+  animation: app-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes app-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* List row — pulls the heading + URL + meta together with a hover affordance. */
+.app-row {
+  display: flex;
+  gap: var(--mantine-spacing-sm);
+  align-items: flex-start;
+  padding: 0.85rem 0.9rem;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid transparent;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+.app-row:hover {
+  background: var(--app-surface-muted);
+}
+.app-row[data-selected="true"] {
+  background: var(--app-surface-muted);
+  border-color: var(--app-border);
+}
+.app-row + .app-row {
+  margin-top: 0.15rem;
+}
+
+/* Status pill in row lists. Borderless, low-saturation; reads as a label
+   rather than a notification badge. */
+.app-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-family: var(--app-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 500;
+  background: var(--app-surface-muted);
+  color: var(--app-text-muted);
+  white-space: nowrap;
+}
+.app-status-pill::before {
+  content: "";
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.7;
+}
+.app-status-pill[data-tone="active"] {
+  color: #2f6ea0;
+  background: color-mix(in srgb, #2f6ea0 12%, var(--app-surface-muted));
+}
+.app-status-pill[data-tone="done"] {
+  color: #4f9e62;
+  background: color-mix(in srgb, #4f9e62 12%, var(--app-surface-muted));
+}
+.app-status-pill[data-tone="warn"] {
+  color: #b07a2b;
+  background: color-mix(in srgb, #b07a2b 14%, var(--app-surface-muted));
+}
+.app-status-pill[data-tone="error"] {
+  color: #c14d3a;
+  background: color-mix(in srgb, #c14d3a 12%, var(--app-surface-muted));
+}
+.app-status-pill[data-tone="muted"] {
+  color: var(--app-text-faint);
+}
+
+/* Soft "footer" line at the bottom of pages — keeps things calmly closed. */
+.app-footnote {
+  font-family: var(--app-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--app-text-faint);
+  text-align: center;
+  padding: 1.5rem 0 0.5rem;
+}

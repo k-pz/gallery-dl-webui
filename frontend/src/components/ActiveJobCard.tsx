@@ -1,8 +1,10 @@
 import {
+  Alert,
   Anchor,
   Badge,
   Button,
   Card,
+  Divider,
   Group,
   Loader,
   Stack,
@@ -39,7 +41,6 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
 
   const cancelIntent = useOptimisticCancel(jobId, job?.status);
 
-  // Reset the per-job action error when the focused job changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: jobId is the reactive trigger.
   useEffect(() => {
     setActionError(null);
@@ -103,8 +104,13 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
 
   if (isLoading || !job) {
     return (
-      <Card withBorder shadow="sm" padding="lg">
-        <Loader size="sm" />
+      <Card>
+        <Group>
+          <Loader size="sm" />
+          <Text c="dimmed" size="sm">
+            Loading job…
+          </Text>
+        </Group>
       </Card>
     );
   }
@@ -118,85 +124,87 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
   const showUrlSubtitle = Boolean(job.name);
 
   return (
-    <Card withBorder shadow="sm" padding="lg">
-      <Stack gap="sm">
-        <Group justify="space-between" align="flex-start" wrap="nowrap">
-          <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
-            <Title order={4} style={{ wordBreak: "break-word" }}>
-              {displayName}
-            </Title>
-            {showUrlSubtitle && (
-              <Anchor
-                href={job.url}
-                target="_blank"
-                rel="noreferrer"
-                size="xs"
-                c="dimmed"
-                style={{ wordBreak: "break-all" }}
-              >
-                {job.url}
-              </Anchor>
-            )}
-            <Text size="xs" c="dimmed">
-              Job #{job.id}
+    <Card>
+      <Stack gap="lg">
+        <Stack gap={4}>
+          <Group gap="sm" wrap="wrap" align="center">
+            <span className="app-section-kicker">active job</span>
+            <Text size="xs" c="dimmed" ff="monospace">
+              #{job.id}
             </Text>
-          </Stack>
-          <Group gap="xs">
-            {(canCancel || showCancelling) && (
-              <Button
-                size="xs"
-                variant="light"
-                color="red"
-                loading={cancel.isPending || showCancelling}
-                disabled={busy || showCancelling}
-                onClick={() => cancel.mutate({ path: { download_id: job.id } })}
-              >
-                Cancel
-              </Button>
-            )}
-            {canRequeue && (
-              <Button
-                size="xs"
-                variant="light"
-                loading={requeue.isPending}
-                disabled={busy}
-                onClick={() => requeue.mutate({ path: { download_id: job.id } })}
-              >
-                Requeue
-              </Button>
-            )}
           </Group>
-        </Group>
+          <Group justify="space-between" align="flex-start" wrap="nowrap">
+            <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
+              <Title order={3} style={{ wordBreak: "break-word" }}>
+                {displayName}
+              </Title>
+              {showUrlSubtitle && (
+                <Anchor href={job.url} target="_blank" rel="noreferrer" className="app-url">
+                  {job.url}
+                </Anchor>
+              )}
+            </Stack>
+            <Group gap="xs">
+              {(canCancel || showCancelling) && (
+                <Button
+                  size="xs"
+                  variant="light"
+                  color="red"
+                  loading={cancel.isPending || showCancelling}
+                  disabled={busy || showCancelling}
+                  onClick={() => cancel.mutate({ path: { download_id: job.id } })}
+                >
+                  Cancel
+                </Button>
+              )}
+              {canRequeue && (
+                <Button
+                  size="xs"
+                  variant="light"
+                  loading={requeue.isPending}
+                  disabled={busy}
+                  onClick={() => requeue.mutate({ path: { download_id: job.id } })}
+                >
+                  Requeue
+                </Button>
+              )}
+            </Group>
+          </Group>
+        </Stack>
         <JobStepper job={{ status: job.status, step }} />
-        <Group gap="lg">
-          <Text size="sm">
-            <Text span c="dimmed">
-              extractor:{" "}
-            </Text>
-            {job.extractor ?? "—"}
-          </Text>
+        <Divider />
+        <Group gap="xl" wrap="wrap">
+          <DetailField label="Extractor" value={job.extractor ?? "—"} mono />
           {job.exit_code !== null && (
-            <Text size="sm">
-              <Text span c="dimmed">
-                exit:{" "}
-              </Text>
-              {job.exit_code}
-            </Text>
+            <DetailField label="Exit code" value={String(job.exit_code)} mono />
           )}
         </Group>
         {job.error && (
-          <Text size="sm" c="red">
+          <Alert color="red" variant="light" title="Job error">
             {job.error}
-          </Text>
+          </Alert>
         )}
         {actionError && (
-          <Text size="sm" c="red">
+          <Alert color="red" variant="light">
             {actionError}
-          </Text>
+          </Alert>
         )}
         <ProgressCard jobId={jobId} status={job.status} />
       </Stack>
     </Card>
+  );
+}
+
+function DetailField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <Stack gap={2}>
+      <Text size="xs" c="dimmed" style={{ letterSpacing: "0.06em", textTransform: "uppercase" }}>
+        {label}
+      </Text>
+      <Text size="sm" ff={mono ? "monospace" : undefined}>
+        {value}
+      </Text>
+    </Stack>
   );
 }
 
@@ -211,8 +219,6 @@ function JobStepper({ job }: { job: { status: string; step: ReturnType<typeof jo
       </Group>
     );
   }
-  // Stepper's `active` is the next-incomplete index. For a done job we pass
-  // total so every step renders as complete.
   const active = step.kind === "done" ? step.total : step.index;
   return (
     <Stepper
