@@ -55,7 +55,7 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
       setTouched(false);
       onCreated?.(data.id);
       notifications.show({
-        title: "Download queued",
+        title: "Job queued",
         message: `Job #${data.id} added to the queue.`,
         color: "green",
       });
@@ -97,7 +97,7 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
     <Card>
       <Stack gap="lg">
         <Stack gap={4}>
-          <span className="app-section-kicker">new download</span>
+          <span className="app-section-kicker">new job</span>
           <Title order={3}>Add a gallery</Title>
         </Stack>
         <Group align="flex-end" gap="sm" wrap="nowrap">
