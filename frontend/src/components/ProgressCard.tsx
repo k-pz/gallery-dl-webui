@@ -1,18 +1,12 @@
-import { Badge, Box, Group, Loader, Progress, ScrollArea, Stack, Text } from "@mantine/core";
+import { Box, Group, Progress, ScrollArea, Stack, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { getDownloadProgressOptions } from "../api/@tanstack/react-query.gen";
 import type { ChapterProgress } from "../api/types.gen";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
-import { chapterStageLabel, isTerminal, type Status } from "../lib/status";
+import { chapterStageLabel, isTerminal, type Status, statusTone } from "../lib/status";
+import { Pill } from "./Pill";
 
 type ChapterStage = "downloading" | "downloaded" | "processing" | "completed";
-
-const STAGE_COLOR: Record<ChapterStage, string> = {
-  downloading: "blue",
-  downloaded: "cyan",
-  processing: "yellow",
-  completed: "green",
-};
 
 function chapterStage(ch: ChapterProgress): ChapterStage {
   if (ch.stage === "downloaded" || ch.stage === "completed" || ch.stage === "processing") {
@@ -32,15 +26,33 @@ export function ProgressCard({ jobId, status }: { jobId: number; status: Status 
   });
 
   if (isLoading || !data) {
+    // Match the laid-out version so the card doesn't visually collapse while
+    // we wait for the manifest. Three skeleton rows track the shape of the
+    // populated chapter list.
     return (
-      <Stack gap="xs">
-        <span className="app-section-kicker">progress</span>
-        <Group gap="sm">
-          <Loader size="sm" />
-          <Text size="sm" c="dimmed">
-            Waiting for the manifest…
-          </Text>
+      <Stack gap="sm" aria-busy="true">
+        <Group justify="space-between" align="baseline">
+          <span className="app-section-kicker">progress</span>
+          <span className="app-sk" style={{ width: 80, height: 11 }} />
         </Group>
+        <span className="app-sk" style={{ width: "100%", height: 8 }} />
+        <Box
+          style={{
+            border: "1px solid var(--app-border-subtle)",
+            borderRadius: "var(--mantine-radius-md)",
+            background: "var(--app-surface-muted)",
+            padding: 8,
+          }}
+        >
+          <Stack gap={8}>
+            {[0, 1, 2].map((i) => (
+              <Group key={i} justify="space-between">
+                <span className="app-sk" style={{ width: 120, height: 14 }} />
+                <span className="app-sk" style={{ width: 64, height: 14, borderRadius: 999 }} />
+              </Group>
+            ))}
+          </Stack>
+        </Box>
       </Stack>
     );
   }
@@ -96,9 +108,7 @@ export function ProgressCard({ jobId, status }: { jobId: number; status: Status 
                     >
                       {label}
                     </Text>
-                    <Badge size="sm" color={STAGE_COLOR[stage]} variant="light">
-                      {chapterStageLabel(stage)}
-                    </Badge>
+                    <Pill tone={statusTone(stage)}>{chapterStageLabel(stage)}</Pill>
                   </Group>
                 );
               })}

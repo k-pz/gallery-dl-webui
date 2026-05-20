@@ -25,6 +25,27 @@ export function statusColor(status: string): string {
   return STATUS_COLORS[status] ?? "gray";
 }
 
+// Maps any job/chapter status string to the canonical `.pill` tone slots so
+// every list, badge, and progress strip pulls the same five-tone palette.
+export type Tone = "muted" | "active" | "done" | "warn" | "error" | "info";
+
+const STATUS_TONES: Record<string, Tone> = {
+  pending: "muted",
+  extracting: "warn",
+  running: "active",
+  downloading: "active",
+  downloaded: "info",
+  processing: "warn",
+  completed: "done",
+  failed: "error",
+  cancelled: "warn",
+  [CANCELLING_LABEL]: "warn",
+};
+
+export function statusTone(status: string): Tone {
+  return STATUS_TONES[status] ?? "muted";
+}
+
 export function isTerminal(status: Status): boolean {
   return TERMINAL_STATUSES.includes(status);
 }

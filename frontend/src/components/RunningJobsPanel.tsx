@@ -1,10 +1,11 @@
-import { Badge, Box, Card, Group, Stack, Text } from "@mantine/core";
+import { Box, Card, Group, Stack, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { listDownloadsOptions } from "../api/@tanstack/react-query.gen";
 import type { DownloadOut } from "../api/types.gen";
 import { REFETCH_LIST_MS } from "../lib/polling";
-import { isRunning, isScheduled, jobStep, statusColor } from "../lib/status";
+import { isRunning, isScheduled, jobStep, statusTone } from "../lib/status";
+import { Pill } from "./Pill";
 
 function progressLabel(item: DownloadOut): string {
   const total = item.chapters_total;
@@ -46,7 +47,7 @@ export function RunningJobsPanel({
       <Stack gap="md">
         <Group justify="space-between" align="center" wrap="wrap">
           <Stack gap={4}>
-            <span className="app-section-kicker">running</span>
+            <span className="app-section-kicker">now</span>
             <Text size="sm" c="dimmed" ff="monospace">
               {running.length} running · {scheduledCount} scheduled
             </Text>
@@ -100,9 +101,7 @@ function RunningRow({
     >
       <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
         <Group gap="xs" wrap="nowrap" align="center">
-          <Badge color={statusColor(item.status)} variant="light" size="sm">
-            {step.label}
-          </Badge>
+          <Pill tone={statusTone(item.status)}>{step.label}</Pill>
           <Text size="xs" c="dimmed" ff="monospace">
             #{item.id}
           </Text>

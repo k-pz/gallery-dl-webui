@@ -39,14 +39,14 @@ a {
   box-shadow: var(--app-shadow);
 }
 
-/* App shell — sticky header with a hairline divider that follows the scheme. */
+/* App shell — sticky header with a hairline divider that follows the scheme.
+   The previous blur-over-88%-bg looked great empty and got noisy on long
+   config pages; the flat fill stays calm at any scroll position. */
 .app-shell-header {
   position: sticky;
   top: 0;
   z-index: 60;
-  background: color-mix(in srgb, var(--app-bg) 88%, transparent);
-  backdrop-filter: saturate(140%) blur(10px);
-  -webkit-backdrop-filter: saturate(140%) blur(10px);
+  background: var(--app-bg);
   border-bottom: 1px solid var(--app-border-subtle);
 }
 
@@ -235,48 +235,523 @@ a {
 }
 
 /* Status pill in row lists. Borderless, low-saturation; reads as a label
-   rather than a notification badge. */
+   rather than a notification badge. Canonical name is `.pill`; the legacy
+   `.app-status-pill` selectors are kept for backward compat. */
+.pill,
 .app-status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.18rem 0.55rem;
+  gap: 0.42rem;
+  padding: 3px 9px;
   border-radius: 999px;
   font-family: var(--app-mono);
-  font-size: 0.7rem;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 500;
   background: var(--app-surface-muted);
   color: var(--app-text-muted);
   white-space: nowrap;
+  line-height: 1.3;
 }
+.pill::before,
 .app-status-pill::before {
   content: "";
   width: 0.42rem;
   height: 0.42rem;
   border-radius: 999px;
   background: currentColor;
-  opacity: 0.7;
+  opacity: 0.75;
 }
+.pill.no-dot::before,
+.app-status-pill.no-dot::before {
+  display: none;
+}
+.pill[data-tone="active"],
 .app-status-pill[data-tone="active"] {
-  color: #2f6ea0;
-  background: color-mix(in srgb, #2f6ea0 12%, var(--app-surface-muted));
+  color: var(--tone-active);
+  background: color-mix(in srgb, var(--tone-active) 12%, var(--app-surface-muted));
 }
+.pill[data-tone="done"],
 .app-status-pill[data-tone="done"] {
-  color: #4f9e62;
-  background: color-mix(in srgb, #4f9e62 12%, var(--app-surface-muted));
+  color: var(--tone-done);
+  background: color-mix(in srgb, var(--tone-done) 12%, var(--app-surface-muted));
 }
+.pill[data-tone="warn"],
 .app-status-pill[data-tone="warn"] {
-  color: #b07a2b;
-  background: color-mix(in srgb, #b07a2b 14%, var(--app-surface-muted));
+  color: var(--tone-warn);
+  background: color-mix(in srgb, var(--tone-warn) 14%, var(--app-surface-muted));
 }
+.pill[data-tone="error"],
 .app-status-pill[data-tone="error"] {
-  color: #c14d3a;
-  background: color-mix(in srgb, #c14d3a 12%, var(--app-surface-muted));
+  color: var(--tone-error);
+  background: color-mix(in srgb, var(--tone-error) 12%, var(--app-surface-muted));
 }
+.pill[data-tone="info"] {
+  color: var(--tone-info);
+  background: color-mix(in srgb, var(--tone-info) 12%, var(--app-surface-muted));
+}
+.pill[data-tone="muted"],
 .app-status-pill[data-tone="muted"] {
   color: var(--app-text-faint);
+}
+.pill.solid {
+  font-weight: 600;
+}
+.pill.solid[data-tone="error"] {
+  background: var(--tone-error);
+  color: white;
+}
+.pill.solid[data-tone="warn"] {
+  background: var(--tone-warn);
+  color: var(--app-bg);
+}
+
+/* Numeric badge sitting next to a tab label.
+   Replacement for the "1/0" tuple — spells out what it counts. */
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-family: var(--app-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  background: color-mix(in srgb, var(--tone-active) 14%, var(--app-surface-muted));
+  color: var(--tone-active);
+  font-weight: 500;
+}
+[data-mantine-color-scheme="dark"] .count-badge {
+  background: color-mix(in srgb, var(--tone-active) 20%, var(--app-surface-muted));
+}
+.count-badge[data-tone="muted"] {
+  background: var(--app-surface-muted);
+  color: var(--app-text-muted);
+}
+.count-badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+/* Inline confirm — replaces window.confirm() for medium-weight destructive
+   actions. The strip swaps in where the row's actions live. */
+.confirm-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: color-mix(in srgb, var(--tone-error) 10%, var(--app-surface));
+  border: 1px solid color-mix(in srgb, var(--tone-error) 36%, var(--app-border));
+  border-radius: var(--mantine-radius-md);
+  padding: 12px 14px;
+}
+[data-mantine-color-scheme="dark"] .confirm-strip {
+  background: color-mix(in srgb, var(--tone-error) 16%, var(--app-surface));
+  border-color: color-mix(in srgb, var(--tone-error) 42%, var(--app-border));
+}
+.confirm-strip .confirm-msg {
+  flex: 1;
+  font-size: 13px;
+  color: var(--app-text);
+  min-width: 0;
+}
+.confirm-strip .confirm-msg strong {
+  color: var(--tone-error);
+  font-weight: 600;
+}
+
+/* Inline alert (informational / error band inside cards). */
+.app-alert {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--mantine-radius-md);
+  font-size: 13px;
+  color: var(--app-text);
+  background: color-mix(in srgb, var(--tone-error) 10%, var(--app-surface));
+  border: 1px solid color-mix(in srgb, var(--tone-error) 32%, transparent);
+}
+.app-alert[data-tone="info"] {
+  background: color-mix(in srgb, var(--tone-active) 10%, var(--app-surface));
+  border-color: color-mix(in srgb, var(--tone-active) 28%, transparent);
+}
+[data-mantine-color-scheme="dark"] .app-alert {
+  background: color-mix(in srgb, var(--tone-error) 18%, var(--app-surface));
+  border-color: color-mix(in srgb, var(--tone-error) 42%, transparent);
+}
+[data-mantine-color-scheme="dark"] .app-alert[data-tone="info"] {
+  background: color-mix(in srgb, var(--tone-active) 18%, var(--app-surface));
+  border-color: color-mix(in srgb, var(--tone-active) 36%, transparent);
+}
+.app-alert .alert-icon {
+  flex-shrink: 0;
+  color: var(--tone-error);
+  margin-top: 2px;
+}
+.app-alert[data-tone="info"] .alert-icon {
+  color: var(--tone-active);
+}
+
+/* Code chip — short mono tag inline. */
+.code-chip {
+  font-family: var(--app-mono);
+  font-size: 12px;
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--app-text-muted);
+}
+
+/* Empty state — glyph + title + body + (optional) action. */
+.app-empty {
+  border: 1.5px dashed color-mix(in srgb, var(--app-border) 80%, transparent);
+  background: color-mix(in srgb, var(--app-surface-muted) 50%, transparent);
+  border-radius: 12px;
+  padding: 32px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.app-empty-arrow {
+  color: var(--app-text-faint);
+  margin-bottom: -4px;
+}
+.app-empty-glyph {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-text-muted);
+}
+[data-mantine-color-scheme="dark"] .app-empty-glyph {
+  background: color-mix(in srgb, var(--app-accent) 14%, var(--app-surface-muted));
+  border-color: color-mix(in srgb, var(--app-accent) 22%, var(--app-border));
+  color: var(--app-accent);
+}
+.app-empty-title {
+  font-family: var(--app-serif);
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--app-text);
+  margin: 0;
+}
+.app-empty-body {
+  font-size: 14px;
+  color: var(--app-text-muted);
+  max-width: 320px;
+  margin: 0;
+}
+.app-empty-actions {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+/* Skeleton shimmer — sized in the markup so cards keep their layout on cold
+   load instead of collapsing onto a centred spinner. */
+@keyframes app-shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+.app-sk {
+  display: inline-block;
+  height: 14px;
+  background: linear-gradient(
+    90deg,
+    var(--app-surface-muted) 0%,
+    color-mix(in srgb, var(--app-surface-muted) 50%, var(--app-surface)) 50%,
+    var(--app-surface-muted) 100%
+  );
+  background-size: 200px 100%;
+  background-repeat: no-repeat;
+  border-radius: 6px;
+  animation: app-shimmer 1.4s linear infinite;
+}
+
+/* Icon button — bare 32px square, currentColor-aware. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--app-text-muted);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+  flex-shrink: 0;
+}
+.icon-btn:hover {
+  background: var(--app-surface-muted);
+  color: var(--app-text);
+}
+.icon-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--app-ring);
+}
+.icon-btn[data-tone="danger"] {
+  color: var(--tone-error);
+}
+.icon-btn[data-tone="danger"]:hover {
+  background: color-mix(in srgb, var(--tone-error) 12%, var(--app-surface));
+}
+.icon-btn[data-tone="accent"] {
+  color: var(--app-accent);
+}
+.icon-btn[data-tone="accent"]:hover {
+  background: var(--app-accent-soft);
+}
+.icon-btn[data-size="sm"] {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
+.icon-btn[data-size="lg"] {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+}
+.icon-btn[disabled],
+.icon-btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Collapsible library row — Direction B. Shows status + URL + summary on one
+   line. The expanded panel below carries the edit controls. */
+.lib-row {
+  border-top: 1px solid var(--app-border-subtle);
+}
+.lib-row-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin: 0 -8px;
+  transition: background-color 0.15s ease;
+}
+.lib-row-head:hover {
+  background: var(--app-surface-muted);
+}
+.lib-row-head:focus-visible {
+  outline: none;
+  background: var(--app-surface-muted);
+  box-shadow: var(--app-ring);
+}
+.lib-row[data-expanded="true"] .lib-row-head {
+  background: var(--app-surface-muted);
+}
+.lib-row-body {
+  padding: 14px 16px 18px;
+  background: var(--app-surface-muted);
+  border-radius: 8px;
+  margin: -4px -8px 0;
+  border-top: 1px solid var(--app-border-subtle);
+}
+.lib-row-chev {
+  transition: transform 0.18s ease;
+  color: var(--app-text-muted);
+}
+.lib-row[data-expanded="true"] .lib-row-chev {
+  transform: rotate(180deg);
+}
+
+/* Master-detail layout for the Jobs tab (desktop only). */
+.jobs-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 880px) {
+  .jobs-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Master-detail job list rows (left column on desktop). */
+.jobs-list-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+.jobs-list-row:hover {
+  background: var(--app-surface-muted);
+}
+.jobs-list-row:focus-visible {
+  outline: none;
+  box-shadow: var(--app-ring);
+}
+.jobs-list-row[data-selected="true"] {
+  background: var(--app-surface-muted);
+  border-color: var(--app-border);
+}
+
+/* Maintenance — destructive card called out with a tinted border. The
+   compound selector beats Mantine's default border-color without resorting
+   to `!important`. */
+.mantine-Card-root.maintenance-destructive,
+.app-surface.maintenance-destructive {
+  border-color: color-mix(in srgb, var(--tone-error) 30%, var(--app-border));
+}
+
+/* Mobile bottom nav. Hidden by default; revealed under 768px. */
+.mob-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 70;
+  background: color-mix(in srgb, var(--app-bg-elevated) 95%, transparent);
+  backdrop-filter: saturate(140%) blur(12px);
+  -webkit-backdrop-filter: saturate(140%) blur(12px);
+  border-top: 1px solid var(--app-border-subtle);
+  display: none;
+  grid-template-columns: repeat(4, 1fr);
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 12px));
+}
+@media (max-width: 768px) {
+  .mob-nav {
+    display: grid;
+  }
+}
+.mob-nav-item {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--app-sans, var(--app-serif));
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--app-text-faint);
+  border-radius: 8px;
+  min-height: 44px;
+}
+.mob-nav-item:focus-visible {
+  outline: none;
+  background: var(--app-surface-muted);
+}
+.mob-nav-item[data-active="true"] {
+  color: var(--app-text);
+}
+.mob-nav-item[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--app-accent);
+}
+.mob-nav-badge {
+  position: absolute;
+  top: 4px;
+  right: 50%;
+  margin-right: -16px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--tone-active);
+  color: white;
+  font-family: var(--app-mono);
+  font-size: 10px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+[data-mantine-color-scheme="dark"] .mob-nav-badge {
+  background: color-mix(in srgb, var(--tone-active) 80%, var(--app-bg));
+  color: var(--app-bg);
+}
+
+/* On mobile the bottom nav owns navigation — the top Tabs.List can hide. */
+@media (max-width: 768px) {
+  .app-tabs .mantine-Tabs-list {
+    display: none;
+  }
+  .app-tabs[data-variant="default"] {
+    border-bottom: none;
+  }
+  /* Leave room for the floating bottom nav. */
+  .app-shell-body {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 12px));
+  }
+}
+
+/* Modal scrim + dialog box — themed replacement for native confirm. */
+.app-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--app-scrim);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.app-modal {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  box-shadow: var(--app-shadow-lg);
+  width: 100%;
+  max-width: 460px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.app-modal-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--tone-error) 14%, var(--app-surface-muted));
+  color: var(--tone-error);
+  flex-shrink: 0;
 }
 
 /* Soft "footer" line at the bottom of pages — keeps things calmly closed. */
@@ -288,4 +763,22 @@ a {
   color: var(--app-text-faint);
   text-align: center;
   padding: 1.5rem 0 0.5rem;
+}
+
+/* Dark mode: soften Mantine's Switch/SegmentedControl so they blend with cards. */
+[data-mantine-color-scheme="dark"] .mantine-Switch-track {
+  background-color: color-mix(in srgb, var(--app-text) 8%, transparent);
+  border-color: var(--app-border-subtle);
+}
+[data-mantine-color-scheme="dark"] .mantine-Switch-thumb {
+  background-color: color-mix(in srgb, var(--app-text) 32%, var(--app-surface));
+  border-color: transparent;
+}
+[data-mantine-color-scheme="dark"] .mantine-SegmentedControl-root {
+  background-color: color-mix(in srgb, var(--app-text) 5%, transparent);
+  border-color: transparent;
+}
+[data-mantine-color-scheme="dark"] .mantine-SegmentedControl-indicator {
+  background-color: color-mix(in srgb, var(--app-text) 10%, var(--app-surface));
+  box-shadow: none;
 }

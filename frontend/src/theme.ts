@@ -115,6 +115,10 @@ export const theme = createTheme({
  * Per-color-scheme surface tokens. The `--app-*` variables are read by our
  * global stylesheet (styles/global.css) and by inline styles in components
  * that want to opt out of Mantine defaults (e.g. monospaced URL strips).
+ *
+ * Tones (`--tone-*`) are the canonical status colors used by `.pill` and
+ * `.count-badge`. They shift slightly per scheme so the muted backgrounds
+ * keep readable luminance on either surface.
  */
 export const cssVariablesResolver: CSSVariablesResolver = () => ({
   variables: {
@@ -126,13 +130,23 @@ export const cssVariablesResolver: CSSVariablesResolver = () => ({
     "--app-bg-elevated": "#fbf7ee",
     "--app-surface": "#ffffff",
     "--app-surface-muted": "#f1ebde",
+    "--app-surface-sunken": "#ebe4d3",
     "--app-border": "rgba(46, 36, 18, 0.14)",
     "--app-border-subtle": "rgba(46, 36, 18, 0.08)",
     "--app-text": "#1a160e",
     "--app-text-muted": "#5a5343",
     "--app-text-faint": "#807866",
     "--app-accent": amber[6],
+    "--app-accent-soft": "rgba(176, 122, 43, 0.12)",
     "--app-shadow": "0 1px 0 rgba(46, 36, 18, 0.04), 0 12px 28px -22px rgba(46, 36, 18, 0.25)",
+    "--app-shadow-lg": "0 1px 0 rgba(46, 36, 18, 0.04), 0 30px 60px -30px rgba(46, 36, 18, 0.35)",
+    "--app-ring": "0 0 0 3px color-mix(in srgb, var(--app-accent) 32%, transparent)",
+    "--app-scrim": "rgba(28, 22, 12, 0.45)",
+    "--tone-active": "#2f6ea0",
+    "--tone-done": "#4f9e62",
+    "--tone-warn": "#b07a2b",
+    "--tone-error": "#c14d3a",
+    "--tone-info": "#5f6ec8",
     "--mantine-color-body": "#f7f2e8",
     "--mantine-color-text": "#1a160e",
     "--mantine-color-dimmed": "#5a5343",
@@ -143,13 +157,23 @@ export const cssVariablesResolver: CSSVariablesResolver = () => ({
     "--app-bg-elevated": "#1d1912",
     "--app-surface": "#1f1b14",
     "--app-surface-muted": "#27221a",
+    "--app-surface-sunken": "#14110a",
     "--app-border": "rgba(214, 198, 168, 0.14)",
     "--app-border-subtle": "rgba(214, 198, 168, 0.07)",
     "--app-text": "#ebe4d3",
     "--app-text-muted": "#9d9582",
     "--app-text-faint": "#6f6859",
     "--app-accent": amber[4],
+    "--app-accent-soft": "rgba(211, 166, 74, 0.16)",
     "--app-shadow": "0 1px 0 rgba(0, 0, 0, 0.35), 0 18px 40px -28px rgba(0, 0, 0, 0.55)",
+    "--app-shadow-lg": "0 1px 0 rgba(0, 0, 0, 0.35), 0 36px 80px -36px rgba(0, 0, 0, 0.75)",
+    "--app-ring": "0 0 0 3px color-mix(in srgb, var(--app-accent) 36%, transparent)",
+    "--app-scrim": "rgba(0, 0, 0, 0.6)",
+    "--tone-active": "#7aa9d0",
+    "--tone-done": "#79c08b",
+    "--tone-warn": "#d3a64a",
+    "--tone-error": "#de7665",
+    "--tone-info": "#8a96d6",
     "--mantine-color-body": "#16130d",
     "--mantine-color-text": "#ebe4d3",
     "--mantine-color-dimmed": "#9d9582",

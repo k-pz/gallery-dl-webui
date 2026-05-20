@@ -1,7 +1,5 @@
 import {
-  ActionIcon,
   Anchor,
-  Badge,
   Box,
   Card,
   Group,
@@ -31,11 +29,22 @@ import { makeNeedleMatcher } from "../lib/listFilters";
 import { usePagination } from "../lib/pagination";
 import { REFETCH_LIST_MS } from "../lib/polling";
 import { READING_DIRECTION_OPTIONS } from "../lib/readingDirection";
-import { isActive, jobStatusLabel, statusColor } from "../lib/status";
+import { isActive, jobStatusLabel, statusTone } from "../lib/status";
 import { formatRel } from "../lib/time";
+import { EmptyState } from "./EmptyState";
+import {
+  IconArrowUpRight,
+  IconChevronDown,
+  IconEye,
+  IconLibrary,
+  IconPlay,
+  IconTrash,
+} from "./Icons";
+import { InlineConfirm } from "./InlineConfirm";
 import { ListHeader } from "./ListHeader";
 import { ListPagination } from "./ListPagination";
 import { ListToolbar } from "./ListToolbar";
+import { Pill } from "./Pill";
 import { type SortDir, SortDirToggle } from "./SortDirToggle";
 
 type WatchedFilter = "any" | "watched" | "unwatched";
@@ -56,6 +65,7 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
   const [extractorFilter, setExtractorFilter] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("recent");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const extractorOptions = useMemo(() => {
     const names = new Set<string>();
@@ -192,22 +202,28 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
           </ListToolbar>
         )}
         {totalCount === 0 && (
-          <EmptyHint>
-            Your library is empty. Submit a gallery URL above to start tracking a series.
-          </EmptyHint>
+          <EmptyState
+            icon={<IconLibrary size={22} />}
+            title="Your library is empty"
+            body="Submit a gallery URL above to start tracking a series. Re-poll watched series on a schedule to keep them current."
+            arrow
+          />
         )}
         {totalCount > 0 && visible.length === 0 && (
-          <EmptyHint>No series match the current filters.</EmptyHint>
+          <Text size="sm" c="dimmed">
+            No series match the current filters.
+          </Text>
         )}
         {visible.length > 0 && (
           <Stack gap={0}>
-            {pagination.pageItems.map((t, i) => (
+            {pagination.pageItems.map((t) => (
               <TargetRow
                 key={t.id}
                 target={t}
                 defaultPeriod={defaultPeriod}
                 onOpenJob={onOpenJob}
-                divider={i > 0}
+                expanded={expandedId === t.id}
+                onToggle={() => setExpandedId((cur) => (cur === t.id ? null : t.id))}
               />
             ))}
           </Stack>
@@ -226,24 +242,6 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
   );
 }
 
-function EmptyHint({ children }: { children: React.ReactNode }) {
-  return (
-    <Box
-      style={{
-        padding: "1.5rem 1rem",
-        textAlign: "center",
-        border: "1px dashed var(--app-border-subtle)",
-        borderRadius: "var(--mantine-radius-md)",
-        background: "var(--app-surface-muted)",
-      }}
-    >
-      <Text size="sm" c="dimmed">
-        {children}
-      </Text>
-    </Box>
-  );
-}
-
 function recencyKey(t: TargetOut): number {
   const candidates = [t.last_finished_at, t.last_created_at, t.created_at];
   for (const v of candidates) {
@@ -258,17 +256,20 @@ function TargetRow({
   target,
   defaultPeriod,
   onOpenJob,
-  divider,
+  expanded,
+  onToggle,
 }: {
   target: TargetOut;
   defaultPeriod: string;
   onOpenJob?: (jobId: number) => void;
-  divider: boolean;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   const invalidate = useDataInvalidators();
   const [period, setPeriod] = useState(target.watch_period ?? "");
   const [periodDirty, setPeriodDirty] = useState(false);
   const [periodError, setPeriodError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useEffect(() => {
     if (!periodDirty) setPeriod(target.watch_period ?? "");
@@ -306,7 +307,7 @@ function TargetRow({
     ...deleteTargetMutation(),
     onSuccess: () => {
       notifications.show({
-        title: "Target removed",
+        title: "Series removed",
         message: target.url,
         color: "gray",
       });
@@ -329,161 +330,233 @@ function TargetRow({
   };
 
   const status = target.last_status ?? "pending";
+  const tone = statusTone(status);
   const busy = update.isPending || poll.isPending || del.isPending;
   const displayName = target.name ?? target.url;
-  const showUrlSubtitle = Boolean(target.name);
+
+  // Click anywhere on the row head except the action buttons to toggle.
+  const handleHeadKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onToggle();
+    }
+  };
 
   return (
-    <Stack
-      gap="sm"
-      py="md"
-      style={{
-        borderTop: divider ? "1px solid var(--app-border-subtle)" : undefined,
-      }}
-    >
-      <Group justify="space-between" wrap="nowrap" align="flex-start">
-        <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
-          <Group gap="xs" wrap="wrap" align="center">
-            <Badge color={statusColor(status)} variant="light" size="sm">
-              {jobStatusLabel(status)}
-            </Badge>
-            <Text fw={600} size="md" style={{ wordBreak: "break-word" }}>
+    <article className="lib-row" data-expanded={expanded ? "true" : undefined}>
+      {/* The whole row is a click target; we keep it as a div because the
+          inline action buttons (poll / delete / chevron) on the right side
+          would be invalid HTML if nested inside a parent <button>. The
+          keyboard handler below covers the same interaction for tab users. */}
+      {/* biome-ignore lint/a11y/useSemanticElements: composite click target with embedded buttons */}
+      <div
+        className="lib-row-head"
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={onToggle}
+        onKeyDown={handleHeadKey}
+      >
+        <Group gap="sm" wrap="nowrap" align="center" style={{ flex: 1, minWidth: 0 }}>
+          <Pill tone={tone}>{jobStatusLabel(status)}</Pill>
+          <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
+            <Text
+              size="sm"
+              fw={500}
+              ff="monospace"
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={displayName}
+            >
               {displayName}
             </Text>
-          </Group>
-          {showUrlSubtitle && (
-            <Anchor href={target.url} target="_blank" rel="noreferrer" className="app-url">
-              {target.url}
+            <Group gap={12} wrap="wrap" align="baseline">
+              <Text size="xs" c="dimmed" ff="monospace" style={{ letterSpacing: "0.04em" }}>
+                {target.extractor ?? "—"} · {target.download_count}
+                {target.download_count === 1 ? " run" : " runs"} ·{" "}
+                {formatRel(target.last_finished_at) ?? "—"}
+              </Text>
+              {target.watched && (
+                <Group gap={4} wrap="nowrap" style={{ color: "var(--app-accent)" }}>
+                  <IconEye size={11} />
+                  <Text size="xs" component="span" style={{ color: "inherit" }}>
+                    watched
+                  </Text>
+                </Group>
+              )}
+              {target.tags.length > 0 && (
+                <Group gap={4} wrap="wrap">
+                  {target.tags.slice(0, 3).map((t) => (
+                    <span key={t} className="code-chip" style={{ background: "transparent" }}>
+                      {t}
+                    </span>
+                  ))}
+                  {target.tags.length > 3 && (
+                    <Text size="xs" c="dimmed">
+                      +{target.tags.length - 3}
+                    </Text>
+                  )}
+                </Group>
+              )}
+            </Group>
+          </Stack>
+        </Group>
+        <Group gap={2} wrap="nowrap" onClick={(e) => e.stopPropagation()}>
+          {target.last_download_id !== null && onOpenJob && (
+            <Anchor
+              size="xs"
+              component="button"
+              type="button"
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "0 6px" }}
+              onClick={() => target.last_download_id !== null && onOpenJob(target.last_download_id)}
+            >
+              job #{target.last_download_id} <IconArrowUpRight size={11} />
             </Anchor>
           )}
-          <Group gap="md" wrap="wrap" mt={2}>
-            <MetaLabel label="Extractor" value={target.extractor ?? "—"} mono />
-            <MetaLabel
-              label="Runs"
-              value={`${target.download_count}${target.download_count === 1 ? " run" : " runs"}`}
-            />
-            <MetaLabel label="Last run" value={formatRel(target.last_finished_at) ?? "—"} />
-            {target.last_download_id !== null && onOpenJob && (
-              <Anchor
-                size="xs"
-                component="button"
-                type="button"
-                onClick={() =>
-                  target.last_download_id !== null && onOpenJob(target.last_download_id)
-                }
-              >
-                open job #{target.last_download_id} →
-              </Anchor>
-            )}
-          </Group>
-        </Stack>
-        <Group gap="xs" wrap="nowrap">
           <Tooltip label="Poll now" withArrow>
-            <ActionIcon
-              variant="light"
-              color="amber"
+            <button
+              type="button"
+              className="icon-btn"
+              data-tone="accent"
+              data-size="sm"
               disabled={busy}
-              loading={poll.isPending}
-              onClick={() => poll.mutate({ path: { target_id: target.id } })}
               aria-label={`Poll target ${target.id}`}
+              onClick={() => poll.mutate({ path: { target_id: target.id } })}
             >
-              ▶
-            </ActionIcon>
+              <IconPlay size={14} />
+            </button>
           </Tooltip>
           <Tooltip label="Remove from library" withArrow>
-            <ActionIcon
-              variant="subtle"
-              color="red"
+            <button
+              type="button"
+              className="icon-btn"
+              data-tone="danger"
+              data-size="sm"
               disabled={busy}
-              loading={del.isPending}
-              onClick={() => {
-                if (confirm(`Remove ${displayName} from the library?`)) {
-                  del.mutate({ path: { target_id: target.id } });
-                }
-              }}
               aria-label={`Delete target ${target.id}`}
+              onClick={() => {
+                setConfirmingDelete(true);
+                if (!expanded) onToggle();
+              }}
             >
-              ✕
-            </ActionIcon>
+              <IconTrash size={14} />
+            </button>
           </Tooltip>
+          <button
+            type="button"
+            className="icon-btn"
+            data-size="sm"
+            aria-label={expanded ? "Collapse" : "Expand"}
+            onClick={onToggle}
+          >
+            <IconChevronDown size={14} className="lib-row-chev" />
+          </button>
         </Group>
-      </Group>
-      <Group gap="md" align="flex-end" wrap="wrap">
-        <Switch
-          label="Watch"
-          checked={target.watched}
-          disabled={update.isPending}
-          onChange={(e) =>
-            update.mutate({
-              path: { target_id: target.id },
-              body: { watched: e.currentTarget.checked },
-            })
-          }
-        />
-        <TextInput
-          label="Poll every"
-          placeholder={defaultPeriod}
-          value={period}
-          disabled={!target.watched || update.isPending}
-          onChange={(e) => {
-            setPeriod(e.currentTarget.value);
-            setPeriodDirty(true);
-          }}
-          onBlur={submitPeriod}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submitPeriod();
-          }}
-          description={
-            target.watch_period
-              ? "Per-target override. Clear to fall back."
-              : `Default: ${defaultPeriod}`
-          }
-          w={170}
-          error={periodError ?? undefined}
-        />
-        <Select
-          label="Reading direction"
-          value={target.reading_direction ?? ""}
-          data={[{ value: "", label: "Use default" }, ...READING_DIRECTION_OPTIONS]}
-          onChange={(v) =>
-            update.mutate({
-              path: { target_id: target.id },
-              body: { reading_direction: v ?? "" },
-            })
-          }
-          disabled={update.isPending}
-          w={180}
-          comboboxProps={{ withinPortal: true }}
-          allowDeselect={false}
-        />
-      </Group>
-      <TagsInput
-        label="Tags"
-        placeholder="Enter to add"
-        value={target.tags}
-        onChange={(next) =>
-          update.mutate({
-            path: { target_id: target.id },
-            body: { tags: next },
-          })
-        }
-        disabled={update.isPending}
-        clearable
-      />
-    </Stack>
-  );
-}
+      </div>
 
-function MetaLabel({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <Text size="xs" c="dimmed" component="span">
-      <Text span fz="xs" c="dimmed" style={{ letterSpacing: "0.06em", textTransform: "uppercase" }}>
-        {label}
-      </Text>
-      {"  "}
-      <Text span fz="xs" c="var(--app-text-muted)" ff={mono ? "monospace" : undefined}>
-        {value}
-      </Text>
-    </Text>
+      {expanded && (
+        <div className="lib-row-body">
+          {confirmingDelete && (
+            <Box mb="md">
+              <InlineConfirm
+                confirmLabel="Remove"
+                message={
+                  <>
+                    Remove <strong>{displayName}</strong> from the library? Files on disk stay;
+                    you'll lose tags and the watch schedule.
+                  </>
+                }
+                loading={del.isPending}
+                onCancel={() => setConfirmingDelete(false)}
+                onConfirm={() => {
+                  del.mutate(
+                    { path: { target_id: target.id } },
+                    {
+                      onSettled: () => setConfirmingDelete(false),
+                    },
+                  );
+                }}
+              />
+            </Box>
+          )}
+          <Group gap="md" align="flex-end" wrap="wrap">
+            <Switch
+              label="Watch"
+              checked={target.watched}
+              disabled={update.isPending}
+              onChange={(e) =>
+                update.mutate({
+                  path: { target_id: target.id },
+                  body: { watched: e.currentTarget.checked },
+                })
+              }
+            />
+            <TextInput
+              label="Poll every"
+              placeholder={defaultPeriod}
+              value={period}
+              disabled={!target.watched || update.isPending}
+              onChange={(e) => {
+                setPeriod(e.currentTarget.value);
+                setPeriodDirty(true);
+              }}
+              onBlur={submitPeriod}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitPeriod();
+              }}
+              description={
+                target.watch_period
+                  ? "Per-target override. Clear to fall back."
+                  : `Default: ${defaultPeriod}`
+              }
+              w={170}
+              error={periodError ?? undefined}
+            />
+            <Select
+              label="Reading direction"
+              value={target.reading_direction ?? ""}
+              data={[{ value: "", label: "Use default" }, ...READING_DIRECTION_OPTIONS]}
+              onChange={(v) =>
+                update.mutate({
+                  path: { target_id: target.id },
+                  body: { reading_direction: v ?? "" },
+                })
+              }
+              disabled={update.isPending}
+              w={180}
+              comboboxProps={{ withinPortal: true }}
+              allowDeselect={false}
+            />
+          </Group>
+          <Box mt="sm">
+            <TagsInput
+              label="Tags"
+              placeholder="Enter to add"
+              value={target.tags}
+              onChange={(next) =>
+                update.mutate({
+                  path: { target_id: target.id },
+                  body: { tags: next },
+                })
+              }
+              disabled={update.isPending}
+              clearable
+            />
+          </Box>
+          <Anchor
+            href={target.url}
+            target="_blank"
+            rel="noreferrer"
+            className="app-url"
+            style={{ display: "inline-block", marginTop: 12 }}
+          >
+            {target.url}
+          </Anchor>
+        </div>
+      )}
+    </article>
   );
 }

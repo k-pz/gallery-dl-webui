@@ -50,13 +50,21 @@ test.describe("maintenance tab", () => {
     await expect(firstRow.getByLabel(/cancel maintenance job/i)).toHaveCount(0);
   });
 
-  test("rebuild library is gated behind a confirm dialog", async ({ page }) => {
+  test("rebuild library is gated behind type-to-confirm", async ({ page }) => {
     await page.getByRole("tab", { name: /maintenance/i }).click();
 
-    // Cancel the confirm — nothing should be scheduled.
-    page.once("dialog", (dialog) => dialog.dismiss());
-    await page.getByRole("button", { name: /rebuild library/i }).click();
-    // Give it a beat to ensure no row appeared.
+    // Click the prompt button — the inline type-to-confirm strip should appear.
+    await page.getByRole("button", { name: /^rebuild library…$/i }).click();
+    const typeField = page.getByLabel(/type rebuild to confirm/i);
+    await expect(typeField).toBeVisible();
+
+    // The arming button stays disabled until the user types the exact word.
+    const armed = page.getByRole("button", { name: /^rebuild library$/i });
+    await expect(armed).toBeDisabled();
+
+    // Cancel — the strip retracts, nothing is scheduled.
+    await page.getByRole("button", { name: /^cancel$/i }).click();
+    await expect(typeField).toHaveCount(0);
     await page.waitForTimeout(250);
     const beforeRows = await page
       .locator("tbody tr")
@@ -64,9 +72,11 @@ test.describe("maintenance tab", () => {
       .count();
     expect(beforeRows).toBe(0);
 
-    // Accept the confirm — a rebuild_library row should now show up.
-    page.once("dialog", (dialog) => dialog.accept());
-    await page.getByRole("button", { name: /rebuild library/i }).click();
+    // Open it again, type the word, fire — a rebuild_library row should show.
+    await page.getByRole("button", { name: /^rebuild library…$/i }).click();
+    await page.getByLabel(/type rebuild to confirm/i).fill("rebuild");
+    await expect(armed).toBeEnabled();
+    await armed.click();
     await expect(
       page.locator("tbody tr").filter({ hasText: "rebuild_library" }).first(),
     ).toBeVisible();

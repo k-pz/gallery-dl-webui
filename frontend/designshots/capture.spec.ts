@@ -1,7 +1,7 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { type APIRequestContext, expect, type Page, test } from "@playwright/test";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -84,17 +84,17 @@ test("populated states, both themes", async ({ page, request }) => {
     await page.getByRole("tab", { name: "Jobs" }).click();
     // Wait briefly for the running row to render, then click the most recent
     // one (which should be the slow URL).
-    await page.locator(".app-row").first().waitFor({ state: "visible", timeout: 8_000 }).catch(
-      () => {
-        /* if nothing's running anymore, the captured shot still works */
-      },
-    );
-    const slowRow = page.locator(".app-row", { hasText: "/very-slow" }).first();
-    await slowRow
-      .click({ timeout: 3_000 })
+    await page
+      .locator(".app-row")
+      .first()
+      .waitFor({ state: "visible", timeout: 8_000 })
       .catch(() => {
-        /* no slow row visible, skip */
+        /* if nothing's running anymore, the captured shot still works */
       });
+    const slowRow = page.locator(".app-row", { hasText: "/very-slow" }).first();
+    await slowRow.click({ timeout: 3_000 }).catch(() => {
+      /* no slow row visible, skip */
+    });
     await waitForIdle(page);
     await snap(page, `06-jobs-active-${theme}`);
 
@@ -106,7 +106,10 @@ test("populated states, both themes", async ({ page, request }) => {
       .getByRole("combobox", { name: "Status" })
       .click({ timeout: 3_000 })
       .catch(() => {});
-    await page.getByRole("option", { name: "Any" }).click({ timeout: 2_000 }).catch(() => {});
+    await page
+      .getByRole("option", { name: "Any" })
+      .click({ timeout: 2_000 })
+      .catch(() => {});
     await waitForIdle(page);
     await snap(page, `08-jobs-all-statuses-${theme}`);
 
