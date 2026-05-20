@@ -264,7 +264,7 @@ All inputs use Mantine's `radius="md"` default. Patterns:
   free `<Text c="red" size="sm">` for submit-level errors.
 
 Path inputs (postprocess root, output dir, chapter template, excluded
-dirs) get `styles={{ input: { fontFamily: "var(--app-mono)" } }}` so the
+dirs) get {% raw %}`styles={{ input: { fontFamily: "var(--app-mono)" } }}`{% endraw %} so the
 typed path reads as code.
 
 ## DirectoryPicker
