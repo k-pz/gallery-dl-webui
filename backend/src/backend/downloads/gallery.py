@@ -9,7 +9,7 @@ from gallery_dl import config, extractor, output
 from gallery_dl.job import DownloadJob, SimulationJob
 
 from backend.config import Settings
-from backend.downloads.postprocess import FileRecord, coerce_record_from_kwdict
+from backend.downloads.postprocess import FileRecord, chapter_with_minor, coerce_record_from_kwdict
 
 # Predicate: given (manga, chapter) from a gallery-dl kwdict, returns True if
 # the chapter is already represented as a CBZ in the postprocess output dir,
@@ -86,7 +86,7 @@ class _ManifestSimulationJob(SimulationJob):
             self.archive.add(kwdict)
         filename = pathfmt.build_filename(kwdict)
         manga = str(kwdict.get("manga") or "")
-        chapter = str(kwdict.get("chapter") or "")
+        chapter = chapter_with_minor(kwdict)
         self._manifest.append((pathfmt.directory + filename, manga, chapter))
 
 
@@ -130,7 +130,7 @@ class _ProgressDownloadJob(DownloadJob):
     def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
         if self._skip_chapter is not None:
             manga = str(kwdict.get("manga") or "")
-            chapter = str(kwdict.get("chapter") or "")
+            chapter = chapter_with_minor(kwdict)
             if manga and chapter and self._skip_chapter(manga, chapter):
                 pathfmt = self.pathfmt
                 if pathfmt is not None:

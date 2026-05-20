@@ -18,3 +18,10 @@ class MaintenanceJobOut(BaseModel):
 
 class MaintenanceScheduleIn(BaseModel):
     kind: str
+
+
+class MaintenanceProgressOut(BaseModel):
+    status: str
+    total: int
+    done: int
+    lines: list[str]

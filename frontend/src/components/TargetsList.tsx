@@ -26,10 +26,12 @@ import type { TargetOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
 import { makeNeedleMatcher } from "../lib/listFilters";
+import { usePagination } from "../lib/pagination";
 import { REFETCH_LIST_MS } from "../lib/polling";
 import { isActive, jobStatusLabel, statusColor } from "../lib/status";
 import { formatRel } from "../lib/time";
 import { ListHeader } from "./ListHeader";
+import { ListPagination } from "./ListPagination";
 import { ListToolbar } from "./ListToolbar";
 
 type WatchedFilter = "any" | "watched" | "unwatched";
@@ -98,6 +100,11 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
     watchedFilter !== "any" ||
     statusFilter !== "any" ||
     extractorFilter !== null;
+
+  const pagination = usePagination(
+    visible,
+    `${search}|${watchedFilter}|${statusFilter}|${extractorFilter ?? ""}|${sortKey}`,
+  );
 
   return (
     <Card withBorder shadow="sm" padding="lg">
@@ -183,7 +190,7 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
         )}
         {visible.length > 0 && (
           <Stack gap="sm">
-            {visible.map((t) => (
+            {pagination.pageItems.map((t) => (
               <TargetRow
                 key={t.id}
                 target={t}
@@ -193,6 +200,15 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
             ))}
           </Stack>
         )}
+        <ListPagination
+          page={pagination.page}
+          setPage={pagination.setPage}
+          totalPages={pagination.totalPages}
+          start={pagination.start}
+          end={pagination.end}
+          total={pagination.total}
+          ariaLabel="Library pagination"
+        />
       </Stack>
     </Card>
   );

@@ -1,8 +1,60 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, methodOf, mockFetch, urlOf } from "../test/mocks";
 import { renderWithProviders } from "../test/render";
 import { MaintenancePanel } from "./MaintenancePanel";
+
+type Job = {
+  id: number;
+  kind: string;
+  status: string;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  result: { renamed: number } | null;
+  error: string | null;
+};
+
+function jobsHandler(opts: {
+  jobs: Job[];
+  nextId: { value: number };
+  progress: Record<number, { status: string; total: number; done: number; lines: string[] }>;
+}) {
+  return async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    const u = urlOf(input);
+    const progressMatch = u.match(/\/api\/maintenance\/jobs\/(\d+)\/progress/);
+    if (progressMatch) {
+      const id = Number(progressMatch[1]);
+      const snap = opts.progress[id];
+      if (!snap) return new Response("not found", { status: 404 });
+      return jsonResponse(snap);
+    }
+    if (u.includes("/api/maintenance/jobs")) {
+      if (methodOf(input, init) === "POST") {
+        const created: Job = {
+          id: opts.nextId.value++,
+          kind: "rename_chapters",
+          status: "pending",
+          created_at: "2025-01-02T00:00:00",
+          started_at: null,
+          finished_at: null,
+          result: null,
+          error: null,
+        };
+        opts.jobs.unshift(created);
+        opts.progress[created.id] = {
+          status: "pending",
+          total: 0,
+          done: 0,
+          lines: [],
+        };
+        return jsonResponse(created);
+      }
+      return jsonResponse(opts.jobs);
+    }
+    return new Response("not found", { status: 404 });
+  };
+}
 
 describe("MaintenancePanel", () => {
   afterEach(() => {
@@ -11,17 +63,7 @@ describe("MaintenancePanel", () => {
   });
 
   it("schedules a chapter rename job", async () => {
-    type Job = {
-      id: number;
-      kind: string;
-      status: string;
-      created_at: string;
-      started_at: string | null;
-      finished_at: string | null;
-      result: { renamed: number } | null;
-      error: string | null;
-    };
-    let nextId = 2;
+    const nextId = { value: 2 };
     const jobs: Job[] = [
       {
         id: 1,
@@ -34,27 +76,13 @@ describe("MaintenancePanel", () => {
         error: null,
       },
     ];
-    mockFetch(async (input, init) => {
-      const u = urlOf(input);
-      if (u.includes("/api/maintenance/jobs")) {
-        if (methodOf(input, init) === "POST") {
-          const created = {
-            id: nextId++,
-            kind: "rename_chapters",
-            status: "pending",
-            created_at: "2025-01-02T00:00:00",
-            started_at: null,
-            finished_at: null,
-            result: null,
-            error: null,
-          };
-          jobs.unshift(created);
-          return jsonResponse(created);
-        }
-        return jsonResponse(jobs);
-      }
-      return new Response("not found", { status: 404 });
-    });
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {
+      1: { status: "completed", total: 5, done: 5, lines: ["done"] },
+    };
+    mockFetch(jobsHandler({ jobs, nextId, progress }));
 
     renderWithProviders(<MaintenancePanel />);
 
@@ -63,5 +91,87 @@ describe("MaintenancePanel", () => {
     await waitFor(() => {
       expect(screen.getAllByText("rename_chapters").length).toBeGreaterThan(1);
     });
+  });
+
+  it("renders a live log tail for the latest job", async () => {
+    const nextId = { value: 2 };
+    const jobs: Job[] = [
+      {
+        id: 1,
+        kind: "rename_chapters",
+        status: "running",
+        created_at: "2025-01-01T00:00:00",
+        started_at: "2025-01-01T00:00:01",
+        finished_at: null,
+        result: null,
+        error: null,
+      },
+    ];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {
+      1: {
+        status: "running",
+        total: 3,
+        done: 1,
+        lines: ["scanning… found 3 archive(s)", "renamed: Series/c1.cbz -> Series/Series_001.cbz"],
+      },
+    };
+    mockFetch(jobsHandler({ jobs, nextId, progress }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    await screen.findByText(/Job #1/);
+    await waitFor(() => {
+      expect(screen.getByText(/1 \/ 3/)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/scanning… found 3 archive\(s\)/)).toBeInTheDocument();
+  });
+
+  it("switches the log to the row the user clicks", async () => {
+    const nextId = { value: 3 };
+    const jobs: Job[] = [
+      {
+        id: 2,
+        kind: "rename_chapters",
+        status: "running",
+        created_at: "2025-01-02T00:00:00",
+        started_at: "2025-01-02T00:00:01",
+        finished_at: null,
+        result: null,
+        error: null,
+      },
+      {
+        id: 1,
+        kind: "rename_chapters",
+        status: "completed",
+        created_at: "2025-01-01T00:00:00",
+        started_at: "2025-01-01T00:00:01",
+        finished_at: "2025-01-01T00:00:02",
+        result: { renamed: 4 },
+        error: null,
+      },
+    ];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {
+      2: { status: "running", total: 10, done: 3, lines: ["working on job 2"] },
+      1: { status: "completed", total: 4, done: 4, lines: ["done: {renamed: 4}"] },
+    };
+    mockFetch(jobsHandler({ jobs, nextId, progress }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    // Defaults to the most recent job (id 2).
+    await screen.findByText(/Job #2/);
+    expect(screen.getByText(/working on job 2/)).toBeInTheDocument();
+
+    // Click the older row → log should swap to job 1.
+    const row1 = screen.getByLabelText("Select maintenance job 1");
+    fireEvent.click(within(row1).getByText("1"));
+    await screen.findByText(/Job #1/);
+    expect(screen.getByText(/done: \{renamed: 4\}/)).toBeInTheDocument();
   });
 });

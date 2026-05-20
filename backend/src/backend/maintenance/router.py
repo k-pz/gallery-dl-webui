@@ -6,7 +6,11 @@ from fastapi import APIRouter, HTTPException, Request
 
 from backend.dependencies import DbDep
 from backend.maintenance import service
-from backend.maintenance.schemas import MaintenanceJobOut, MaintenanceScheduleIn
+from backend.maintenance.schemas import (
+    MaintenanceJobOut,
+    MaintenanceProgressOut,
+    MaintenanceScheduleIn,
+)
 
 router = APIRouter(tags=["maintenance"])
 
@@ -51,3 +55,31 @@ async def schedule_maintenance_job(
     created = await service.create_pending(db, body.kind)
     request.app.state.maintenance_worker.notify()
     return _to_out(created)
+
+
+@router.get("/maintenance/jobs/{job_id}/progress", operation_id="getMaintenanceJobProgress")
+async def get_maintenance_job_progress(
+    job_id: int,
+    db: DbDep,
+    request: Request,
+) -> MaintenanceProgressOut:
+    job = await service.get_job(db, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="maintenance job not found")
+    snapshot = request.app.state.maintenance_live.snapshot(job_id)
+    if snapshot is not None:
+        return MaintenanceProgressOut(
+            status=job.status,
+            total=snapshot.total,
+            done=snapshot.done,
+            lines=snapshot.lines,
+        )
+    # Terminal (or pending) — no live state. Synthesize a one-line summary so
+    # callers can still render something useful after the worker has cleared
+    # its in-memory buffer.
+    summary: list[str] = []
+    if job.status == "completed" and job.result_json:
+        summary.append(f"done: {job.result_json}")
+    elif job.status == "failed" and job.error:
+        summary.append(f"failed: {job.error}")
+    return MaintenanceProgressOut(status=job.status, total=0, done=0, lines=summary)

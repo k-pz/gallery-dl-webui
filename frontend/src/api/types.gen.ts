@@ -275,6 +275,28 @@ export type MaintenanceJobOut = {
 };
 
 /**
+ * MaintenanceProgressOut
+ */
+export type MaintenanceProgressOut = {
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Done
+     */
+    done: number;
+    /**
+     * Lines
+     */
+    lines: Array<string>;
+};
+
+/**
  * MaintenanceScheduleIn
  */
 export type MaintenanceScheduleIn = {
@@ -897,3 +919,33 @@ export type ScheduleMaintenanceJobResponses = {
 };
 
 export type ScheduleMaintenanceJobResponse = ScheduleMaintenanceJobResponses[keyof ScheduleMaintenanceJobResponses];
+
+export type GetMaintenanceJobProgressData = {
+    body?: never;
+    path: {
+        /**
+         * Job Id
+         */
+        job_id: number;
+    };
+    query?: never;
+    url: '/api/maintenance/jobs/{job_id}/progress';
+};
+
+export type GetMaintenanceJobProgressErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetMaintenanceJobProgressError = GetMaintenanceJobProgressErrors[keyof GetMaintenanceJobProgressErrors];
+
+export type GetMaintenanceJobProgressResponses = {
+    /**
+     * Successful Response
+     */
+    200: MaintenanceProgressOut;
+};
+
+export type GetMaintenanceJobProgressResponse = GetMaintenanceJobProgressResponses[keyof GetMaintenanceJobProgressResponses];
