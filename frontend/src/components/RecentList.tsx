@@ -28,7 +28,7 @@ import { ListToolbar } from "./ListToolbar";
 import { type SortDir, SortDirToggle } from "./SortDirToggle";
 
 type StatusFilter = "any" | "active" | "completed" | "failed" | "cancelled";
-type SortKey = "recent" | "status";
+type SortKey = "queue" | "recent" | "status";
 
 const STATUS_ORDER: Record<string, number> = {
   pending: 0,
@@ -37,6 +37,18 @@ const STATUS_ORDER: Record<string, number> = {
   completed: 3,
   failed: 4,
   cancelled: 5,
+};
+
+// Queue-order ranking: in-flight first (running, extracting), then pending
+// in FIFO order (smallest id = next to be processed). Terminal jobs trail
+// behind by recency. Used for the default sort on the Jobs tab.
+const QUEUE_RANK: Record<string, number> = {
+  running: 0,
+  extracting: 1,
+  pending: 2,
+  completed: 3,
+  cancelled: 3,
+  failed: 3,
 };
 
 function chapterCountLabel(item: DownloadOut): string {
@@ -62,9 +74,9 @@ export function RecentList({
 
   const cancelIntent = useOptimisticCancelMany(data);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("any");
-  const [sortKey, setSortKey] = useState<SortKey>("recent");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
+  const [sortKey, setSortKey] = useState<SortKey>("queue");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const refresh = (id: number) => {
     invalidate.downloads();
@@ -150,11 +162,22 @@ export function RecentList({
         return b.created_at.localeCompare(a.created_at);
       });
     }
+    if (sortKey === "queue") {
+      return [...filtered].sort((a, b) => {
+        const aRank = QUEUE_RANK[a.status] ?? 99;
+        const bRank = QUEUE_RANK[b.status] ?? 99;
+        if (aRank !== bRank) return dir * (aRank - bRank);
+        // Within active ranks (running/extracting/pending), smaller id = next.
+        // Within terminal, larger id = more recent.
+        if (aRank < 3) return dir * (a.id - b.id);
+        return dir * (b.id - a.id);
+      });
+    }
     return [...filtered].sort((a, b) => dir * a.created_at.localeCompare(b.created_at));
   }, [data, search, statusFilter, sortKey, sortDir]);
 
   const totalCount = data?.length ?? 0;
-  const filtersActive = search.trim().length > 0 || statusFilter !== "any";
+  const filtersActive = search.trim().length > 0 || statusFilter !== "active";
 
   const pagination = usePagination(visible, `${search}|${statusFilter}|${sortKey}|${sortDir}`);
 
@@ -198,11 +221,12 @@ export function RecentList({
               <Select
                 label="Sort by"
                 data={[
+                  { value: "queue", label: "Queue order" },
                   { value: "recent", label: "Most recent" },
                   { value: "status", label: "Status" },
                 ]}
                 value={sortKey}
-                onChange={(v) => setSortKey((v as SortKey) ?? "recent")}
+                onChange={(v) => setSortKey((v as SortKey) ?? "queue")}
                 w={150}
                 comboboxProps={{ withinPortal: true }}
               />
