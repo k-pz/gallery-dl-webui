@@ -49,6 +49,7 @@ dependencies = [
     { name = "aiosqlite" },
     { name = "fastapi", extra = ["standard"] },
     { name = "gallery-dl" },
+    { name = "jinja2" },
     { name = "pyyaml" },
 ]
 
@@ -69,6 +70,7 @@ requires-dist = [
     { name = "aiosqlite", specifier = ">=0.21" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.136.1" },
     { name = "gallery-dl", specifier = ">=1.32" },
+    { name = "jinja2", specifier = ">=3.1.6" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
 
