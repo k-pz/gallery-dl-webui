@@ -19,6 +19,7 @@ import aiosqlite
 from backend.app_config import service as app_config_service
 from backend.downloads import service as downloads_service
 from backend.downloads.worker import Worker
+from backend.events import EventBus, downloads_event, targets_event
 from backend.targets import service as targets_service
 from backend.targets.models import Target
 from backend.targets.utils import parse_duration
@@ -69,10 +70,14 @@ class Poller:
         worker: Worker,
         *,
         tick_seconds: float = TICK_SECONDS,
+        event_bus: EventBus | None = None,
+        db_lock: asyncio.Lock | None = None,
     ) -> None:
         self._db = db
         self._worker = worker
         self._tick = tick_seconds
+        self._bus = event_bus
+        self._db_lock = db_lock or asyncio.Lock()
         self._stop = asyncio.Event()
         self._wakeup = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -106,7 +111,8 @@ class Poller:
             self._wakeup.clear()
 
     async def _tick_once(self) -> None:
-        cfg = await app_config_service.get_all(self._db)
+        async with self._db_lock:
+            cfg = await app_config_service.get_all(self._db)
         default_raw = cfg.get("default_watch_period")
         if not isinstance(default_raw, str) or not default_raw:
             default_raw = "1d"
@@ -116,18 +122,23 @@ class Poller:
             default_period = timedelta(days=1)
 
         now = datetime.now(UTC)
-        watched = await targets_service.list_watched(self._db)
+        async with self._db_lock:
+            watched = await targets_service.list_watched(self._db)
         notified = False
         for t in watched:
             if not is_due(t, default_period, now):
                 continue
-            if await downloads_service.has_active_for_target(self._db, t.id):
-                continue
-            await downloads_service.insert_pending(
-                self._db, t.url, t.extractor, output_dir=t.output_dir, target_id=t.id
-            )
-            await targets_service.mark_polled(self._db, t.id)
+            async with self._db_lock:
+                if await downloads_service.has_active_for_target(self._db, t.id):
+                    continue
+                download = await downloads_service.insert_pending(
+                    self._db, t.url, t.extractor, output_dir=t.output_dir, target_id=t.id
+                )
+                await targets_service.mark_polled(self._db, t.id)
             notified = True
             logger.info("poller queued target %d (%s)", t.id, t.url)
+            if self._bus is not None:
+                self._bus.publish(downloads_event("created", id=download.id))
+                self._bus.publish(targets_event("updated", id=t.id))
         if notified:
             self._worker.notify()

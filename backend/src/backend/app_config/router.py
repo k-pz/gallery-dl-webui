@@ -7,14 +7,17 @@ from backend.app_config.constants import (
     DEFAULT_CHAPTER_NAMING_TEMPLATE,
     DEFAULT_DELETE_RAW,
     DEFAULT_EXCLUDED_DIR_NAMES,
+    DEFAULT_MAX_CONCURRENT_DOWNLOADS,
+    DEFAULT_MAX_PARALLEL_POSTPROCESS,
     DEFAULT_READING_DIRECTION,
     DEFAULT_WATCH_PERIOD,
     READING_DIRECTIONS,
 )
 from backend.app_config.exceptions import DefaultOutputDirWithoutRoot
 from backend.app_config.schemas import AppConfigIn, AppConfigOut
-from backend.dependencies import DbDep
+from backend.dependencies import DbDep, EventBusDep
 from backend.downloads.postprocess import validate_chapter_naming_template
+from backend.events import config_event
 from backend.output_dirs.utils import coerce_optional, validate_root, validate_under_root
 from backend.targets.utils import parse_duration
 
@@ -49,6 +52,12 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
     reading_direction = cfg.get("default_reading_direction")
     if not isinstance(reading_direction, str) or reading_direction not in READING_DIRECTIONS:
         reading_direction = DEFAULT_READING_DIRECTION
+    max_concurrent = _coerce_clamped_int(
+        cfg.get("max_concurrent_downloads"), DEFAULT_MAX_CONCURRENT_DOWNLOADS
+    )
+    max_postprocess = _coerce_clamped_int(
+        cfg.get("max_parallel_postprocess"), DEFAULT_MAX_PARALLEL_POSTPROCESS
+    )
     return AppConfigOut(
         postprocess_root=root,
         postprocess_default_output_dir=default,
@@ -58,7 +67,22 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
         default_watch_period=period,
         chapter_naming_template=chapter_template,
         default_reading_direction=reading_direction,
+        max_concurrent_downloads=max_concurrent,
+        max_parallel_postprocess=max_postprocess,
     )
+
+
+def _coerce_clamped_int(value: object, default: int) -> int:
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return max(1, min(value, 16))
+    if isinstance(value, str):
+        try:
+            return max(1, min(int(value), 16))
+        except ValueError:
+            return default
+    return default
 
 
 @router.get("/config", operation_id="getConfig")
@@ -67,7 +91,7 @@ async def get_config(db: DbDep) -> AppConfigOut:
 
 
 @router.put("/config", operation_id="putConfig")
-async def put_config(body: AppConfigIn, db: DbDep) -> AppConfigOut:
+async def put_config(body: AppConfigIn, db: DbDep, bus: EventBusDep) -> AppConfigOut:
     root_raw = coerce_optional(body.postprocess_root)
     default_raw = coerce_optional(body.postprocess_default_output_dir)
 
@@ -134,6 +158,19 @@ async def put_config(body: AppConfigIn, db: DbDep) -> AppConfigOut:
             seen.add(cleaned)
             excluded_norm.append(cleaned)
 
+    max_concurrent = _coerce_clamped_int(
+        body.max_concurrent_downloads
+        if body.max_concurrent_downloads is not None
+        else existing.get("max_concurrent_downloads"),
+        DEFAULT_MAX_CONCURRENT_DOWNLOADS,
+    )
+    max_post = _coerce_clamped_int(
+        body.max_parallel_postprocess
+        if body.max_parallel_postprocess is not None
+        else existing.get("max_parallel_postprocess"),
+        DEFAULT_MAX_PARALLEL_POSTPROCESS,
+    )
+
     updates: dict[str, object] = {
         "postprocess_root": root_str,
         "postprocess_default_output_dir": str(default_path) if default_path else None,
@@ -143,6 +180,9 @@ async def put_config(body: AppConfigIn, db: DbDep) -> AppConfigOut:
         "default_watch_period": period_raw,
         "chapter_naming_template": template_raw,
         "default_reading_direction": direction_raw,
+        "max_concurrent_downloads": max_concurrent,
+        "max_parallel_postprocess": max_post,
     }
     await service.set_many(db, updates)
+    bus.publish(config_event())
     return _load_config(updates)

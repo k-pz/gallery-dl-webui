@@ -12,7 +12,12 @@ cancel and re-poll paths) see [Lifecycles](lifecycles.md).
 
 `downloads/worker.py`
 
-A long-running coroutine driven by an `asyncio.Event` (`_wakeup`):
+A pool of N long-running coroutines ("slots") driven by an `asyncio.Event`
+(`_wakeup`). The slot count comes from `app_config.max_concurrent_downloads`
+(default 2, hard ceiling 16) and is read once at startup by a bootstrap
+supervisor task; bumping it requires a restart.
+
+Each slot loops:
 
 ```
 while not stop:
@@ -61,13 +66,20 @@ while not stop:
 On any exception during 1–4, `_handle_failure(...)` logs, counts whatever
 landed on disk, and persists `mark_failed(error=repr(exc))`.
 
-**Cancellation contract:** `request_cancel(id)` is a no-op unless `id ==
-self._current_id`. It sets `_cancel_requested = True`. The worker thread
-reads that bool inside the per-file callback; setting a bool from one
-coroutine and reading it from one thread is GIL-atomic and is the only
-synchronisation the worker needs (single-writer / single-reader). For a
-*pending* (not-yet-started) job, the route also flips the row to `cancelled`
-directly via `cancel_pending`.
+**Cancellation contract:** `request_cancel(id)` looks the id up in
+`Worker._cancel_flags` (per-job dict, keyed while the slot is processing
+that download) and flips the value to `True`. The worker thread reads that
+bool inside the per-file callback; setting a bool from one coroutine and
+reading it from one thread is GIL-atomic and is the only synchronisation
+the worker needs (single-writer / single-reader). For a *pending* (not-yet
+-started) job, the route also flips the row to `cancelled` directly via
+`cancel_pending`.
+
+**Connection lock**: every multi-statement DB sequence inside the worker is
+wrapped in `async with self._db_lock` (a process-wide
+`asyncio.Lock` shared with the poller and maintenance worker). One
+aiosqlite connection serves the whole app, and an open cursor from one
+coroutine otherwise blocks another's `commit()` mid-transaction.
 
 ## gallery-dl integration
 
@@ -121,6 +133,14 @@ gallery-dl.
 Postprocessing groups the worker's `FileRecord` list by parent directory,
 collects each into a `ChapterRecord`, and packs each chapter into a Zip
 archive with `.cbz` extension and a `ComicInfo.xml` payload.
+
+Chapter target paths are reserved **sequentially** before packing kicks off
+— stems are deterministic and reused across runs, so two chapters resolving
+to the same name would race on disk if they were both computed in parallel.
+Once targets are reserved, packing runs through an `asyncio.Semaphore` sized
+by `app_config.max_parallel_postprocess` (default 3, ceiling 16); zipfile
+releases the GIL during deflate, so a small handful of threads is enough to
+overlap pack-then-rmtree on adjacent chapters.
 
 Naming convention (Komga-friendly):
 

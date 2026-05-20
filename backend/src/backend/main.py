@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -15,12 +16,14 @@ from backend.downloads.gallery import Gallery
 from backend.downloads.live_progress import LiveProgress
 from backend.downloads.router import router as downloads_router
 from backend.downloads.worker import Worker
+from backend.events import EventBus
 from backend.health.router import router as health_router
 from backend.library.router import router as library_router
 from backend.maintenance.live_progress import MaintenanceLiveProgress
 from backend.maintenance.router import router as maintenance_router
 from backend.maintenance.worker import MaintenanceWorker
 from backend.output_dirs.router import router as output_dirs_router
+from backend.realtime.router import router as realtime_router
 from backend.targets.poller import Poller
 from backend.targets.router import router as targets_router
 
@@ -46,13 +49,21 @@ def create_app(
 
         db = await open_database(settings.jobs_db_path)
         gallery = gallery_factory(settings)
+        event_bus = EventBus()
+        # Shared lock that serialises multi-statement DB sequences across the
+        # downloads worker pool, the maintenance worker, and the poller. We
+        # use one aiosqlite connection app-wide; an unclosed cursor from one
+        # coroutine otherwise blocks a `commit()` from another. The lock is
+        # held briefly — only for claim transactions and terminal updates —
+        # so request handlers remain responsive.
+        db_lock = asyncio.Lock()
 
         interrupted = await downloads_service.mark_interrupted_on_boot(db)
         if interrupted:
             logger.warning("marked %d in-flight job(s) as failed on boot", interrupted)
 
         live_progress = LiveProgress()
-        worker = Worker(db, gallery, live_progress)
+        worker = Worker(db, gallery, live_progress, event_bus=event_bus, db_lock=db_lock)
         worker.start()
         maintenance_live = MaintenanceLiveProgress()
         maintenance_worker = MaintenanceWorker(
@@ -60,9 +71,11 @@ def create_app(
             maintenance_live,
             settings=settings,
             downloads_worker=worker,
+            event_bus=event_bus,
+            db_lock=db_lock,
         )
         maintenance_worker.start()
-        poller = Poller(db, worker)
+        poller = Poller(db, worker, event_bus=event_bus, db_lock=db_lock)
         poller.start()
 
         app.state.settings = settings
@@ -73,6 +86,8 @@ def create_app(
         app.state.poller = poller
         app.state.maintenance_worker = maintenance_worker
         app.state.maintenance_live = maintenance_live
+        app.state.event_bus = event_bus
+        app.state.db_lock = db_lock
 
         try:
             yield
@@ -90,6 +105,7 @@ def create_app(
     app.include_router(config_router, prefix="/api")
     app.include_router(library_router, prefix="/api")
     app.include_router(maintenance_router, prefix="/api")
+    app.include_router(realtime_router, prefix="/api")
 
     if serve_frontend and FRONTEND_DIST.is_dir():
         app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")

@@ -665,6 +665,32 @@ async def _pack_chapter(
     return target
 
 
+def _reserve_target_path(
+    output_dir: Path,
+    ch: ChapterRecord,
+    naming_template: str,
+    reserved: set[Path],
+) -> Path:
+    """Pick a CBZ target that's free on disk AND not already reserved this run.
+
+    Two chapters that resolve to the same stem (e.g. duplicate chapter numbers
+    from a re-uploaded series) would race for the same file when packed in
+    parallel. Reserving as we go means each chapter gets a distinct path —
+    the `(1)`-suffixed variant slots in just like the sequential code would
+    have produced.
+    """
+    base = cbz_target_path(output_dir, ch, naming_template=naming_template)
+    if base not in reserved:
+        return base
+    series = sanitize(ch.manga)
+    stem = _render_chapter_stem(ch, naming_template)
+    for i in range(1, 1000):
+        candidate = output_dir / series / f"{stem} ({i}).cbz"
+        if not candidate.exists() and candidate not in reserved:
+            return candidate
+    raise RuntimeError(f"too many CBZ collisions at {base}")
+
+
 async def run(
     records: list[FileRecord],
     output_dir: Path,
@@ -672,6 +698,8 @@ async def run(
     delete_raw: bool,
     naming_template: str = DEFAULT_CHAPTER_NAMING_TEMPLATE,
     metadata_overrides: SeriesMetadata | None = None,
+    max_parallel: int = 1,
+    on_chapter_done: Callable[[str, bool], None] | None = None,
 ) -> PostResult:
     """Pack every eligible chapter into a CBZ under `output_dir`.
 
@@ -679,32 +707,61 @@ async def run(
     are baked into every per-chapter ComicInfo.xml, and a series.json is
     written under each series subdir so Komga can ingest the description,
     authors, and reading direction.
+
+    `max_parallel` controls how many chapters are packed concurrently. Each
+    pack runs on a thread (zipfile releases the GIL during deflate), so a few
+    threads overlap CPU-bound deflate with the shutil.rmtree on the previous
+    chapter. Target paths are reserved sequentially before packing kicks off
+    so two chapters that resolve to the same stem don't race to the same file.
     """
     chapters = collect_chapters(records)
     if not chapters:
         return PostResult(total=0, succeeded=0, failed=0)
 
     total = len(chapters)
-    failures: list[tuple[ChapterRecord, str]] = []
-    succeeded = 0
-
     series_meta = derive_series_metadata(chapters, metadata_overrides)
     reading_direction = series_meta.reading_direction
     tags = series_meta.tags
 
-    chapters_by_series: dict[Path, list[ChapterRecord]] = {}
-
+    # Reserve target paths up front, sequentially — `cbz_target_path` checks
+    # `exists()` on disk, so two parallel packers could otherwise both land on
+    # `S - c001.cbz`.
+    pack_items: list[tuple[ChapterRecord, Path]] = []
+    reserved: set[Path] = set()
     for ch in chapters:
         if not ch.dir.exists():
             continue
-        try:
-            target = cbz_target_path(output_dir, ch, naming_template=naming_template)
-            await _pack_chapter(ch, target, downloads_dir, delete_raw, reading_direction, tags)
-            chapters_by_series.setdefault(target.parent, []).append(ch)
+        target = _reserve_target_path(output_dir, ch, naming_template, reserved)
+        reserved.add(target)
+        pack_items.append((ch, target))
+
+    sem = asyncio.Semaphore(max(1, max_parallel))
+
+    async def pack(ch: ChapterRecord, target: Path) -> tuple[ChapterRecord, Path, Exception | None]:
+        async with sem:
+            try:
+                await _pack_chapter(ch, target, downloads_dir, delete_raw, reading_direction, tags)
+                return ch, target, None
+            except Exception as exc:
+                logger.exception("postprocess chapter failed: c=%s", ch.chapter)
+                return ch, target, exc
+
+    results = await asyncio.gather(*(pack(ch, t) for ch, t in pack_items))
+
+    failures: list[tuple[ChapterRecord, str]] = []
+    succeeded = 0
+    chapters_by_series: dict[Path, list[ChapterRecord]] = {}
+    for ch, target, exc in results:
+        if exc is None:
             succeeded += 1
-        except Exception as exc:
+            chapters_by_series.setdefault(target.parent, []).append(ch)
+        else:
             failures.append((ch, str(exc)))
-            logger.exception("postprocess chapter failed: c=%s", ch.chapter)
+        if on_chapter_done is not None:
+            try:
+                on_chapter_done(ch.chapter, exc is None)
+            except Exception:
+                logger.exception("on_chapter_done callback raised")
 
     # Best-effort: write/refresh series.json next to each affected series. We
     # do this even on partial failure so the metadata for what we did manage

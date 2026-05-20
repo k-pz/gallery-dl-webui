@@ -7,8 +7,12 @@ import { MaintenancePanel } from "./components/MaintenancePanel";
 import { RecentList } from "./components/RecentList";
 import { SubmitForm } from "./components/SubmitForm";
 import { TargetsList } from "./components/TargetsList";
+import { useEventStream } from "./lib/eventStream";
 
 export default function App() {
+  // Open one websocket for the app lifetime — push events into the cache so
+  // lists refresh immediately on server-side state changes.
+  useEventStream();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [tab, setTab] = useState<string | null>("library");
 

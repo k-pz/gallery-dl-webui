@@ -12,6 +12,8 @@ class AppConfigOut(BaseModel):
     default_watch_period: str
     chapter_naming_template: str
     default_reading_direction: str
+    max_concurrent_downloads: int
+    max_parallel_postprocess: int
 
 
 class AppConfigIn(BaseModel):
@@ -22,3 +24,5 @@ class AppConfigIn(BaseModel):
     chapter_naming_template: str | None = None
     default_reading_direction: str | None = None
     postprocess_excluded_dir_names: list[str] | None = None
+    max_concurrent_downloads: int | None = None
+    max_parallel_postprocess: int | None = None

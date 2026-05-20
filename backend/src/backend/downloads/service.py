@@ -63,18 +63,29 @@ async def list_recent(db: aiosqlite.Connection, limit: int = 50) -> list[Downloa
 
 
 async def claim_next_pending(db: aiosqlite.Connection) -> Download | None:
-    async with db.execute(
-        "SELECT id FROM downloads WHERE status = 'pending' ORDER BY id ASC LIMIT 1"
-    ) as cur:
-        row = await cur.fetchone()
-    if row is None:
-        return None
-    await db.execute(
-        "UPDATE downloads SET status = 'extracting', started_at = ? WHERE id = ?",
-        (now_iso(), row["id"]),
-    )
-    await db.commit()
-    return await get(db, row["id"])
+    """Pick the oldest pending row, flip it to `extracting`, return it.
+
+    Two-step (SELECT then guarded UPDATE) so callers don't need RETURNING:
+    the UPDATE includes `status = 'pending'` so a slot that lost the race
+    sees `rowcount == 0` and retries — at worst we make one more SELECT.
+    """
+    for _ in range(8):
+        async with db.execute(
+            "SELECT id FROM downloads WHERE status = 'pending' ORDER BY id ASC LIMIT 1"
+        ) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        async with db.execute(
+            "UPDATE downloads SET status = 'extracting', started_at = ? "
+            "WHERE id = ? AND status = 'pending'",
+            (now_iso(), row["id"]),
+        ) as cur:
+            claimed = (cur.rowcount or 0) > 0
+        await db.commit()
+        if claimed:
+            return await get(db, row["id"])
+    return None
 
 
 async def save_manifest(db: aiosqlite.Connection, download_id: int, relpaths: list[str]) -> None:

@@ -24,6 +24,7 @@ from backend.downloads.postprocess import (
     normalize_tags,
     sanitize,
 )
+from backend.events import EventBus, maintenance_event, maintenance_progress_event
 from backend.maintenance import service
 from backend.maintenance.live_progress import MaintenanceLiveProgress
 from backend.targets import service as targets_service
@@ -103,19 +104,40 @@ def _wipe_directory_contents(root: Path, excluded_lower: set[str]) -> int:
 
 
 class _JobProgressSink:
-    """Adapter that funnels rename_packed_chapters callbacks into the live store."""
+    """Adapter that funnels rename_packed_chapters callbacks into the live store
+    and also fan-outs to the event bus so websocket clients can tail progress
+    without polling. The worker thread invokes `total` and `step`; both end up
+    publishing through `EventBus.publish_threadsafe` to bounce back to the
+    asyncio loop.
+    """
 
-    def __init__(self, live: MaintenanceLiveProgress, job_id: int) -> None:
+    def __init__(
+        self,
+        live: MaintenanceLiveProgress,
+        job_id: int,
+        bus: EventBus | None,
+        loop: asyncio.AbstractEventLoop | None,
+    ) -> None:
         self._live = live
         self._job_id = job_id
+        self._bus = bus
+        self._loop = loop
 
     def total(self, n: int) -> None:
         self._live.set_total(self._job_id, n)
-        self._live.record(self._job_id, f"scanning… found {n} archive(s)")
+        line = f"scanning… found {n} archive(s)"
+        self._live.record(self._job_id, line)
+        self._publish(total=n, line=line)
 
     def step(self, line: str) -> None:
         self._live.increment_done(self._job_id)
         self._live.record(self._job_id, line)
+        self._publish(line=line)
+
+    def _publish(self, **data) -> None:
+        if self._bus is None or self._loop is None:
+            return
+        self._bus.publish_threadsafe(self._loop, maintenance_progress_event(self._job_id, **data))
 
 
 class MaintenanceWorker:
@@ -126,6 +148,8 @@ class MaintenanceWorker:
         *,
         settings: Settings | None = None,
         downloads_worker: Worker | None = None,
+        event_bus: EventBus | None = None,
+        db_lock: asyncio.Lock | None = None,
     ) -> None:
         self._db = db
         self._live = live
@@ -134,6 +158,9 @@ class MaintenanceWorker:
         # just the db. Tests can therefore still construct the worker bare.
         self._settings = settings
         self._downloads_worker = downloads_worker
+        self._bus = event_bus
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._db_lock = db_lock or asyncio.Lock()
         self._wakeup = asyncio.Event()
         self._stop = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -146,7 +173,12 @@ class MaintenanceWorker:
         self._cancel_requested: bool = False
 
     def start(self) -> None:
+        self._loop = asyncio.get_event_loop()
         self._task = asyncio.create_task(self._run(), name="maintenance-worker")
+
+    def _emit(self, action: str, **data) -> None:
+        if self._bus is not None:
+            self._bus.publish(maintenance_event(action, **data))
 
     async def stop(self) -> None:
         self._stop.set()
@@ -170,36 +202,44 @@ class MaintenanceWorker:
     async def _run(self) -> None:
         while not self._stop.is_set():
             self._wakeup.clear()
-            job = await service.claim_next_pending(self._db)
+            async with self._db_lock:
+                job = await service.claim_next_pending(self._db)
             if job is None:
                 await self._wakeup.wait()
                 continue
             self._current_id = job.id
             self._cancel_requested = False
             self._live.start(job.id)
+            self._emit("updated", id=job.id, status="running")
             try:
                 result = await self._execute(job.kind, job.id)
             except MaintenanceCancelled as cancelled:
                 logger.info("maintenance job %d cancelled", job.id)
                 self._live.record(job.id, f"cancelled: {cancelled.partial}")
-                await service.mark_cancelled(self._db, job.id, cancelled.partial)
+                async with self._db_lock:
+                    await service.mark_cancelled(self._db, job.id, cancelled.partial)
                 self._live.clear(job.id)
                 self._current_id = None
                 self._cancel_requested = False
+                self._emit("updated", id=job.id, status="cancelled")
                 continue
             except Exception as exc:
                 logger.exception("maintenance job %d failed", job.id)
                 self._live.record(job.id, f"failed: {exc!r}")
-                await service.mark_failed(self._db, job.id, repr(exc))
+                async with self._db_lock:
+                    await service.mark_failed(self._db, job.id, repr(exc))
                 self._live.clear(job.id)
                 self._current_id = None
                 self._cancel_requested = False
+                self._emit("updated", id=job.id, status="failed")
                 continue
             self._live.record(job.id, f"done: {result}")
-            await service.mark_completed(self._db, job.id, result)
+            async with self._db_lock:
+                await service.mark_completed(self._db, job.id, result)
             self._live.clear(job.id)
             self._current_id = None
             self._cancel_requested = False
+            self._emit("updated", id=job.id, status="completed")
 
     def _should_cancel(self) -> bool:
         return self._cancel_requested
@@ -214,16 +254,18 @@ class MaintenanceWorker:
         raise ValueError(f"unsupported maintenance kind: {kind}")
 
     async def _run_rename(self, job_id: int) -> dict[str, int]:
-        cfg = await app_config_service.get_all(self._db)
+        async with self._db_lock:
+            cfg = await app_config_service.get_all(self._db)
         root_str = cfg.get("postprocess_root")
         if not isinstance(root_str, str) or not root_str:
             raise ValueError("postprocess_root is not configured")
         template = cfg.get("chapter_naming_template")
         if not isinstance(template, str) or not template:
             template = DEFAULT_CHAPTER_NAMING_TEMPLATE
-        sink = _JobProgressSink(self._live, job_id)
+        sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
         exclude_dirs = _exclude_dirs(cfg)
-        output_roots = await _designated_output_dirs(self._db, cfg)
+        async with self._db_lock:
+            output_roots = await _designated_output_dirs(self._db, cfg)
         result = await asyncio.to_thread(
             postprocess.rename_packed_chapters,
             output_roots,
@@ -235,7 +277,8 @@ class MaintenanceWorker:
         return asdict(result)
 
     async def _run_regenerate_metadata(self, job_id: int) -> dict[str, int]:
-        cfg = await app_config_service.get_all(self._db)
+        async with self._db_lock:
+            cfg = await app_config_service.get_all(self._db)
         root_str = cfg.get("postprocess_root")
         if not isinstance(root_str, str) or not root_str:
             raise ValueError("postprocess_root is not configured")
@@ -243,13 +286,14 @@ class MaintenanceWorker:
         if not isinstance(default_direction, str) or default_direction not in READING_DIRECTIONS:
             default_direction = DEFAULT_READING_DIRECTION
         overrides_by_series = await self._build_series_overrides(default_direction)
-        sink = _JobProgressSink(self._live, job_id)
+        sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
 
         def lookup(series_name: str) -> SeriesMetadata | None:
             return overrides_by_series.get(sanitize(series_name).lower())
 
         exclude_dirs = _exclude_dirs(cfg)
-        output_roots = await _designated_output_dirs(self._db, cfg)
+        async with self._db_lock:
+            output_roots = await _designated_output_dirs(self._db, cfg)
         result = await asyncio.to_thread(
             postprocess.regenerate_series_metadata,
             output_roots,
@@ -270,13 +314,15 @@ class MaintenanceWorker:
         """
         if self._settings is None or self._downloads_worker is None:
             raise ValueError("rebuild_library requires settings + downloads worker")
-        cfg = await app_config_service.get_all(self._db)
+        async with self._db_lock:
+            cfg = await app_config_service.get_all(self._db)
         excluded = {name.lower() for name in _exclude_dirs(cfg)}
 
-        sink = _JobProgressSink(self._live, job_id)
+        sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
         # Snapshot the library first — the upcoming wipe touches downloads
         # only, but we still want the count up front for the progress bar.
-        targets = await targets_service.list_all(self._db)
+        async with self._db_lock:
+            targets = await targets_service.list_all(self._db)
         # 3 phases per target overhead (wipe, output-dir prune, re-enqueue) is
         # too lumpy for a meaningful total — surface a target-count instead.
         sink.total(len(targets))
@@ -284,7 +330,8 @@ class MaintenanceWorker:
         # Phase 1: wipe download history (preserves targets + app_config + the
         # in-flight maintenance job row).
         self._live.record(job_id, "wiping download history…")
-        deleted_downloads = await downloads_service.delete_all(self._db)
+        async with self._db_lock:
+            deleted_downloads = await downloads_service.delete_all(self._db)
         self._live.record(job_id, f"deleted {deleted_downloads} download rows")
         if self._should_cancel():
             raise MaintenanceCancelled(
@@ -315,7 +362,8 @@ class MaintenanceWorker:
         # designated dirs (no targets configured, no default), there's nothing
         # to wipe and the phase no-ops silently.
         output_removed = 0
-        output_roots = await _designated_output_dirs(self._db, cfg)
+        async with self._db_lock:
+            output_roots = await _designated_output_dirs(self._db, cfg)
         for output_dir in output_roots:
             removed = await asyncio.to_thread(_wipe_directory_contents, output_dir, excluded)
             output_removed += removed
@@ -344,13 +392,14 @@ class MaintenanceWorker:
                     }
                 )
             target = summary.target
-            await downloads_service.insert_pending(
-                self._db,
-                target.url,
-                target.extractor,
-                output_dir=target.output_dir,
-                target_id=target.id,
-            )
+            async with self._db_lock:
+                await downloads_service.insert_pending(
+                    self._db,
+                    target.url,
+                    target.extractor,
+                    output_dir=target.output_dir,
+                    target_id=target.id,
+                )
             enqueued += 1
             self._live.increment_done(job_id)
             self._live.record(job_id, f"enqueued: {target.url}")
@@ -367,7 +416,8 @@ class MaintenanceWorker:
     async def _build_series_overrides(self, default_direction: str) -> dict[str, SeriesMetadata]:
         """Index targets by sanitized series name so the regen pass can map
         CBZ-on-disk back to the user's tags + reading direction."""
-        targets = await targets_service.list_all(self._db)
+        async with self._db_lock:
+            targets = await targets_service.list_all(self._db)
         result: dict[str, SeriesMetadata] = {}
         for summary in targets:
             target = summary.target

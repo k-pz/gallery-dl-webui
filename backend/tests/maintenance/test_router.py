@@ -29,7 +29,7 @@ def _wait_for_completion(client: TestClient, job_id: int) -> dict[str, object]:
     for _ in range(30):
         jobs = client.get("/api/maintenance/jobs").json()
         current = next((j for j in jobs if j["id"] == job_id), None)
-        if current and current["status"] in ("completed", "failed"):
+        if current and current["status"] in ("completed", "failed", "cancelled"):
             return current
         time.sleep(0.05)
     raise AssertionError("maintenance job did not finish in time")
@@ -202,7 +202,7 @@ def test_cancel_pending_maintenance_job(client: TestClient, tmp_path: Path) -> N
     # (postprocess_root unset). Either outcome is acceptable from the cancel
     # endpoint as long as the terminal status sticks.
     assert resp.status_code in (200, 409), resp.json()
-    final = next(j for j in client.get("/api/maintenance/jobs").json() if j["id"] == job_id)
+    final = _wait_for_completion(client, job_id)
     assert final["status"] in ("cancelled", "failed")
 
 
