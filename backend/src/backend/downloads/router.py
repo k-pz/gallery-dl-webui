@@ -74,7 +74,7 @@ async def create_download(
         output_dir_str = str(resolved)
         await app_config_service.remember_output_dir(db, output_dir_str)
 
-    target = await targets_service.upsert(db, url, category, output_dir_str)
+    target = await targets_service.upsert(db, url, category, output_dir_str, watched=body.watched)
     download = await service.insert_pending(
         db, url, category, output_dir=output_dir_str, target_id=target.id
     )

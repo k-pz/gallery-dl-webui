@@ -8,6 +8,7 @@ from backend.downloads.models import Download
 class DownloadCreate(BaseModel):
     url: str
     output_dir: str | None = None
+    watched: bool = False
 
 
 class DownloadOut(BaseModel):

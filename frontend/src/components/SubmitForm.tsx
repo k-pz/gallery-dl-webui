@@ -1,4 +1,4 @@
-import { Button, Card, Group, Stack, Text, TextInput, Title } from "@mantine/core";
+import { Button, Card, Checkbox, Group, Stack, Text, TextInput, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -10,6 +10,7 @@ import { DirectoryPicker } from "./DirectoryPicker";
 export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } = {}) {
   const [url, setUrl] = useState("");
   const [outputDir, setOutputDir] = useState<string | null>(null);
+  const [watched, setWatched] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const invalidate = useDataInvalidators();
   const { data: config } = useQuery(getConfigOptions());
@@ -27,6 +28,7 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
     ...createDownloadMutation(),
     onSuccess: (data) => {
       setUrl("");
+      setWatched(false);
       setSubmitError(null);
       setTouched(false);
       onCreated?.(data.id);
@@ -57,7 +59,7 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
       return;
     }
     mutation.mutate({
-      body: { url: trimmed, output_dir: outputDir || null },
+      body: { url: trimmed, output_dir: outputDir || null, watched },
     });
   };
 
@@ -101,6 +103,12 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
           enabled={hasRoot}
           disabled={mutation.isPending}
           extraOption={config?.postprocess_default_output_dir ?? null}
+        />
+        <Checkbox
+          label="Watch"
+          checked={watched}
+          onChange={(e) => setWatched(e.currentTarget.checked)}
+          disabled={mutation.isPending}
         />
         {submitError && (
           <Text size="sm" c="red">
