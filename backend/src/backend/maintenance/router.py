@@ -57,6 +57,29 @@ async def schedule_maintenance_job(
     return _to_out(created)
 
 
+@router.post("/maintenance/jobs/{job_id}/cancel", operation_id="cancelMaintenanceJob")
+async def cancel_maintenance_job(
+    job_id: int,
+    db: DbDep,
+    request: Request,
+) -> MaintenanceJobOut:
+    job = await service.get_job(db, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="maintenance job not found")
+    if job.status in ("completed", "failed", "cancelled"):
+        raise HTTPException(status_code=409, detail=f"maintenance job already {job.status}")
+    # Two paths: a still-pending row can be flipped directly; an in-flight job
+    # gets a soft signal that the worker checks at the top of each iteration.
+    if job.status == "pending":
+        await service.cancel_pending(db, job_id)
+    else:
+        request.app.state.maintenance_worker.request_cancel(job_id)
+    refreshed = await service.get_job(db, job_id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="maintenance job not found")
+    return _to_out(refreshed)
+
+
 @router.get("/maintenance/jobs/{job_id}/progress", operation_id="getMaintenanceJobProgress")
 async def get_maintenance_job_progress(
     job_id: int,
@@ -80,6 +103,11 @@ async def get_maintenance_job_progress(
     summary: list[str] = []
     if job.status == "completed" and job.result_json:
         summary.append(f"done: {job.result_json}")
+    elif job.status == "cancelled":
+        if job.result_json:
+            summary.append(f"cancelled: {job.result_json}")
+        else:
+            summary.append("cancelled")
     elif job.status == "failed" and job.error:
         summary.append(f"failed: {job.error}")
     return MaintenanceProgressOut(status=job.status, total=0, done=0, lines=summary)

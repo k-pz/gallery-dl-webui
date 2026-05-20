@@ -15,6 +15,7 @@ from backend.app_config.constants import (
 )
 from backend.downloads import postprocess
 from backend.downloads.postprocess import (
+    MaintenanceCancelled,
     SeriesMetadata,
     normalize_reading_direction,
     normalize_tags,
@@ -25,6 +26,14 @@ from backend.maintenance.live_progress import MaintenanceLiveProgress
 from backend.targets import service as targets_service
 
 logger = logging.getLogger(__name__)
+
+
+def _exclude_dirs(cfg: dict[str, object]) -> list[str]:
+    """Pull the user-configured directory-name exclusions out of app_config."""
+    raw = cfg.get("postprocess_excluded_dir_names")
+    if not isinstance(raw, list):
+        return []
+    return [name for name in raw if isinstance(name, str) and name]
 
 
 class _JobProgressSink:
@@ -50,6 +59,13 @@ class MaintenanceWorker:
         self._wakeup = asyncio.Event()
         self._stop = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
+        # The worker processes one maintenance job at a time, so the cancel
+        # signal is a single bool keyed off the currently-running job id.
+        # Read from the worker thread (via the should_cancel callable handed
+        # to postprocess); written from the asyncio loop. Bool read/write is
+        # GIL-atomic, which is all the sync we need.
+        self._current_id: int | None = None
+        self._cancel_requested: bool = False
 
     def start(self) -> None:
         self._task = asyncio.create_task(self._run(), name="maintenance-worker")
@@ -66,6 +82,13 @@ class MaintenanceWorker:
     def notify(self) -> None:
         self._wakeup.set()
 
+    def request_cancel(self, id_: int) -> bool:
+        """Flag the in-flight maintenance job for cancellation. Returns True if it matched."""
+        if self._current_id == id_:
+            self._cancel_requested = True
+            return True
+        return False
+
     async def _run(self) -> None:
         while not self._stop.is_set():
             self._wakeup.clear()
@@ -73,18 +96,35 @@ class MaintenanceWorker:
             if job is None:
                 await self._wakeup.wait()
                 continue
+            self._current_id = job.id
+            self._cancel_requested = False
             self._live.start(job.id)
             try:
                 result = await self._execute(job.kind, job.id)
+            except MaintenanceCancelled as cancelled:
+                logger.info("maintenance job %d cancelled", job.id)
+                self._live.record(job.id, f"cancelled: {cancelled.partial}")
+                await service.mark_cancelled(self._db, job.id, cancelled.partial)
+                self._live.clear(job.id)
+                self._current_id = None
+                self._cancel_requested = False
+                continue
             except Exception as exc:
                 logger.exception("maintenance job %d failed", job.id)
                 self._live.record(job.id, f"failed: {exc!r}")
                 await service.mark_failed(self._db, job.id, repr(exc))
                 self._live.clear(job.id)
+                self._current_id = None
+                self._cancel_requested = False
                 continue
             self._live.record(job.id, f"done: {result}")
             await service.mark_completed(self._db, job.id, result)
             self._live.clear(job.id)
+            self._current_id = None
+            self._cancel_requested = False
+
+    def _should_cancel(self) -> bool:
+        return self._cancel_requested
 
     async def _execute(self, kind: str, job_id: int) -> dict[str, int]:
         if kind == "rename_chapters":
@@ -102,8 +142,14 @@ class MaintenanceWorker:
         if not isinstance(template, str) or not template:
             template = DEFAULT_CHAPTER_NAMING_TEMPLATE
         sink = _JobProgressSink(self._live, job_id)
+        exclude_dirs = _exclude_dirs(cfg)
         result = await asyncio.to_thread(
-            postprocess.rename_packed_chapters, Path(root_str), template, sink
+            postprocess.rename_packed_chapters,
+            Path(root_str),
+            template,
+            sink,
+            self._should_cancel,
+            exclude_dirs,
         )
         return asdict(result)
 
@@ -113,10 +159,7 @@ class MaintenanceWorker:
         if not isinstance(root_str, str) or not root_str:
             raise ValueError("postprocess_root is not configured")
         default_direction = cfg.get("default_reading_direction")
-        if (
-            not isinstance(default_direction, str)
-            or default_direction not in READING_DIRECTIONS
-        ):
+        if not isinstance(default_direction, str) or default_direction not in READING_DIRECTIONS:
             default_direction = DEFAULT_READING_DIRECTION
         overrides_by_series = await self._build_series_overrides(default_direction)
         sink = _JobProgressSink(self._live, job_id)
@@ -124,14 +167,18 @@ class MaintenanceWorker:
         def lookup(series_name: str) -> SeriesMetadata | None:
             return overrides_by_series.get(sanitize(series_name).lower())
 
+        exclude_dirs = _exclude_dirs(cfg)
         result = await asyncio.to_thread(
-            postprocess.regenerate_series_metadata, Path(root_str), lookup, sink
+            postprocess.regenerate_series_metadata,
+            Path(root_str),
+            lookup,
+            sink,
+            self._should_cancel,
+            exclude_dirs,
         )
         return asdict(result)
 
-    async def _build_series_overrides(
-        self, default_direction: str
-    ) -> dict[str, SeriesMetadata]:
+    async def _build_series_overrides(self, default_direction: str) -> dict[str, SeriesMetadata]:
         """Index targets by sanitized series name so the regen pass can map
         CBZ-on-disk back to the user's tags + reading direction."""
         targets = await targets_service.list_all(self._db)

@@ -22,6 +22,7 @@ def _encode_tags(tags: list[str] | None) -> str | None:
         return None
     return json.dumps(list(tags), ensure_ascii=False)
 
+
 _SUMMARY_SELECT = """
 SELECT t.*,
        d.id AS last_download_id,
