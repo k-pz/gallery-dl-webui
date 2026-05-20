@@ -3,10 +3,15 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from backend.app_config import service
-from backend.app_config.constants import DEFAULT_DELETE_RAW, DEFAULT_WATCH_PERIOD
+from backend.app_config.constants import (
+    DEFAULT_CHAPTER_NAMING_TEMPLATE,
+    DEFAULT_DELETE_RAW,
+    DEFAULT_WATCH_PERIOD,
+)
 from backend.app_config.exceptions import DefaultOutputDirWithoutRoot
 from backend.app_config.schemas import AppConfigIn, AppConfigOut
 from backend.dependencies import DbDep
+from backend.downloads.postprocess import validate_chapter_naming_template
 from backend.output_dirs.utils import coerce_optional, validate_root, validate_under_root
 from backend.targets.utils import parse_duration
 
@@ -27,12 +32,16 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
     period = cfg.get("default_watch_period")
     if not isinstance(period, str) or not period:
         period = DEFAULT_WATCH_PERIOD
+    chapter_template = cfg.get("chapter_naming_template")
+    if not isinstance(chapter_template, str) or not chapter_template:
+        chapter_template = DEFAULT_CHAPTER_NAMING_TEMPLATE
     return AppConfigOut(
         postprocess_root=root,
         postprocess_default_output_dir=default,
         postprocess_known_output_dirs=known_str,
         delete_raw_after_pack=bool(cfg.get("delete_raw_after_pack", DEFAULT_DELETE_RAW)),
         default_watch_period=period,
+        chapter_naming_template=chapter_template,
     )
 
 
@@ -60,6 +69,14 @@ async def put_config(body: AppConfigIn, db: DbDep) -> AppConfigOut:
         parse_duration(period_raw)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    template_raw = coerce_optional(body.chapter_naming_template) or DEFAULT_CHAPTER_NAMING_TEMPLATE
+    try:
+        validate_chapter_naming_template(template_raw)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"invalid chapter_naming_template: {exc}",
+        ) from exc
 
     # When the root changes, drop the remembered dirs — they may no longer be valid.
     existing = await service.get_all(db)
@@ -77,6 +94,7 @@ async def put_config(body: AppConfigIn, db: DbDep) -> AppConfigOut:
         "postprocess_known_output_dirs": known,
         "delete_raw_after_pack": bool(body.delete_raw_after_pack),
         "default_watch_period": period_raw,
+        "chapter_naming_template": template_raw,
     }
     await service.set_many(db, updates)
     return _load_config(updates)

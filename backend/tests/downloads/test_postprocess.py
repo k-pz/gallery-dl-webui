@@ -34,6 +34,17 @@ def _make_record(downloads_dir: Path, manga: str, chapter: str, name: str, **ext
     )
 
 
+def _write_cbz_with_comicinfo(path: Path, series: str, chapter: str, title: str = "") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ch = collect_chapters(
+        [FileRecord("c", series, chapter, title, "", "", "", "", Path("/x/001.jpg"))]
+    )[0]
+    ch.pages = [Path("/x/001.jpg")]
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("ComicInfo.xml", build_comicinfo_xml(ch))
+        zf.writestr("001.jpg", b"x")
+
+
 async def test_run_packs_chapter_into_cbz(tmp_path: Path) -> None:
     downloads_dir = tmp_path / "downloads"
     output_dir = tmp_path / "out"
@@ -132,6 +143,22 @@ async def test_run_collision_appends_suffix(tmp_path: Path) -> None:
 
     assert (series_dir / "S - c001 (1).cbz").is_file()
     assert (series_dir / "S - c001.cbz").read_bytes() == b"existing"
+
+
+async def test_run_applies_custom_naming_template(tmp_path: Path) -> None:
+    downloads_dir = tmp_path / "downloads"
+    output_dir = tmp_path / "out"
+    records = [_make_record(downloads_dir, "S", "1", "001.jpg", title="T")]
+
+    await run(
+        records,
+        output_dir,
+        downloads_dir,
+        delete_raw=False,
+        naming_template="{{ series }}_{{ chapter_number }}{% if title %}_{{ title }}{% endif %}",
+    )
+
+    assert (output_dir / "S" / "S_001_T.cbz").is_file()
 
 
 async def test_run_with_no_records_returns_empty_result(tmp_path: Path) -> None:
@@ -263,32 +290,24 @@ def test_coerce_record_handles_missing_fields() -> None:
 
 
 def test_chapter_already_packed_finds_canonical_name(tmp_path: Path) -> None:
-    series_dir = tmp_path / "S"
-    series_dir.mkdir()
-    (series_dir / "S - c001.cbz").write_bytes(b"x")
+    _write_cbz_with_comicinfo(tmp_path / "S" / "S - c001.cbz", "S", "1")
     assert chapter_already_packed(tmp_path, "S", "1") is True
 
 
 def test_chapter_already_packed_finds_titled_variant(tmp_path: Path) -> None:
-    series_dir = tmp_path / "S"
-    series_dir.mkdir()
-    (series_dir / "S - c001 - First.cbz").write_bytes(b"x")
+    _write_cbz_with_comicinfo(tmp_path / "S" / "S - c001 - First.cbz", "S", "1", "First")
     assert chapter_already_packed(tmp_path, "S", "1") is True
 
 
 def test_chapter_already_packed_finds_collision_variant(tmp_path: Path) -> None:
-    series_dir = tmp_path / "S"
-    series_dir.mkdir()
-    (series_dir / "S - c001 (1).cbz").write_bytes(b"x")
+    _write_cbz_with_comicinfo(tmp_path / "S" / "S - c001 (1).cbz", "S", "1")
     assert chapter_already_packed(tmp_path, "S", "1") is True
 
 
 def test_chapter_already_packed_distinguishes_chapter_numbers(tmp_path: Path) -> None:
-    series_dir = tmp_path / "S"
-    series_dir.mkdir()
     # c0011.cbz would be chapter 11 misformatted — must not match c001.
-    (series_dir / "S - c0011.cbz").write_bytes(b"x")
-    (series_dir / "S - c001.5.cbz").write_bytes(b"x")
+    _write_cbz_with_comicinfo(tmp_path / "S" / "S - c0011.cbz", "S", "11")
+    _write_cbz_with_comicinfo(tmp_path / "S" / "S - c001.5.cbz", "S", "1.5")
     assert chapter_already_packed(tmp_path, "S", "1") is False
 
 

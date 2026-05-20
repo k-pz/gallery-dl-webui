@@ -6,6 +6,7 @@ import aiosqlite
 from gallery_dl.exception import StopExtraction
 
 from backend.app_config import service as app_config_service
+from backend.app_config.constants import DEFAULT_CHAPTER_NAMING_TEMPLATE
 from backend.downloads import postprocess, service
 from backend.downloads.gallery import Gallery, SkipChapterFn
 from backend.downloads.live_progress import LiveProgress
@@ -216,9 +217,18 @@ class Worker:
             await service.mark_postprocess(self._db, job.id, "failed", error=repr(exc))
             return
         delete_raw = bool(cfg.get("delete_raw_after_pack", True))
+        naming_template = cfg.get("chapter_naming_template")
+        if not isinstance(naming_template, str) or not naming_template:
+            naming_template = DEFAULT_CHAPTER_NAMING_TEMPLATE
         await service.mark_postprocess(self._db, job.id, "running")
         try:
-            result = await postprocess.run(records, output_dir, downloads_dir, delete_raw)
+            result = await postprocess.run(
+                records,
+                output_dir,
+                downloads_dir,
+                delete_raw,
+                naming_template=naming_template,
+            )
         except Exception as exc:
             logger.exception("postprocess for download %d failed", job.id)
             await service.mark_postprocess(self._db, job.id, "failed", error=repr(exc))

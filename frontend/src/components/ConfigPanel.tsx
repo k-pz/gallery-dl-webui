@@ -32,6 +32,7 @@ export function ConfigPanel() {
   const [root, setRoot] = useState("");
   const [defaultDir, setDefaultDir] = useState<string | null>(null);
   const [defaultPeriod, setDefaultPeriod] = useState("");
+  const [chapterTemplate, setChapterTemplate] = useState("");
   const [deleteRaw, setDeleteRaw] = useState(true);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -41,6 +42,7 @@ export function ConfigPanel() {
       setRoot(data.postprocess_root ?? "");
       setDefaultDir(data.postprocess_default_output_dir ?? null);
       setDefaultPeriod(data.default_watch_period ?? "");
+      setChapterTemplate(data.chapter_naming_template ?? "");
       setDeleteRaw(data.delete_raw_after_pack);
     }
   }, [data]);
@@ -62,6 +64,7 @@ export function ConfigPanel() {
     ((root.trim() || null) !== (data.postprocess_root ?? null) ||
       (defaultDir || null) !== (data.postprocess_default_output_dir ?? null) ||
       (defaultPeriod.trim() || null) !== (data.default_watch_period ?? null) ||
+      chapterTemplate.trim() !== (data.chapter_naming_template ?? "") ||
       deleteRaw !== data.delete_raw_after_pack);
 
   const save = () => {
@@ -73,6 +76,7 @@ export function ConfigPanel() {
         postprocess_default_output_dir: defaultDir || null,
         delete_raw_after_pack: deleteRaw,
         default_watch_period: defaultPeriod.trim() || null,
+        chapter_naming_template: chapterTemplate.trim() || null,
       },
     });
   };
@@ -115,7 +119,7 @@ export function ConfigPanel() {
         <Title order={3}>Postprocessing</Title>
         <Text size="sm" c="dimmed">
           When a root is set, finished downloads are packed into Komga-compatible CBZs at{" "}
-          <code>&lt;output-dir&gt;/&lt;Series&gt;/&lt;Series&gt; - cNNN.cbz</code>. Every
+          <code>&lt;output-dir&gt;/&lt;Series&gt;/&lt;chapter-name&gt;.cbz</code>. Every
           per-download output directory must live under the root.
         </Text>
         <TextInput
@@ -140,6 +144,13 @@ export function ConfigPanel() {
           description="Remove the downloaded source directory once a chapter's CBZ is written."
           checked={deleteRaw}
           onChange={(e) => setDeleteRaw(e.currentTarget.checked)}
+          disabled={mutation.isPending}
+        />
+        <TextInput
+          label="Chapter naming template"
+          description="Jinja2 template variables: series, manga, chapter, chapter_number, title, volume, lang, author, date."
+          value={chapterTemplate}
+          onChange={(e) => setChapterTemplate(e.currentTarget.value)}
           disabled={mutation.isPending}
         />
         <Title order={3}>Watching</Title>

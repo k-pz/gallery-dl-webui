@@ -24,6 +24,10 @@ export type AppConfigIn = {
      * Default Watch Period
      */
     default_watch_period?: string | null;
+    /**
+     * Chapter Naming Template
+     */
+    chapter_naming_template?: string | null;
 };
 
 /**
@@ -50,6 +54,10 @@ export type AppConfigOut = {
      * Default Watch Period
      */
     default_watch_period: string;
+    /**
+     * Chapter Naming Template
+     */
+    chapter_naming_template: string;
 };
 
 /**

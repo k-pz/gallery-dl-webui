@@ -2,12 +2,15 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from backend.app_config.constants import DEFAULT_CHAPTER_NAMING_TEMPLATE
+
 
 def _put(client: TestClient, **fields):
     body = {
         "postprocess_root": None,
         "postprocess_default_output_dir": None,
         "delete_raw_after_pack": True,
+        "chapter_naming_template": None,
     }
     body.update(fields)
     return client.put("/api/config", json=body)
@@ -21,6 +24,7 @@ def test_get_config_returns_defaults(client: TestClient) -> None:
     assert body["postprocess_default_output_dir"] is None
     assert body["postprocess_known_output_dirs"] == []
     assert body["delete_raw_after_pack"] is True
+    assert body["chapter_naming_template"] == DEFAULT_CHAPTER_NAMING_TEMPLATE
 
 
 def test_put_config_persists_root_and_default(client: TestClient, tmp_path: Path) -> None:
@@ -43,6 +47,20 @@ def test_put_config_persists_root_and_default(client: TestClient, tmp_path: Path
     follow = client.get("/api/config").json()
     assert follow["postprocess_root"] == str(root.resolve())
     assert follow["postprocess_default_output_dir"] == str(default.resolve())
+
+
+def test_put_config_persists_chapter_naming_template(client: TestClient) -> None:
+    tpl = "{{ series }}_ch{{ chapter_number }}"
+    resp = _put(client, chapter_naming_template=tpl)
+    assert resp.status_code == 200, resp.json()
+    assert resp.json()["chapter_naming_template"] == tpl
+    assert client.get("/api/config").json()["chapter_naming_template"] == tpl
+
+
+def test_put_config_rejects_invalid_chapter_template(client: TestClient) -> None:
+    resp = _put(client, chapter_naming_template="{{ missing_name }}")
+    assert resp.status_code == 400
+    assert "invalid chapter_naming_template" in resp.json()["detail"]
 
 
 def test_put_config_rejects_relative_root(client: TestClient) -> None:
