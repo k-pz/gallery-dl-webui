@@ -16,7 +16,7 @@ import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from jinja2 import StrictUndefined
 from jinja2.sandbox import SandboxedEnvironment
@@ -94,6 +94,18 @@ def _date_iso(value: Any) -> str:
     return _str(value)
 
 
+def chapter_with_minor(kwdict: dict[str, Any]) -> str:
+    """gallery-dl splits fractional chapter numbers — e.g. "700.5" arrives as
+    chapter=700 + chapter_minor=".5". Re-join them so downstream naming keeps
+    the decimal suffix.
+    """
+    chapter = _str(kwdict.get("chapter"))
+    minor = _str(kwdict.get("chapter_minor"))
+    if minor and not chapter.endswith(minor):
+        return chapter + minor
+    return chapter
+
+
 def coerce_record_from_kwdict(kwdict: dict[str, Any], full_path: Path) -> FileRecord:
     """Snapshot the metadata fields we need from a gallery-dl kwdict.
 
@@ -103,7 +115,7 @@ def coerce_record_from_kwdict(kwdict: dict[str, Any], full_path: Path) -> FileRe
     return FileRecord(
         category=_str(kwdict.get("category")),
         manga=_str(kwdict.get("manga")),
-        chapter=_str(kwdict.get("chapter")),
+        chapter=chapter_with_minor(kwdict),
         title=_str(kwdict.get("title")),
         volume=_str(kwdict.get("volume")),
         lang=_str(kwdict.get("lang")),
@@ -454,25 +466,41 @@ def _chapter_from_comicinfo(path: Path, root: ET.Element) -> ChapterRecord:
     )
 
 
-def rename_packed_chapters(output_root: Path, naming_template: str) -> RenamePackedResult:
+class RenameProgressSink(Protocol):
+    def total(self, n: int) -> None: ...
+    def step(self, line: str) -> None: ...
+
+
+def rename_packed_chapters(
+    output_root: Path,
+    naming_template: str,
+    progress: RenameProgressSink | None = None,
+) -> RenamePackedResult:
+    cbz_paths = sorted(output_root.rglob("*.cbz"))
+    if progress is not None:
+        progress.total(len(cbz_paths))
     total = 0
     renamed = 0
-    for cbz in output_root.rglob("*.cbz"):
+    for cbz in cbz_paths:
         total += 1
         try:
             with zipfile.ZipFile(cbz) as zf:
                 xml_bytes = zf.read("ComicInfo.xml")
             root = ET.fromstring(xml_bytes)
             ch = _chapter_from_comicinfo(cbz, root)
-            series = sanitize(ch.manga)
             stem = _render_chapter_stem(ch, naming_template)
-            desired = output_root / series / f"{stem}.cbz"
+            # Rename in place — keep each archive in its source directory.
+            # Per-target output dirs can sit anywhere under output_root; moving
+            # everything into <output_root>/<series>/ would erase that layout.
+            desired = cbz.with_name(f"{stem}.cbz")
             if desired == cbz:
+                if progress is not None:
+                    progress.step(f"skip (already named): {cbz.relative_to(output_root)}")
                 continue
             target = desired
             if target.exists():
                 for i in range(1, 1000):
-                    candidate = output_root / series / f"{stem} ({i}).cbz"
+                    candidate = cbz.with_name(f"{stem} ({i}).cbz")
                     if candidate == cbz:
                         target = cbz
                         break
@@ -480,11 +508,19 @@ def rename_packed_chapters(output_root: Path, naming_template: str) -> RenamePac
                         target = candidate
                         break
             if target == cbz:
+                if progress is not None:
+                    progress.step(f"skip (already named): {cbz.relative_to(output_root)}")
                 continue
-            target.parent.mkdir(parents=True, exist_ok=True)
             cbz.replace(target)
             renamed += 1
-        except Exception:
+            if progress is not None:
+                progress.step(
+                    f"renamed: {cbz.relative_to(output_root)} -> "
+                    f"{target.relative_to(output_root)}"
+                )
+        except Exception as exc:
             logger.exception("failed to rename chapter archive: %s", cbz)
+            if progress is not None:
+                progress.step(f"failed: {cbz.relative_to(output_root)}: {exc!r}")
             continue
     return RenamePackedResult(total=total, renamed=renamed, skipped=total - renamed)

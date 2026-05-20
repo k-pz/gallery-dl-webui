@@ -12,6 +12,7 @@ import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
 import { makeNeedleMatcher } from "../lib/listFilters";
 import { useOptimisticCancelMany } from "../lib/optimisticCancel";
+import { usePagination } from "../lib/pagination";
 import { REFETCH_LIST_MS } from "../lib/polling";
 import {
   CANCELLING_LABEL,
@@ -22,6 +23,7 @@ import {
   statusColor,
 } from "../lib/status";
 import { ListHeader } from "./ListHeader";
+import { ListPagination } from "./ListPagination";
 import { ListToolbar } from "./ListToolbar";
 
 type StatusFilter = "any" | "active" | "completed" | "failed" | "cancelled";
@@ -151,6 +153,8 @@ export function RecentList({
   const totalCount = data?.length ?? 0;
   const filtersActive = search.trim().length > 0 || statusFilter !== "any";
 
+  const pagination = usePagination(visible, `${search}|${statusFilter}|${sortKey}`);
+
   return (
     <Card withBorder shadow="sm" padding="lg">
       <Stack gap="xs">
@@ -209,7 +213,7 @@ export function RecentList({
         )}
         {visible.length > 0 && (
           <List spacing="xs" listStyleType="none" withPadding={false}>
-            {visible.map((item) => (
+            {pagination.pageItems.map((item) => (
               <RecentRow
                 key={item.id}
                 item={item}
@@ -225,6 +229,15 @@ export function RecentList({
             ))}
           </List>
         )}
+        <ListPagination
+          page={pagination.page}
+          setPage={pagination.setPage}
+          totalPages={pagination.totalPages}
+          start={pagination.start}
+          end={pagination.end}
+          total={pagination.total}
+          ariaLabel="Recent jobs pagination"
+        />
       </Stack>
     </Card>
   );

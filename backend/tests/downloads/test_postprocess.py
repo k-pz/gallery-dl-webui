@@ -289,6 +289,26 @@ def test_coerce_record_handles_missing_fields() -> None:
     assert rec.date == ""
 
 
+def test_coerce_record_folds_chapter_minor_into_chapter() -> None:
+    # gallery-dl splits "700.5" into chapter=700 + chapter_minor=".5" — we
+    # rejoin them so the .5 reaches the filename template.
+    rec = coerce_record_from_kwdict(
+        {"manga": "S", "chapter": 700, "chapter_minor": ".5"},
+        Path("/x/a.jpg"),
+    )
+    assert rec.chapter == "700.5"
+
+
+def test_coerce_record_does_not_double_apply_chapter_minor() -> None:
+    # Some extractors expose a string `chapter` that already contains the
+    # decimal — make sure we don't end up with "700.5.5".
+    rec = coerce_record_from_kwdict(
+        {"manga": "S", "chapter": "700.5", "chapter_minor": ".5"},
+        Path("/x/a.jpg"),
+    )
+    assert rec.chapter == "700.5"
+
+
 def test_chapter_already_packed_finds_canonical_name(tmp_path: Path) -> None:
     _write_cbz_with_comicinfo(tmp_path / "S" / "S - c001.cbz", "S", "1")
     assert chapter_already_packed(tmp_path, "S", "1") is True

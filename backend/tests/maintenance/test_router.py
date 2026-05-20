@@ -62,3 +62,69 @@ def test_schedule_rename_chapters_job(client: TestClient, tmp_path: Path) -> Non
     assert done["result"]["renamed"] == 1
     assert (series_dir / "Series_001.cbz").is_file()
     assert not old.exists()
+
+
+def test_rename_keeps_archives_in_their_source_directory(
+    client: TestClient, tmp_path: Path
+) -> None:
+    root = tmp_path / "media"
+    nested = root / "custom-output" / "Series"
+    old = nested / "Series - c001.cbz"
+    _write_cbz(old, "Series", "1")
+
+    cfg_resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "default_watch_period": "1d",
+            "chapter_naming_template": "{{ series }}_{{ chapter_number }}",
+        },
+    )
+    assert cfg_resp.status_code == 200, cfg_resp.json()
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "rename_chapters"})
+    job_id = created.json()["id"]
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "completed"
+    # The file is renamed *in place* — it must not jump to <root>/<series>/.
+    assert (nested / "Series_001.cbz").is_file()
+    assert not (root / "Series" / "Series_001.cbz").exists()
+
+
+def test_progress_endpoint_for_terminal_job(client: TestClient, tmp_path: Path) -> None:
+    root = tmp_path / "media"
+    series_dir = root / "Series"
+    _write_cbz(series_dir / "Series - c001.cbz", "Series", "1")
+
+    cfg_resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "default_watch_period": "1d",
+            "chapter_naming_template": "{{ series }}_{{ chapter_number }}",
+        },
+    )
+    assert cfg_resp.status_code == 200, cfg_resp.json()
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "rename_chapters"})
+    job_id = created.json()["id"]
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "completed"
+
+    resp = client.get(f"/api/maintenance/jobs/{job_id}/progress")
+    assert resp.status_code == 200, resp.json()
+    payload = resp.json()
+    assert payload["status"] == "completed"
+    # Worker clears the in-memory tail once a job terminates; a synthetic
+    # summary line is included so callers always have something to render.
+    assert payload["lines"], payload
+    assert any("done" in line for line in payload["lines"])
+
+
+def test_progress_endpoint_missing_job(client: TestClient) -> None:
+    resp = client.get("/api/maintenance/jobs/9999/progress")
+    assert resp.status_code == 404

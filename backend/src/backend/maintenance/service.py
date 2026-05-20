@@ -88,3 +88,14 @@ async def list_jobs(db: aiosqlite.Connection, limit: int = 50) -> list[Maintenan
     ) as cur:
         rows = await cur.fetchall()
     return [_row_to_job(row) for row in rows]
+
+
+async def get_job(db: aiosqlite.Connection, id_: int) -> MaintenanceJob | None:
+    async with db.execute(
+        "SELECT * FROM maintenance_jobs WHERE id = ?",
+        (id_,),
+    ) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        return None
+    return _row_to_job(row)

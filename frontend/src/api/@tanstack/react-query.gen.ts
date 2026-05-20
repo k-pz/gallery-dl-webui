@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelDownload, createDownload, createOutputDir, deleteTarget, exportLibrary, getConfig, getDownload, getDownloadProgress, getHealth, getTarget, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, putConfig, requeueDownload, scheduleMaintenanceJob, updateTarget } from '../sdk.gen';
-import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, ExportLibraryData, ExportLibraryResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetTargetData, GetTargetError, GetTargetResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
+import { cancelDownload, createDownload, createOutputDir, deleteTarget, exportLibrary, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, putConfig, requeueDownload, scheduleMaintenanceJob, updateTarget } from '../sdk.gen';
+import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, ExportLibraryData, ExportLibraryResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetError, GetTargetResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -388,3 +388,21 @@ export const scheduleMaintenanceJobMutation = (options?: Partial<Options<Schedul
     };
     return mutationOptions;
 };
+
+export const getMaintenanceJobProgressQueryKey = (options: Options<GetMaintenanceJobProgressData>) => createQueryKey('getMaintenanceJobProgress', options);
+
+/**
+ * Get Maintenance Job Progress
+ */
+export const getMaintenanceJobProgressOptions = (options: Options<GetMaintenanceJobProgressData>) => queryOptions<GetMaintenanceJobProgressResponse, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, ReturnType<typeof getMaintenanceJobProgressQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getMaintenanceJobProgress({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getMaintenanceJobProgressQueryKey(options)
+});
