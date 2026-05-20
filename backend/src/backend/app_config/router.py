@@ -6,6 +6,7 @@ from backend.app_config import service
 from backend.app_config.constants import (
     DEFAULT_CHAPTER_NAMING_TEMPLATE,
     DEFAULT_DELETE_RAW,
+    DEFAULT_EXCLUDED_DIR_NAMES,
     DEFAULT_READING_DIRECTION,
     DEFAULT_WATCH_PERIOD,
     READING_DIRECTIONS,
@@ -31,6 +32,14 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
     if not isinstance(known, list):
         known = []
     known_str = [k for k in known if isinstance(k, str)]
+    excluded_raw = cfg.get("postprocess_excluded_dir_names")
+    if isinstance(excluded_raw, list):
+        excluded = [e for e in excluded_raw if isinstance(e, str) and e]
+    else:
+        # First load (or a wipe) — surface the package defaults so the user
+        # can opt out by editing the list, not by guessing what NAS-mount
+        # trash dirs we filter behind the scenes.
+        excluded = list(DEFAULT_EXCLUDED_DIR_NAMES)
     period = cfg.get("default_watch_period")
     if not isinstance(period, str) or not period:
         period = DEFAULT_WATCH_PERIOD
@@ -44,6 +53,7 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
         postprocess_root=root,
         postprocess_default_output_dir=default,
         postprocess_known_output_dirs=known_str,
+        postprocess_excluded_dir_names=excluded,
         delete_raw_after_pack=bool(cfg.get("delete_raw_after_pack", DEFAULT_DELETE_RAW)),
         default_watch_period=period,
         chapter_naming_template=chapter_template,
@@ -105,10 +115,30 @@ async def put_config(body: AppConfigIn, db: DbDep) -> AppConfigOut:
     if root_str != prior_root:
         known = []
 
+    if body.postprocess_excluded_dir_names is None:
+        existing_excluded = existing.get("postprocess_excluded_dir_names")
+        excluded_norm = (
+            existing_excluded
+            if isinstance(existing_excluded, list)
+            else list(DEFAULT_EXCLUDED_DIR_NAMES)
+        )
+    else:
+        # Dedupe, strip, drop blanks; preserve order so the UI surfaces the
+        # list back in the same shape the user typed it.
+        seen: set[str] = set()
+        excluded_norm = []
+        for raw in body.postprocess_excluded_dir_names:
+            cleaned = raw.strip()
+            if not cleaned or cleaned in seen:
+                continue
+            seen.add(cleaned)
+            excluded_norm.append(cleaned)
+
     updates: dict[str, object] = {
         "postprocess_root": root_str,
         "postprocess_default_output_dir": str(default_path) if default_path else None,
         "postprocess_known_output_dirs": known,
+        "postprocess_excluded_dir_names": excluded_norm,
         "delete_raw_after_pack": bool(body.delete_raw_after_pack),
         "default_watch_period": period_raw,
         "chapter_naming_template": template_raw,

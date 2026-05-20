@@ -16,6 +16,7 @@ type ConfigShape = {
   postprocess_root: string | null;
   postprocess_default_output_dir: string | null;
   postprocess_known_output_dirs: string[];
+  postprocess_excluded_dir_names: string[];
   delete_raw_after_pack: boolean;
   default_watch_period: string;
   chapter_naming_template: string;
@@ -26,6 +27,7 @@ const emptyConfig: ConfigShape = {
   postprocess_root: null,
   postprocess_default_output_dir: null,
   postprocess_known_output_dirs: [],
+  postprocess_excluded_dir_names: [],
   delete_raw_after_pack: true,
   default_watch_period: "1d",
   chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
@@ -63,6 +65,7 @@ describe("ConfigPanel", () => {
         postprocess_root: "/mnt/nas/Media",
         postprocess_default_output_dir: "/mnt/nas/Media/manga",
         postprocess_known_output_dirs: ["/mnt/nas/Media/comics"],
+        postprocess_excluded_dir_names: ["#recycle"],
         delete_raw_after_pack: true,
         default_watch_period: "2h",
         chapter_naming_template: "{{ series }}_{{ chapter_number }}",
@@ -125,6 +128,7 @@ describe("ConfigPanel", () => {
       default_watch_period: "1d",
       chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
       default_reading_direction: "ltr",
+      postprocess_excluded_dir_names: [],
     });
     await screen.findByText(/saved/i);
   });
@@ -199,6 +203,7 @@ describe("ConfigPanel", () => {
         postprocess_root: "/old",
         postprocess_default_output_dir: null,
         postprocess_known_output_dirs: [],
+        postprocess_excluded_dir_names: [],
         delete_raw_after_pack: true,
         default_watch_period: "1d",
         chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
@@ -229,6 +234,7 @@ describe("ConfigPanel", () => {
       default_watch_period: "1d",
       chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
       default_reading_direction: "ltr",
+      postprocess_excluded_dir_names: [],
     });
   });
 });

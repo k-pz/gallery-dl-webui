@@ -17,7 +17,8 @@ async def list_output_dirs(db: DbDep) -> list[DirEntry]:
     root = await service.resolve_root(db)
     if not root.is_dir():
         return []
-    return service.list_direct_children(root)
+    excluded = await service.resolve_excluded_dir_names(db)
+    return service.list_direct_children(root, excluded=excluded)
 
 
 @router.post("/output-dirs", operation_id="createOutputDir")
