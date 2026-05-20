@@ -42,6 +42,12 @@ config.manifest_for["https://e2e.test/ok"] = [
 # A slow variant so the UI can show "running" state.
 config.extractor_for["https://e2e.test/slow"] = "e2etest"
 config.manifest_for["https://e2e.test/slow"] = [f"e2etest/slow/{i:03d}.jpg" for i in range(1, 6)]
+# A longer-running variant for the design-screenshot capture — multiple
+# chapters so the progress card shows partial completion mid-run.
+config.extractor_for["https://e2e.test/very-slow"] = "e2etest"
+config.manifest_for["https://e2e.test/very-slow"] = [
+    f"e2etest/chapter-{c}/{i:03d}.jpg" for c in range(1, 5) for i in range(1, 8)
+]
 # An unsupported URL.
 config.extractor_for["https://e2e.test/unsupported"] = None
 
@@ -49,10 +55,13 @@ config.extractor_for["https://e2e.test/unsupported"] = None
 class _SlowFakeGallery(FakeGallery):
     """A FakeGallery that sleeps between files for the /slow URL only."""
 
-    def run_download(self, url, on_file_complete=None):  # type: ignore[override]
+    def run_download(self, url, on_file_complete=None, skip_chapter=None):  # type: ignore[override]
         self.download_calls.append(url)
         rels = self._config.manifest_for.get(url, [])
         for rel in rels:
+            manga, chapter = self._chapter_for(url, rel)
+            if skip_chapter is not None and manga and chapter and skip_chapter(manga, chapter):
+                continue
             if self._config.write_files:
                 p = self._downloads_dir / rel
                 p.parent.mkdir(parents=True, exist_ok=True)
@@ -64,7 +73,17 @@ class _SlowFakeGallery(FakeGallery):
                     break
             if "slow" in url:
                 time.sleep(0.4)
-        return 0, list(self._config.records_for.get(url, []))
+        records = []
+        for rec in self._config.records_for.get(url, []):
+            if (
+                skip_chapter is not None
+                and rec.manga
+                and rec.chapter
+                and skip_chapter(rec.manga, rec.chapter)
+            ):
+                continue
+            records.append(rec)
+        return 0, records
 
 
 def _gallery_factory(settings: Settings) -> FakeGallery:
