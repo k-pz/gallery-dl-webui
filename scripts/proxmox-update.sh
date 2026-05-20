@@ -126,6 +126,15 @@ as_app mise run -C "$APP_DIR" install:prod
 log "rebuilding frontend via mise"
 as_app mise run -C "$APP_DIR" build
 
+# ---- Refresh in-CT updater (/usr/local/bin/update) ------------------------
+#
+# Older CTs may not have /usr/local/bin/update yet; newer ones may have an
+# outdated copy. Refresh unconditionally so the in-CT `update` command always
+# matches the script in this checkout.
+
+log "refreshing /usr/local/bin/update (in-CT updater)"
+in_ct install -m 0755 "$APP_DIR/scripts/lxc-update.sh" /usr/local/bin/update
+
 # ---- Migrate systemd unit ExecStart (one-time) ----------------------------
 #
 # Older installs wrote a different ExecStart line — either pre-mise-tasks

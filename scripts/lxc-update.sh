@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# Update gallery-dl-webui from inside the LXC. Mirrors scripts/proxmox-update.sh
+# but runs directly inside the CT (no `pct exec` wrappers).
+#
+# Usage (run as root inside the CT — proxmox-install.sh sets up tty1 autologin
+# so `pct console <CTID>` lands you there directly):
+#
+#   update                                  # installed at /usr/local/bin/update
+#   REPO_REF=some-branch update             # pin a different ref
+#
+# First-time / pre-install bootstrap (no local copy yet):
+#
+#   curl -fsSL https://raw.githubusercontent.com/k-pz/gallery-dl-webui/main/scripts/lxc-update.sh \
+#       | bash
+#
+# Overridable env vars (defaults match proxmox-install.sh):
+#   REPO_URL, REPO_REF, APP_USER, APP_DIR, DATA_DIR, SERVICE
+
+set -euo pipefail
+
+# ---- Config ---------------------------------------------------------------
+
+# Default to HTTPS so the in-CT clone works without any GitHub SSH key. The
+# host-side proxmox-install.sh defaults to SSH because the Proxmox node is
+# expected to have a key; the CT typically doesn't.
+REPO_URL="${REPO_URL:-https://github.com/k-pz/gallery-dl-webui.git}"
+REPO_REF="${REPO_REF:-main}"
+
+APP_USER="${APP_USER:-gallery-dl}"
+APP_DIR="${APP_DIR:-/opt/gallery-dl-webui}"
+DATA_DIR="${DATA_DIR:-/var/lib/gallery-dl-webui}"
+SERVICE="${SERVICE:-gallery-dl-webui.service}"
+
+# ---- Helpers --------------------------------------------------------------
+
+log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# Run as $APP_USER with the same env mise expects (PATH containing
+# /usr/local/bin, HOME pointed at DATA_DIR where mise stores tools).
+as_app() {
+    sudo -u "$APP_USER" -H \
+        env PATH=/usr/local/bin:/usr/bin:/bin HOME="$DATA_DIR" \
+        "$@"
+}
+
+# ---- Preflight ------------------------------------------------------------
+
+[[ $EUID -eq 0 ]] || die "must run as root (try: sudo $0)"
+[[ -d "$APP_DIR" ]] || die "$APP_DIR not found — is this the right container?"
+[[ -x /usr/local/bin/mise ]] \
+    || die "/usr/local/bin/mise not found — was this CT created by proxmox-install.sh?"
+id -u "$APP_USER" >/dev/null 2>&1 || die "user '$APP_USER' does not exist"
+command -v git >/dev/null \
+    || die "git not found — install with: apt-get install -y git"
+
+# ---- Fetch source ---------------------------------------------------------
+
+SRC_DIR="$(mktemp -d -t gallery-dl-webui.XXXXXX)"
+cleanup() { rm -rf "$SRC_DIR"; }
+trap cleanup EXIT
+
+log "cloning $REPO_URL ($REPO_REF) to $SRC_DIR"
+git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" "$SRC_DIR"
+
+NEW_REV="$(git -C "$SRC_DIR" rev-parse --short HEAD)"
+NEW_SUBJECT="$(git -C "$SRC_DIR" log -1 --pretty=%s)"
+
+# ---- Wipe + repopulate APP_DIR --------------------------------------------
+#
+# Same preservation rules as proxmox-update.sh: keep backend/.venv and
+# frontend/node_modules so uv/pnpm can update them in place.
+
+log "clearing $APP_DIR (preserving backend/.venv, frontend/node_modules)"
+(
+    cd "$APP_DIR"
+    find . -mindepth 1 -maxdepth 1 ! -name backend ! -name frontend -exec rm -rf {} +
+    [ -d backend ]  && find backend  -mindepth 1 -maxdepth 1 ! -name .venv        -exec rm -rf {} + || true
+    [ -d frontend ] && find frontend -mindepth 1 -maxdepth 1 ! -name node_modules -exec rm -rf {} + || true
+)
+
+log "copying source into $APP_DIR"
+tar -C "$SRC_DIR" \
+    --exclude='./.venv' \
+    --exclude='./.git' \
+    --exclude='./.pytest_cache' \
+    --exclude='./.ruff_cache' \
+    --exclude='./node_modules' \
+    --exclude='./**/node_modules' \
+    --exclude='./**/dist' \
+    --exclude='./__pycache__' \
+    --exclude='./**/__pycache__' \
+    --exclude='./.local' \
+    --exclude='./.claude' \
+    -cf - . \
+  | tar -C "$APP_DIR" -xf -
+chown -R "$APP_USER:$APP_USER" "$APP_DIR"
+
+# ---- Refresh toolchain + deps via mise ------------------------------------
+
+log "trusting mise config"
+as_app mise trust "$APP_DIR/mise.toml"
+
+log "refreshing toolchain + backend + frontend deps via mise"
+as_app mise run -C "$APP_DIR" install:prod
+
+log "rebuilding frontend via mise"
+as_app mise run -C "$APP_DIR" build
+
+# ---- Refresh /usr/local/bin/update so future runs use the new script ------
+
+NEW_UPDATER="$APP_DIR/scripts/lxc-update.sh"
+if [[ -f "$NEW_UPDATER" ]]; then
+    install -m 0755 "$NEW_UPDATER" /usr/local/bin/update
+fi
+
+# ---- Migrate systemd unit ExecStart (one-time) ----------------------------
+#
+# Matches the equivalent block in proxmox-update.sh so an in-CT update can
+# also pick up the rename from `backend:run` / pre-mise-tasks to
+# `serve:backend`.
+
+DESIRED_EXEC="ExecStart=/usr/local/bin/mise run -C ${APP_DIR} serve:backend"
+UNIT_PATH="/etc/systemd/system/${SERVICE}"
+if [[ -f "$UNIT_PATH" ]] && ! grep -qF "$DESIRED_EXEC" "$UNIT_PATH"; then
+    log "migrating ${SERVICE} ExecStart to use the mise serve:backend task"
+    sed -i "s|^ExecStart=.*|${DESIRED_EXEC}|" "$UNIT_PATH"
+    systemctl daemon-reload
+fi
+
+# ---- Restart --------------------------------------------------------------
+
+log "restarting $SERVICE (non-blocking)"
+systemctl restart --no-block "$SERVICE"
+
+log "waiting up to 30s for $SERVICE to be active"
+for _ in $(seq 1 30); do
+    if systemctl is-active --quiet "$SERVICE"; then
+        break
+    fi
+    sleep 1
+done
+systemctl is-active --quiet "$SERVICE" \
+    || die "$SERVICE failed to come back up — check: journalctl -u $SERVICE -n 50"
+
+CT_IP="$(hostname -I | awk '{print $1}')"
+log "done"
+echo
+echo "  Updated to ${NEW_REV} — ${NEW_SUBJECT}"
+echo "  Service: $SERVICE (active)"
+echo "  Logs:    journalctl -u $SERVICE -f"
+[[ -n "$CT_IP" ]] && echo "  URL:     http://${CT_IP}:8000"
