@@ -15,12 +15,12 @@ test.describe("downloads UI", () => {
   });
 
   test("submits a URL and shows it completed in the recent list", async ({ page }) => {
-    const input = page.getByLabel(/gallery url/i);
-    await input.fill(OK_URL);
+    await page.getByLabel(/gallery url/i).fill(OK_URL);
     await page.getByRole("button", { name: /^download$/i }).click();
 
-    // The submitted URL appears in the active job card.
-    await expect(page.getByTitle(OK_URL).first()).toBeVisible();
+    // Submit doesn't auto-select. Switch to the Jobs tab and click the row
+    // that just landed to open it in the active-job card.
+    await openJobByUrl(page, OK_URL);
 
     // The progress card reports all chapters settled once the worker is done.
     // OK_URL has 2 chapters in its manifest.
@@ -31,7 +31,9 @@ test.describe("downloads UI", () => {
     await page.getByLabel(/gallery url/i).fill(UNSUPPORTED_URL);
     await page.getByRole("button", { name: /^download$/i }).click();
 
-    await expect(page.getByText(/unsupported URL/i)).toBeVisible();
+    // The error surfaces in two places — inline under the form *and* in the
+    // notification. Either is enough to confirm rejection.
+    await expect(page.getByText(/unsupported URL/i).first()).toBeVisible();
   });
 
   test("validates blank input before hitting the backend", async ({ page }) => {
@@ -45,8 +47,7 @@ test.describe("downloads UI", () => {
     await page.getByLabel(/gallery url/i).fill(SLOW_URL);
     await page.getByRole("button", { name: /^download$/i }).click();
 
-    // Active job card appears with the slow URL.
-    await expect(page.getByTitle(SLOW_URL).first()).toBeVisible();
+    await openJobByUrl(page, SLOW_URL);
 
     // ProgressCard reports the single chapter settled once download wraps up.
     // SLOW_URL has 1 chapter ("slow") with 5 files.
@@ -57,19 +58,17 @@ test.describe("downloads UI", () => {
     await page.getByLabel(/gallery url/i).fill(SLOW_URL);
     await page.getByRole("button", { name: /^download$/i }).click();
 
-    // Wait for the slow URL to appear in the active job card.
-    await expect(page.getByTitle(SLOW_URL).first()).toBeVisible();
+    await openJobByUrl(page, SLOW_URL);
 
-    // The Cancel button is only visible while the job is non-terminal.
-    const cancelBtn = page.getByRole("button", { name: /^cancel$/i });
+    // The active card's Cancel button (textual, not the row icon) is only
+    // visible while the job is non-terminal.
+    const cancelBtn = activeJobButton(page, /^cancel$/i);
     await expect(cancelBtn).toBeVisible({ timeout: 10_000 });
     await cancelBtn.click();
 
-    // Once cancelled, the active card swaps Cancel for Requeue and the badge
-    // turns into "cancelled".
-    await expect(page.getByRole("button", { name: /^requeue$/i }).first()).toBeVisible({
-      timeout: 15_000,
-    });
+    // Once cancelled, the active card swaps Cancel for Requeue and the
+    // filled badge that replaces the stepper reads "Cancelled".
+    await expect(activeJobButton(page, /^requeue$/i)).toBeVisible({ timeout: 15_000 });
     await expect(
       page
         .locator(".mantine-Badge-root")
@@ -79,31 +78,56 @@ test.describe("downloads UI", () => {
   });
 
   test("requeues a completed download back to running", async ({ page }) => {
-    await page.getByLabel(/gallery url/i).fill(OK_URL);
+    // SLOW_URL on purpose — OK_URL completes in <100ms and a requeued run
+    // would finish before we can observe the intermediate non-terminal state.
+    await page.getByLabel(/gallery url/i).fill(SLOW_URL);
     await page.getByRole("button", { name: /^download$/i }).click();
 
-    // Wait for completion of the first run (OK_URL → 2 chapters settled).
-    await expect(page.getByText(/2\s*\/\s*2\s+chapters/i)).toBeVisible({ timeout: 15_000 });
-    await expect(
-      page
-        .locator(".mantine-Badge-root")
-        .getByText(/^completed$/i)
-        .first(),
-    ).toBeVisible();
+    await openJobByUrl(page, SLOW_URL);
 
-    // Click Requeue and watch the badge return to a non-terminal state.
-    await page.getByRole("button", { name: /^requeue$/i }).click();
-    const badge = page.locator(".mantine-Badge-root").first();
-    await expect(badge).not.toHaveText(/completed/i, { timeout: 5_000 });
+    // Wait for completion of the first run. ActiveJobCard hides the Cancel
+    // button (and shows Requeue) only on a terminal state — both signals
+    // together rule out a racy "we caught it mid-stepper-paint" false read.
+    await expect(page.getByText(/1\s*\/\s*1\s+chapters/i)).toBeVisible({ timeout: 30_000 });
+    await expect(activeJobButton(page, /^requeue$/i)).toBeVisible();
 
-    // It should complete again.
-    await expect(
-      page
-        .locator(".mantine-Badge-root")
-        .getByText(/^completed$/i)
-        .first(),
-    ).toBeVisible({
-      timeout: 15_000,
-    });
+    // Click Requeue and watch the active card return to a non-terminal state.
+    await activeJobButton(page, /^requeue$/i).click();
+    await expect(activeJobButton(page, /^cancel$/i)).toBeVisible({ timeout: 10_000 });
+
+    // It should complete again — Requeue returns once it's terminal.
+    await expect(activeJobButton(page, /^requeue$/i)).toBeVisible({ timeout: 30_000 });
   });
 });
+
+// --- helpers ----------------------------------------------------------------
+
+async function openJobByUrl(page: import("@playwright/test").Page, url: string) {
+  // Switch to Jobs and click the row whose name/URL matches. Default filter
+  // is "Active"; a fast job (OK_URL) can complete before we click and would
+  // then be hidden — flip to "Any" first so terminal jobs show too.
+  await page.getByRole("tab", { name: /^Jobs/i }).click();
+
+  // Mantine keepMounted leaves the Library panel in the DOM with both a
+  // "Status" select of its own; scope the filter change to the visible Jobs
+  // panel via the Card that contains the Recent list.
+  const recentCard = page
+    .locator(".mantine-Card-root")
+    .filter({ has: page.getByText(/^Jobs$/, { exact: true }) })
+    .last();
+  await recentCard.getByRole("combobox", { name: /status/i }).click();
+  await page.getByRole("option", { name: /^any$/i }).click();
+
+  const row = page.locator(".app-row", { hasText: url }).first();
+  await expect(row).toBeVisible({ timeout: 15_000 });
+  await row.click();
+}
+
+function activeJobButton(page: import("@playwright/test").Page, name: RegExp) {
+  // Buttons inside the active-job card are textual (size="xs", variant="light")
+  // — the row-level cancel/requeue are ActionIcons with aria-labels like
+  // "Cancel #3". Filtering by role=button + name keeps us on the card.
+  return page
+    .locator(".mantine-Card-root", { has: page.getByText(/active job/i) })
+    .getByRole("button", { name });
+}
