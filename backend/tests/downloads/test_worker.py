@@ -13,7 +13,6 @@ from backend.downloads.live_progress import LiveProgress
 from backend.downloads.postprocess import FileRecord
 from backend.downloads.worker import Worker
 from backend.targets import service as targets_service
-
 from tests.fakes import FakeGallery, FakeGalleryConfig
 
 

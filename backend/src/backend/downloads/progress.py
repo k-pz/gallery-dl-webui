@@ -59,9 +59,8 @@ def _stage_for(
     still running, we infer per-chapter completion from the absence of the
     chapter directory (delete_raw removes it post-pack).
     """
-    settled = (
-        download_status in _TERMINAL_DOWNLOAD_STATUSES
-        and (postprocess_status is None or postprocess_status in _TERMINAL_POSTPROCESS_STATUSES)
+    settled = download_status in _TERMINAL_DOWNLOAD_STATUSES and (
+        postprocess_status is None or postprocess_status in _TERMINAL_POSTPROCESS_STATUSES
     )
     if settled and files_total > 0:
         return "completed"
@@ -132,9 +131,7 @@ def chapter_progress_from_completed(
                 name=name,
                 files_total=len(expected),
                 files_present=present,
-                stage=_stage_for(
-                    present, len(expected), True, download_status, postprocess_status
-                ),
+                stage=_stage_for(present, len(expected), True, download_status, postprocess_status),
             )
         )
     return out

@@ -102,9 +102,7 @@ export function MaintenancePanel() {
                   style={{
                     cursor: "pointer",
                     backgroundColor:
-                      selectedJobId === job.id
-                        ? "var(--mantine-color-default-hover)"
-                        : undefined,
+                      selectedJobId === job.id ? "var(--mantine-color-default-hover)" : undefined,
                   }}
                   aria-label={`Select maintenance job ${job.id}`}
                 >
