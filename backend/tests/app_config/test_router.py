@@ -113,6 +113,22 @@ def test_put_config_trims_whitespace_to_null(client: TestClient) -> None:
     assert body["postprocess_default_output_dir"] is None
 
 
+def test_get_config_defaults_reading_direction(client: TestClient) -> None:
+    assert client.get("/api/config").json()["default_reading_direction"] == "ltr"
+
+
+def test_put_config_persists_default_reading_direction(client: TestClient) -> None:
+    resp = _put(client, default_reading_direction="rtl")
+    assert resp.status_code == 200, resp.json()
+    assert resp.json()["default_reading_direction"] == "rtl"
+    assert client.get("/api/config").json()["default_reading_direction"] == "rtl"
+
+
+def test_put_config_rejects_invalid_reading_direction(client: TestClient) -> None:
+    resp = _put(client, default_reading_direction="diagonal")
+    assert resp.status_code == 400
+
+
 def test_changing_root_clears_known_dirs(client: TestClient, tmp_path: Path) -> None:
     root_a = tmp_path / "a"
     root_b = tmp_path / "b"

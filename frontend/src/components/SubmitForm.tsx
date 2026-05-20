@@ -1,16 +1,31 @@
-import { Button, Card, Checkbox, Group, Stack, Text, TextInput, Title } from "@mantine/core";
+import {
+  Button,
+  Card,
+  Checkbox,
+  Group,
+  Select,
+  Stack,
+  TagsInput,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { createDownloadMutation, getConfigOptions } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
+import { READING_DIRECTION_OPTIONS } from "../lib/readingDirection";
 import { DirectoryPicker } from "./DirectoryPicker";
 
 export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } = {}) {
   const [url, setUrl] = useState("");
   const [outputDir, setOutputDir] = useState<string | null>(null);
   const [watched, setWatched] = useState(false);
+  const [tags, setTags] = useState<string[]>([]);
+  const [readingDirection, setReadingDirection] = useState<string>("ltr");
+  const [readingDirectionTouched, setReadingDirectionTouched] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const invalidate = useDataInvalidators();
   const { data: config } = useQuery(getConfigOptions());
@@ -24,11 +39,21 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
     }
   }, [config, touched]);
 
+  // Sync the reading-direction default from server config until the user
+  // picks one themselves (mirrors the output-dir seeding above).
+  useEffect(() => {
+    if (!readingDirectionTouched && config?.default_reading_direction) {
+      setReadingDirection(config.default_reading_direction);
+    }
+  }, [config, readingDirectionTouched]);
+
   const mutation = useMutation({
     ...createDownloadMutation(),
     onSuccess: (data) => {
       setUrl("");
       setWatched(false);
+      setTags([]);
+      setReadingDirectionTouched(false);
       setSubmitError(null);
       setTouched(false);
       onCreated?.(data.id);
@@ -59,7 +84,13 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
       return;
     }
     mutation.mutate({
-      body: { url: trimmed, output_dir: outputDir || null, watched },
+      body: {
+        url: trimmed,
+        output_dir: outputDir || null,
+        watched,
+        tags: tags.length > 0 ? tags : null,
+        reading_direction: readingDirectionTouched ? readingDirection : null,
+      },
     });
   };
 
@@ -103,6 +134,29 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
           enabled={hasRoot}
           disabled={mutation.isPending}
           extraOption={config?.postprocess_default_output_dir ?? null}
+        />
+        <TagsInput
+          label="Tags"
+          placeholder="Enter to add — e.g. action, romance"
+          description="Applied to series.json + ComicInfo. Existing tags are replaced on every submit."
+          value={tags}
+          onChange={setTags}
+          disabled={mutation.isPending}
+          clearable
+        />
+        <Select
+          label="Reading direction"
+          description="Overrides the default for this series. RTL becomes ComicInfo Manga=YesAndRightToLeft."
+          value={readingDirection}
+          onChange={(v) => {
+            if (!v) return;
+            setReadingDirectionTouched(true);
+            setReadingDirection(v);
+          }}
+          data={READING_DIRECTION_OPTIONS}
+          disabled={mutation.isPending}
+          maw={260}
+          allowDeselect={false}
         />
         <Checkbox
           label="Watch"

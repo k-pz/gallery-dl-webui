@@ -19,6 +19,7 @@ type ConfigShape = {
   delete_raw_after_pack: boolean;
   default_watch_period: string;
   chapter_naming_template: string;
+  default_reading_direction: string;
 };
 
 const emptyConfig: ConfigShape = {
@@ -28,6 +29,7 @@ const emptyConfig: ConfigShape = {
   delete_raw_after_pack: true,
   default_watch_period: "1d",
   chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
+  default_reading_direction: "ltr",
 };
 
 function configHandler(state: { current: ConfigShape }) {
@@ -64,6 +66,7 @@ describe("ConfigPanel", () => {
         delete_raw_after_pack: true,
         default_watch_period: "2h",
         chapter_naming_template: "{{ series }}_{{ chapter_number }}",
+        default_reading_direction: "rtl",
       });
     });
 
@@ -121,6 +124,7 @@ describe("ConfigPanel", () => {
       delete_raw_after_pack: true,
       default_watch_period: "1d",
       chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
+      default_reading_direction: "ltr",
     });
     await screen.findByText(/saved/i);
   });
@@ -198,6 +202,7 @@ describe("ConfigPanel", () => {
         delete_raw_after_pack: true,
         default_watch_period: "1d",
         chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
+        default_reading_direction: "ltr",
       },
     };
     const fetchSpy = mockFetch(configHandler(state));
@@ -223,6 +228,7 @@ describe("ConfigPanel", () => {
       delete_raw_after_pack: true,
       default_watch_period: "1d",
       chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
+      default_reading_direction: "ltr",
     });
   });
 });

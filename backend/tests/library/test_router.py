@@ -122,6 +122,44 @@ def test_import_library_collects_per_entry_errors(client: TestClient) -> None:
     assert len(result["errors"]) == 2
 
 
+def test_library_roundtrips_tags_and_reading_direction(client: TestClient) -> None:
+    client.post(
+        "/api/downloads",
+        json={
+            "url": "https://example/series",
+            "tags": ["Action", "Drama"],
+            "reading_direction": "rtl",
+        },
+    )
+    exported = yaml.safe_load(client.get("/api/library/export").text)
+    entry = next(e for e in exported["series"] if e["url"] == "https://example/series")
+    assert entry["tags"] == ["Action", "Drama"]
+    assert entry["reading_direction"] == "rtl"
+
+    # Re-import the same payload onto a fresh target and confirm fields land.
+    body = yaml.safe_dump(
+        {
+            "version": 1,
+            "series": [
+                {
+                    "url": "https://example/other",
+                    "tags": ["[Drama]", "drama"],
+                    "reading_direction": "vertical",
+                }
+            ],
+        }
+    )
+    resp = client.post(
+        "/api/library/import", content=body, headers={"content-type": "application/yaml"}
+    )
+    assert resp.status_code == 200, resp.text
+    other = next(
+        t for t in client.get("/api/targets").json() if t["url"] == "https://example/other"
+    )
+    assert other["tags"] == ["Drama"]
+    assert other["reading_direction"] == "vertical"
+
+
 def test_import_library_validates_output_dir_under_root(client: TestClient, tmp_path: Path) -> None:
     root = tmp_path / "media"
     root.mkdir()

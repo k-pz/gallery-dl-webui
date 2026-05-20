@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { jsonResponse, methodOf, mockFetch, urlOf } from "../test/mocks";
+import { bodyOf, jsonResponse, methodOf, mockFetch, urlOf } from "../test/mocks";
 import { renderWithProviders } from "../test/render";
 import { MaintenancePanel } from "./MaintenancePanel";
 
@@ -19,6 +19,7 @@ function jobsHandler(opts: {
   jobs: Job[];
   nextId: { value: number };
   progress: Record<number, { status: string; total: number; done: number; lines: string[] }>;
+  postedKinds?: string[];
 }) {
   return async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const u = urlOf(input);
@@ -31,9 +32,11 @@ function jobsHandler(opts: {
     }
     if (u.includes("/api/maintenance/jobs")) {
       if (methodOf(input, init) === "POST") {
+        const body = JSON.parse(await bodyOf(input, init));
+        opts.postedKinds?.push(body.kind);
         const created: Job = {
           id: opts.nextId.value++,
-          kind: "rename_chapters",
+          kind: body.kind,
           status: "pending",
           created_at: "2025-01-02T00:00:00",
           started_at: null,
@@ -127,6 +130,24 @@ describe("MaintenancePanel", () => {
       expect(screen.getByText(/1 \/ 3/)).toBeInTheDocument();
     });
     expect(screen.getByText(/scanning… found 3 archive\(s\)/)).toBeInTheDocument();
+  });
+
+  it("schedules a regenerate-series-metadata job from the new button", async () => {
+    const nextId = { value: 1 };
+    const jobs: Job[] = [];
+    const postedKinds: string[] = [];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {};
+    mockFetch(jobsHandler({ jobs, nextId, progress, postedKinds }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: /regenerate series metadata/i }));
+    await waitFor(() => {
+      expect(postedKinds).toContain("regenerate_series_metadata");
+    });
   });
 
   it("switches the log to the row the user clicks", async () => {

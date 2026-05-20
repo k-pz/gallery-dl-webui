@@ -23,7 +23,9 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 
 from backend.app_config import service as app_config_service
+from backend.app_config.constants import READING_DIRECTIONS
 from backend.dependencies import DbDep
+from backend.downloads.postprocess import normalize_tags
 from backend.library import service
 from backend.library.constants import SCHEMA_VERSION
 from backend.library.schemas import LibraryImportResult
@@ -119,6 +121,21 @@ async def import_library(request: Request, db: DbDep, poller: PollerDep) -> Libr
                     continue
                 watch_period = period_raw
 
+        raw_tags = item.get("tags")
+        tags: list[str] | None = None
+        if isinstance(raw_tags, list):
+            tags = normalize_tags([t for t in raw_tags if isinstance(t, str)])
+        reading_direction_raw = service.coerce_str(item.get("reading_direction"))
+        reading_direction: str | None = None
+        if reading_direction_raw is not None:
+            cleaned = reading_direction_raw.lower()
+            if cleaned not in READING_DIRECTIONS:
+                errors.append(
+                    f"series[{idx}] ({url}): invalid reading_direction: {reading_direction_raw!r}"
+                )
+                continue
+            reading_direction = cleaned
+
         existing = await targets_service.get_by_url(db, url)
         target = await targets_service.upsert(db, url, extractor, output_dir)
         if existing is None:
@@ -133,6 +150,8 @@ async def import_library(request: Request, db: DbDep, poller: PollerDep) -> Libr
             watched=watched,
             watch_period=watch_period,
             output_dir=output_dir,
+            tags=tags,
+            reading_direction=reading_direction,
         )
         if watched:
             notified = True

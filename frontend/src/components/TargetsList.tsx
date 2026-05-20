@@ -8,6 +8,7 @@ import {
   Select,
   Stack,
   Switch,
+  TagsInput,
   Text,
   TextInput,
   Tooltip,
@@ -28,6 +29,7 @@ import { useDataInvalidators } from "../lib/invalidate";
 import { makeNeedleMatcher } from "../lib/listFilters";
 import { usePagination } from "../lib/pagination";
 import { REFETCH_LIST_MS } from "../lib/polling";
+import { READING_DIRECTION_OPTIONS } from "../lib/readingDirection";
 import { isActive, jobStatusLabel, statusColor } from "../lib/status";
 import { formatRel } from "../lib/time";
 import { ListHeader } from "./ListHeader";
@@ -413,7 +415,35 @@ function TargetRow({
             w={170}
             error={periodError ?? undefined}
           />
+          <Select
+            label="Reading direction"
+            value={target.reading_direction ?? ""}
+            data={[{ value: "", label: "Use default" }, ...READING_DIRECTION_OPTIONS]}
+            onChange={(v) =>
+              update.mutate({
+                path: { target_id: target.id },
+                body: { reading_direction: v ?? "" },
+              })
+            }
+            disabled={update.isPending}
+            w={170}
+            comboboxProps={{ withinPortal: true }}
+            allowDeselect={false}
+          />
         </Group>
+        <TagsInput
+          label="Tags"
+          placeholder="Enter to add"
+          value={target.tags}
+          onChange={(next) =>
+            update.mutate({
+              path: { target_id: target.id },
+              body: { tags: next },
+            })
+          }
+          disabled={update.isPending}
+          clearable
+        />
       </Stack>
     </Card>
   );

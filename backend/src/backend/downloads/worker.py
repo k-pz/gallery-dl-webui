@@ -6,12 +6,22 @@ import aiosqlite
 from gallery_dl.exception import StopExtraction
 
 from backend.app_config import service as app_config_service
-from backend.app_config.constants import DEFAULT_CHAPTER_NAMING_TEMPLATE
+from backend.app_config.constants import (
+    DEFAULT_CHAPTER_NAMING_TEMPLATE,
+    DEFAULT_READING_DIRECTION,
+    READING_DIRECTIONS,
+)
 from backend.downloads import postprocess, service
 from backend.downloads.gallery import Gallery, SkipChapterFn
 from backend.downloads.live_progress import LiveProgress
 from backend.downloads.models import Download
-from backend.downloads.postprocess import FileRecord, chapter_already_packed
+from backend.downloads.postprocess import (
+    FileRecord,
+    SeriesMetadata,
+    chapter_already_packed,
+    normalize_reading_direction,
+    normalize_tags,
+)
 from backend.downloads.progress import count_present
 from backend.targets import service as targets_service
 
@@ -220,6 +230,7 @@ class Worker:
         naming_template = cfg.get("chapter_naming_template")
         if not isinstance(naming_template, str) or not naming_template:
             naming_template = DEFAULT_CHAPTER_NAMING_TEMPLATE
+        metadata_overrides = await self._series_metadata_overrides(job, cfg)
         await service.mark_postprocess(self._db, job.id, "running")
         try:
             result = await postprocess.run(
@@ -228,6 +239,7 @@ class Worker:
                 downloads_dir,
                 delete_raw,
                 naming_template=naming_template,
+                metadata_overrides=metadata_overrides,
             )
         except Exception as exc:
             logger.exception("postprocess for download %d failed", job.id)
@@ -236,4 +248,27 @@ class Worker:
         status = "completed" if result.failed == 0 else "failed"
         await service.mark_postprocess(
             self._db, job.id, status, chapters_packed=result.succeeded, error=result.error_summary
+        )
+
+    async def _series_metadata_overrides(
+        self, job: Download, cfg: dict[str, object]
+    ) -> SeriesMetadata:
+        """Resolve tags + reading direction for this job's target.
+
+        Per-target settings win; otherwise we fall back to the config default
+        (or the package-level default if config is missing the key).
+        """
+        tags: list[str] = []
+        reading_direction = cfg.get("default_reading_direction")
+        if not isinstance(reading_direction, str) or reading_direction not in READING_DIRECTIONS:
+            reading_direction = DEFAULT_READING_DIRECTION
+        if job.target_id is not None:
+            target = await targets_service.get(self._db, job.target_id)
+            if target is not None:
+                tags = list(target.tags)
+                if target.reading_direction:
+                    reading_direction = target.reading_direction
+        return SeriesMetadata(
+            tags=normalize_tags(tags),
+            reading_direction=normalize_reading_direction(reading_direction),
         )

@@ -5,10 +5,12 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from backend.app_config import service as app_config_service
+from backend.app_config.constants import READING_DIRECTIONS
 from backend.app_config.exceptions import PostprocessRootNotConfigured
 from backend.dependencies import DbDep
 from backend.downloads import service as downloads_service
 from backend.downloads.dependencies import WorkerDep
+from backend.downloads.postprocess import normalize_tags
 from backend.output_dirs.utils import coerce_optional, validate_under_root
 from backend.targets import service
 from backend.targets.dependencies import PollerDep, TargetDep
@@ -48,6 +50,8 @@ async def update_target(
     new_watched = target.watched if body.watched is None else body.watched
     new_period: str | None | Unset = UNSET
     new_output_dir: str | None | Unset = UNSET
+    new_tags: list[str] | None | Unset = UNSET
+    new_direction: str | None | Unset = UNSET
 
     if body.watch_period is not None:
         cleaned = body.watch_period.strip()
@@ -73,12 +77,32 @@ async def update_target(
             new_output_dir = str(resolved)
             await app_config_service.remember_output_dir(db, new_output_dir)
 
+    if body.tags is not None:
+        new_tags = normalize_tags(body.tags)
+
+    if body.reading_direction is not None:
+        cleaned_dir = body.reading_direction.strip().lower()
+        if cleaned_dir == "":
+            new_direction = None
+        elif cleaned_dir not in READING_DIRECTIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"invalid reading_direction: {body.reading_direction!r}; "
+                    f"expected one of {sorted(READING_DIRECTIONS)}"
+                ),
+            )
+        else:
+            new_direction = cleaned_dir
+
     await service.update(
         db,
         target.id,
         watched=new_watched,
         watch_period=new_period,
         output_dir=new_output_dir,
+        tags=new_tags,
+        reading_direction=new_direction,
     )
 
     if body.watched is True and not target.watched:

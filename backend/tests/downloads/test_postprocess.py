@@ -1,3 +1,4 @@
+import json
 import xml.etree.ElementTree as ET
 import zipfile
 from datetime import datetime
@@ -6,13 +7,21 @@ from pathlib import Path
 import pytest
 
 from backend.downloads.postprocess import (
+    SERIES_JSON_NAME,
     FileRecord,
+    SeriesMetadata,
     build_comicinfo_xml,
+    build_series_json_bytes,
     cbz_target_path,
     chapter_already_packed,
     coerce_record_from_kwdict,
     collect_chapters,
+    derive_series_metadata,
+    normalize_reading_direction,
+    normalize_tags,
+    regenerate_series_metadata,
     run,
+    strip_enclosing_brackets,
 )
 
 
@@ -368,3 +377,274 @@ def test_chapter_number_formatting(raw: str, want: str) -> None:
     from backend.downloads.postprocess import _format_chapter_number
 
     assert _format_chapter_number(raw) == want
+
+
+@pytest.mark.parametrize(
+    "raw,want",
+    [
+        ("[Author]", "Author"),
+        ('"Author"', "Author"),
+        ("'Author'", "Author"),
+        ("「Author」", "Author"),
+        ('"[Author]"', "Author"),  # nested pairs are unwrapped
+        ("(Studio) [Artist]", "(Studio) [Artist]"),  # `(` ... `]` is not a pair
+        ("plain", "plain"),
+        ("", ""),
+        ("  [spaced]  ", "spaced"),
+    ],
+)
+def test_strip_enclosing_brackets(raw: str, want: str) -> None:
+    assert strip_enclosing_brackets(raw) == want
+
+
+def test_coerce_record_strips_brackets_from_author() -> None:
+    rec = coerce_record_from_kwdict(
+        {"manga": "S", "chapter": "1", "author": "[Some Studio]"},
+        Path("/x/a.jpg"),
+    )
+    assert rec.author == "Some Studio"
+
+
+def test_coerce_record_captures_description_and_artist() -> None:
+    rec = coerce_record_from_kwdict(
+        {
+            "manga": "S",
+            "chapter": "1",
+            "author": "Writer",
+            "artist": "[Artist]",
+            "description": "  A story about X.  ",
+        },
+        Path("/x/a.jpg"),
+    )
+    assert rec.description == "A story about X."
+    assert rec.artist == "Artist"
+
+
+def test_coerce_record_falls_back_to_summary_then_abstract() -> None:
+    rec = coerce_record_from_kwdict(
+        {"manga": "S", "chapter": "1", "summary": "from summary"},
+        Path("/x/a.jpg"),
+    )
+    assert rec.description == "from summary"
+
+
+def test_normalize_tags_dedupes_and_strips() -> None:
+    assert normalize_tags(['"Action"', "action", "[Romance]", "  ", ""]) == [
+        "Action",
+        "Romance",
+    ]
+
+
+@pytest.mark.parametrize(
+    "raw,want",
+    [
+        ("ltr", "ltr"),
+        ("RTL", "rtl"),
+        ("  webtoon ", "webtoon"),
+        ("vertical", "vertical"),
+        ("garbage", "ltr"),
+        (None, "ltr"),
+    ],
+)
+def test_normalize_reading_direction(raw: str | None, want: str) -> None:
+    assert normalize_reading_direction(raw) == want
+
+
+def test_build_comicinfo_rtl_maps_manga_yes_and_right_to_left() -> None:
+    rec = FileRecord("c", "S", "1", "", "", "", "", "", Path("/x/a.jpg"))
+    ch = collect_chapters([rec])[0]
+    xml_bytes = build_comicinfo_xml(ch, reading_direction="rtl", tags=["action"])
+    root = ET.fromstring(xml_bytes)
+    assert root.findtext("Manga") == "YesAndRightToLeft"
+    assert root.findtext("Tags") == "action"
+
+
+def test_build_comicinfo_webtoon_adds_format_hint() -> None:
+    rec = FileRecord("c", "S", "1", "", "", "", "", "", Path("/x/a.jpg"))
+    ch = collect_chapters([rec])[0]
+    xml_bytes = build_comicinfo_xml(ch, reading_direction="webtoon")
+    root = ET.fromstring(xml_bytes)
+    assert root.findtext("Manga") == "Yes"
+    assert root.findtext("Format") == "Webtoon"
+
+
+def test_build_comicinfo_emits_description_as_summary() -> None:
+    rec = FileRecord(
+        "c", "S", "1", "", "", "", "", "", Path("/x/a.jpg"), description="About"
+    )
+    ch = collect_chapters([rec])[0]
+    xml_bytes = build_comicinfo_xml(ch)
+    root = ET.fromstring(xml_bytes)
+    assert root.findtext("Summary") == "About"
+
+
+def test_build_series_json_omits_blank_fields() -> None:
+    meta = SeriesMetadata(name="My Series", description="Plot", tags=["action"])
+    payload = json.loads(build_series_json_bytes(meta, total_issues=12))
+    assert payload["version"]
+    md = payload["metadata"]
+    assert md["name"] == "My Series"
+    assert md["description_text"] == "Plot"
+    assert md["tags"] == ["action"]
+    assert md["total_issues"] == 12
+    assert md["reading_direction"] == "ltr"
+    assert "publisher" not in md  # empty fields are omitted
+
+
+def test_derive_series_metadata_prefers_overrides() -> None:
+    rec = FileRecord(
+        "c", "S", "1", "", "", "en", "Writer", "2024-03-01",
+        Path("/x/a.jpg"), description="auto",
+    )
+    chapters = collect_chapters([rec])
+    overrides = SeriesMetadata(
+        tags=["[Action]", "action"],
+        reading_direction="rtl",
+        description="manual",
+    )
+    meta = derive_series_metadata(chapters, overrides)
+    assert meta.tags == ["Action"]
+    assert meta.reading_direction == "rtl"
+    assert meta.description == "manual"
+    assert meta.name == "S"
+    assert meta.language == "en"
+    assert meta.year == 2024
+
+
+async def test_run_emits_series_json_with_overrides(tmp_path: Path) -> None:
+    downloads_dir = tmp_path / "downloads"
+    output_dir = tmp_path / "out"
+    rec_dir = downloads_dir / "fake" / "Series" / "c1"
+    rec_dir.mkdir(parents=True)
+    (rec_dir / "001.jpg").write_bytes(b"\xff\xd8\xff")
+    records = [
+        FileRecord(
+            "fake",
+            "Series",
+            "1",
+            "",
+            "",
+            "en",
+            "[Author Studio]",
+            "2024-01-15",
+            rec_dir / "001.jpg",
+            description="An epic tale.",
+        )
+    ]
+    overrides = SeriesMetadata(tags=["[Action]"], reading_direction="rtl")
+    result = await run(
+        records,
+        output_dir,
+        downloads_dir,
+        delete_raw=False,
+        metadata_overrides=overrides,
+    )
+    assert result.succeeded == 1
+
+    series_json = output_dir / "Series" / SERIES_JSON_NAME
+    assert series_json.is_file()
+    payload = json.loads(series_json.read_text())
+    md = payload["metadata"]
+    assert md["name"] == "Series"
+    assert md["description_text"] == "An epic tale."
+    assert md["writer"] == "Author Studio"
+    assert md["tags"] == ["Action"]
+    assert md["reading_direction"] == "rtl"
+    assert md["language"] == "en"
+    assert md["year"] == 2024
+    assert md["total_issues"] == 1
+
+    cbz = output_dir / "Series" / "Series - c001.cbz"
+    with zipfile.ZipFile(cbz) as zf:
+        xml = zf.read("ComicInfo.xml")
+    root = ET.fromstring(xml)
+    assert root.findtext("Manga") == "YesAndRightToLeft"
+    assert root.findtext("Writer") == "Author Studio"
+    assert root.findtext("Tags") == "Action"
+    assert root.findtext("Summary") == "An epic tale."
+
+
+def _write_cbz_with_comicinfo_full(
+    path: Path,
+    series: str,
+    chapter: str,
+    author: str = "",
+    description: str = "",
+) -> None:
+    from backend.downloads.postprocess import ChapterRecord
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ch = ChapterRecord(
+        manga=series,
+        chapter=chapter,
+        title="",
+        volume="",
+        lang="",
+        author=author,
+        date="2024-01-15",
+        dir=path.parent,
+        pages=[Path("/x/001.jpg")],
+        description=description,
+    )
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("ComicInfo.xml", build_comicinfo_xml(ch))
+        zf.writestr("001.jpg", b"x")
+
+
+def test_regenerate_series_metadata_writes_series_json_and_rewrites_cbz(tmp_path: Path) -> None:
+    series_dir = tmp_path / "Series A"
+    _write_cbz_with_comicinfo_full(
+        series_dir / "Series A - c001.cbz",
+        "Series A",
+        "1",
+        author="[Studio One]",
+        description="Tale of action.",
+    )
+    _write_cbz_with_comicinfo_full(
+        series_dir / "Series A - c002.cbz",
+        "Series A",
+        "2",
+        author="Studio One",
+    )
+
+    def lookup(name: str) -> SeriesMetadata | None:
+        if name.lower().startswith("series a"):
+            return SeriesMetadata(
+                tags=["Action", "Romance"],
+                reading_direction="rtl",
+            )
+        return None
+
+    result = regenerate_series_metadata(tmp_path, overrides_for=lookup)
+    assert result.archives_updated == 2
+    assert result.series == 1
+    assert result.series_json_written == 1
+    assert result.skipped == 0
+    assert result.failed == 0
+
+    # Author normalized + reading direction reflected in ComicInfo.
+    with zipfile.ZipFile(series_dir / "Series A - c001.cbz") as zf:
+        root = ET.fromstring(zf.read("ComicInfo.xml"))
+    assert root.findtext("Writer") == "Studio One"
+    assert root.findtext("Manga") == "YesAndRightToLeft"
+    assert root.findtext("Tags") == "Action, Romance"
+    assert root.findtext("Summary") == "Tale of action."
+
+    payload = json.loads((series_dir / SERIES_JSON_NAME).read_text())
+    md = payload["metadata"]
+    assert md["name"] == "Series A"
+    assert md["writer"] == "Studio One"
+    assert md["tags"] == ["Action", "Romance"]
+    assert md["reading_direction"] == "rtl"
+    assert md["total_issues"] == 2
+
+
+def test_regenerate_series_metadata_skips_archives_without_comicinfo(tmp_path: Path) -> None:
+    series_dir = tmp_path / "Bare"
+    series_dir.mkdir()
+    bare = series_dir / "no-comicinfo.cbz"
+    with zipfile.ZipFile(bare, "w") as zf:
+        zf.writestr("001.jpg", b"x")
+    result = regenerate_series_metadata(tmp_path, overrides_for=lambda _: None)
+    assert result.skipped == 1
+    assert result.archives_updated == 0

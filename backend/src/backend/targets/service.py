@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import aiosqlite
 
 from backend.database import now_iso
@@ -13,6 +15,12 @@ from backend.targets.models import (
     row_to_target,
     row_to_target_summary,
 )
+
+
+def _encode_tags(tags: list[str] | None) -> str | None:
+    if tags is None:
+        return None
+    return json.dumps(list(tags), ensure_ascii=False)
 
 _SUMMARY_SELECT = """
 SELECT t.*,
@@ -36,9 +44,15 @@ async def upsert(
     extractor: str | None,
     output_dir: str | None,
     watched: bool = False,
+    tags: list[str] | None = None,
+    reading_direction: str | None = None,
 ) -> Target:
     """Find a target by URL, or create a fresh one. Updates output_dir/extractor
-    from the latest submit so the next poll reuses what the user picked."""
+    from the latest submit so the next poll reuses what the user picked. When
+    `tags` / `reading_direction` are supplied, they overwrite whatever the
+    target currently has — last submit wins, so the user can re-submit to
+    update series metadata.
+    """
     async with db.execute("SELECT * FROM targets WHERE url = ?", (url,)) as cur:
         row = await cur.fetchone()
     if row is not None:
@@ -50,6 +64,12 @@ async def upsert(
         if output_dir is not None and output_dir != row["output_dir"]:
             updates.append("output_dir = ?")
             params.append(output_dir)
+        if tags is not None:
+            updates.append("tags = ?")
+            params.append(_encode_tags(tags))
+        if reading_direction is not None:
+            updates.append("reading_direction = ?")
+            params.append(reading_direction)
         if updates:
             params.append(row["id"])
             await db.execute(f"UPDATE targets SET {', '.join(updates)} WHERE id = ?", params)
@@ -61,9 +81,17 @@ async def upsert(
 
     created_at = now_iso()
     cursor = await db.execute(
-        "INSERT INTO targets(url, extractor, output_dir, watched, created_at) "
-        "VALUES(?, ?, ?, ?, ?)",
-        (url, extractor, output_dir, 1 if watched else 0, created_at),
+        "INSERT INTO targets(url, extractor, output_dir, watched, created_at, "
+        "tags, reading_direction) VALUES(?, ?, ?, ?, ?, ?, ?)",
+        (
+            url,
+            extractor,
+            output_dir,
+            1 if watched else 0,
+            created_at,
+            _encode_tags(tags),
+            reading_direction,
+        ),
     )
     await db.commit()
     new_id = cursor.lastrowid
@@ -78,6 +106,8 @@ async def upsert(
         watch_period=None,
         last_polled_at=None,
         created_at=created_at,
+        tags=list(tags) if tags is not None else [],
+        reading_direction=reading_direction,
     )
 
 
@@ -114,6 +144,8 @@ async def update(
     watched: bool | None = None,
     watch_period: str | None | Unset = UNSET,
     output_dir: str | None | Unset = UNSET,
+    tags: list[str] | None | Unset = UNSET,
+    reading_direction: str | None | Unset = UNSET,
 ) -> Target | None:
     updates: list[str] = []
     params: list[object] = []
@@ -126,6 +158,12 @@ async def update(
     if not isinstance(output_dir, Unset):
         updates.append("output_dir = ?")
         params.append(output_dir)
+    if not isinstance(tags, Unset):
+        updates.append("tags = ?")
+        params.append(_encode_tags(tags))
+    if not isinstance(reading_direction, Unset):
+        updates.append("reading_direction = ?")
+        params.append(reading_direction)
     if not updates:
         return await get(db, id_)
     params.append(id_)

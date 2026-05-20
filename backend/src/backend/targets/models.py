@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 
 import aiosqlite
 
@@ -16,6 +17,8 @@ class Target:
     watch_period: str | None
     last_polled_at: str | None
     created_at: str
+    tags: list[str] = field(default_factory=list)
+    reading_direction: str | None = None
 
 
 @dataclass
@@ -35,6 +38,18 @@ class Unset:
 UNSET = Unset()
 
 
+def _tags_from_row(value: object) -> list[str]:
+    if not isinstance(value, str) or not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [t for t in parsed if isinstance(t, str)]
+
+
 def row_to_target(row: aiosqlite.Row) -> Target:
     return Target(
         id=row["id"],
@@ -46,6 +61,8 @@ def row_to_target(row: aiosqlite.Row) -> Target:
         watch_period=row["watch_period"],
         last_polled_at=row["last_polled_at"],
         created_at=row["created_at"],
+        tags=_tags_from_row(row["tags"]),
+        reading_direction=row["reading_direction"],
     )
 
 
