@@ -17,6 +17,8 @@ from backend.downloads.router import router as downloads_router
 from backend.downloads.worker import Worker
 from backend.health.router import router as health_router
 from backend.library.router import router as library_router
+from backend.maintenance.router import router as maintenance_router
+from backend.maintenance.worker import MaintenanceWorker
 from backend.output_dirs.router import router as output_dirs_router
 from backend.targets.poller import Poller
 from backend.targets.router import router as targets_router
@@ -51,6 +53,8 @@ def create_app(
         live_progress = LiveProgress()
         worker = Worker(db, gallery, live_progress)
         worker.start()
+        maintenance_worker = MaintenanceWorker(db)
+        maintenance_worker.start()
         poller = Poller(db, worker)
         poller.start()
 
@@ -60,11 +64,13 @@ def create_app(
         app.state.worker = worker
         app.state.live_progress = live_progress
         app.state.poller = poller
+        app.state.maintenance_worker = maintenance_worker
 
         try:
             yield
         finally:
             await poller.stop()
+            await maintenance_worker.stop()
             await worker.stop()
             await db.close()
 
@@ -75,6 +81,7 @@ def create_app(
     app.include_router(output_dirs_router, prefix="/api")
     app.include_router(config_router, prefix="/api")
     app.include_router(library_router, prefix="/api")
+    app.include_router(maintenance_router, prefix="/api")
 
     if serve_frontend and FRONTEND_DIST.is_dir():
         app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")

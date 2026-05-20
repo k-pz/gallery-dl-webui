@@ -2,7 +2,7 @@
 
 Records are produced by `_ProgressDownloadJob` in `gallery.py` as files complete;
 this module groups them into chapters and packs each into a Komga-compatible CBZ
-at `<output_dir>/<series>/<series> - cNNN[ - title].cbz`.
+at `<output_dir>/<series>/<chapter-name>.cbz` (chapter name from config template).
 """
 
 from __future__ import annotations
@@ -17,6 +17,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from jinja2 import StrictUndefined
+from jinja2.sandbox import SandboxedEnvironment
+
+from backend.app_config.constants import DEFAULT_CHAPTER_NAMING_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
@@ -178,13 +183,51 @@ def _format_chapter_number(chapter: str) -> str:
     return sanitize(chapter)
 
 
-def cbz_target_path(output_dir: Path, ch: ChapterRecord) -> Path:
+_TEMPLATE_ENV = SandboxedEnvironment(autoescape=False, undefined=StrictUndefined)
+
+
+def _render_chapter_stem(ch: ChapterRecord, template: str) -> str:
+    t = _TEMPLATE_ENV.from_string(template)
+    rendered = t.render(
+        manga=ch.manga,
+        series=ch.manga,
+        chapter=ch.chapter,
+        chapter_number=_format_chapter_number(ch.chapter),
+        title=ch.title,
+        volume=ch.volume,
+        lang=ch.lang,
+        author=ch.author,
+        date=ch.date,
+    )
+    stem = sanitize(rendered)
+    if stem == "_":
+        raise ValueError("chapter_naming_template rendered an empty/invalid filename")
+    return stem
+
+
+def render_chapter_stem(ch: ChapterRecord, template: str) -> str:
+    return _render_chapter_stem(ch, template)
+
+
+def validate_chapter_naming_template(template: str) -> None:
+    sample = ChapterRecord(
+        manga="Series",
+        chapter="1",
+        title="Title",
+        volume="1",
+        lang="en",
+        author="Author",
+        date="2024-01-01",
+        dir=Path("."),
+    )
+    _render_chapter_stem(sample, template)
+
+
+def cbz_target_path(
+    output_dir: Path, ch: ChapterRecord, naming_template: str = DEFAULT_CHAPTER_NAMING_TEMPLATE
+) -> Path:
     series = sanitize(ch.manga)
-    chap = _format_chapter_number(ch.chapter)
-    title = sanitize(ch.title) if ch.title else ""
-    stem = f"{series} - c{chap}"
-    if title:
-        stem += f" - {title}"
+    stem = _render_chapter_stem(ch, naming_template)
     base = output_dir / series / f"{stem}.cbz"
     if not base.exists():
         return base
@@ -193,6 +236,29 @@ def cbz_target_path(output_dir: Path, ch: ChapterRecord) -> Path:
         if not candidate.exists():
             return candidate
     raise RuntimeError(f"too many CBZ collisions at {base}")
+
+
+def _chapter_matches(existing: str, incoming: str) -> bool:
+    ev = _safe_float(existing)
+    iv = _safe_float(incoming)
+    if ev is not None and iv is not None:
+        return ev == iv
+    return existing.strip() == incoming.strip()
+
+
+def _read_cbz_series_chapter(path: Path) -> tuple[str | None, str | None]:
+    try:
+        with zipfile.ZipFile(path) as zf:
+            xml_bytes = zf.read("ComicInfo.xml")
+    except OSError, zipfile.BadZipFile, KeyError:
+        return None, None
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError:
+        return None, None
+    series = root.findtext("Series")
+    chapter = root.findtext("Number")
+    return series, chapter
 
 
 def chapter_already_packed(output_dir: Path, manga: str, chapter: str) -> bool:
@@ -206,15 +272,22 @@ def chapter_already_packed(output_dir: Path, manga: str, chapter: str) -> bool:
     series = sanitize(manga)
     chap = _format_chapter_number(chapter)
     series_dir = output_dir / series
-    stem_prefix = f"{series} - c{chap}"
     try:
         for child in series_dir.iterdir():
             if not child.is_file() or child.suffix.lower() != ".cbz":
                 continue
+            existing_series, existing_chapter = _read_cbz_series_chapter(child)
+            if existing_series is not None and existing_chapter is not None:
+                if sanitize(existing_series) == series and _chapter_matches(
+                    existing_chapter, chapter
+                ):
+                    return True
+                continue
+            stem_prefix = f"{series} - c{chap}"
             stem = child.stem
             if stem == stem_prefix or stem.startswith(stem_prefix + " "):
                 return True
-    except (FileNotFoundError, NotADirectoryError):
+    except FileNotFoundError, NotADirectoryError:
         return False
     return False
 
@@ -262,7 +335,7 @@ def build_comicinfo_xml(ch: ChapterRecord) -> bytes:
 def _is_under(path: Path, root: Path) -> bool:
     try:
         path.resolve().relative_to(root.resolve())
-    except (ValueError, OSError):
+    except ValueError, OSError:
         return False
     return True
 
@@ -324,6 +397,7 @@ async def run(
     output_dir: Path,
     downloads_dir: Path,
     delete_raw: bool,
+    naming_template: str = DEFAULT_CHAPTER_NAMING_TEMPLATE,
 ) -> PostResult:
     """Pack every eligible chapter into a CBZ under `output_dir`."""
     chapters = collect_chapters(records)
@@ -338,7 +412,7 @@ async def run(
         if not ch.dir.exists():
             continue
         try:
-            target = cbz_target_path(output_dir, ch)
+            target = cbz_target_path(output_dir, ch, naming_template=naming_template)
             await _pack_chapter(ch, target, downloads_dir, delete_raw)
             succeeded += 1
         except Exception as exc:
@@ -358,3 +432,59 @@ async def run(
             error_summary=summary,
         )
     return PostResult(total=total, succeeded=succeeded, failed=0)
+
+
+@dataclass
+class RenamePackedResult:
+    total: int
+    renamed: int
+    skipped: int
+
+
+def _chapter_from_comicinfo(path: Path, root: ET.Element) -> ChapterRecord:
+    return ChapterRecord(
+        manga=root.findtext("Series") or path.parent.name,
+        chapter=root.findtext("Number") or "",
+        title=root.findtext("Title") or "",
+        volume=root.findtext("Volume") or "",
+        lang=root.findtext("LanguageISO") or "",
+        author=root.findtext("Writer") or "",
+        date="",
+        dir=path.parent,
+    )
+
+
+def rename_packed_chapters(output_root: Path, naming_template: str) -> RenamePackedResult:
+    total = 0
+    renamed = 0
+    for cbz in output_root.rglob("*.cbz"):
+        total += 1
+        try:
+            with zipfile.ZipFile(cbz) as zf:
+                xml_bytes = zf.read("ComicInfo.xml")
+            root = ET.fromstring(xml_bytes)
+            ch = _chapter_from_comicinfo(cbz, root)
+            series = sanitize(ch.manga)
+            stem = _render_chapter_stem(ch, naming_template)
+            desired = output_root / series / f"{stem}.cbz"
+            if desired == cbz:
+                continue
+            target = desired
+            if target.exists():
+                for i in range(1, 1000):
+                    candidate = output_root / series / f"{stem} ({i}).cbz"
+                    if candidate == cbz:
+                        target = cbz
+                        break
+                    if not candidate.exists():
+                        target = candidate
+                        break
+            if target == cbz:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            cbz.replace(target)
+            renamed += 1
+        except Exception:
+            logger.exception("failed to rename chapter archive: %s", cbz)
+            continue
+    return RenamePackedResult(total=total, renamed=renamed, skipped=total - renamed)

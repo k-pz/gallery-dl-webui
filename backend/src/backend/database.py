@@ -62,6 +62,19 @@ CREATE TABLE IF NOT EXISTS app_config (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS maintenance_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT,
+    result_json TEXT,
+    error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_maintenance_jobs_status ON maintenance_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_maintenance_jobs_created_at ON maintenance_jobs(created_at DESC);
 """
 
 
