@@ -9,7 +9,7 @@ on:
       - "backend/uv.lock"
       - "scripts/build-wiki.py"
       - "README.md"
-      - "ARCHITECTURE.md"
+      - "docs/**"
       - ".github/workflows/wiki.yml"
   workflow_dispatch:
 

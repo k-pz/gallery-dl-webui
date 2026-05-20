@@ -3,7 +3,7 @@
 Pages emitted:
 
   Home.md                ← README.md
-  Architecture.md        ← ARCHITECTURE.md
+  <Title>.md             ← docs/<slug>.md (one wiki page per file in docs/)
   HTTP-API.md            ← rendered from `create_app().openapi()`
   Python-<Domain>.md     ← `pydoc-markdown -p backend.<domain>` per domain
   _Sidebar.md            ← navigation index
@@ -19,6 +19,7 @@ Usage: build-wiki.py <output-dir>
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -29,6 +30,7 @@ from backend.main import create_app
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_SRC = REPO_ROOT / "backend" / "src"
+DOCS_DIR = REPO_ROOT / "docs"
 
 # Per-domain grouping for the Python API reference. Order matches the sidebar.
 # Each entry: (page slug without extension, sidebar title, list of packages).
@@ -48,16 +50,35 @@ DOMAINS: list[tuple[str, str, list[str]]] = [
     ("Python-Health", "Health", ["backend.health"]),
 ]
 
-# Pages that aren't auto-generated but appear in the sidebar.
+# One wiki page per file in docs/, in sidebar order.
+# Each entry: (source file under docs/, wiki page slug, sidebar title).
+DOC_PAGES: list[tuple[str, str, str]] = [
+    ("architecture.md", "Architecture", "Architecture"),
+    ("backend.md", "Backend", "Backend"),
+    ("pipeline.md", "Pipeline", "Download pipeline"),
+    ("frontend.md", "Frontend", "Frontend"),
+    ("lifecycles.md", "Lifecycles", "Lifecycles"),
+    ("testing.md", "Testing", "Testing"),
+    ("deployment.md", "Deployment", "Deployment"),
+    ("decisions.md", "Decisions", "Design decisions"),
+]
+
+# Hand-rolled pages (Home from README, HTTP-API from OpenAPI).
 TOP_PAGES: list[tuple[str, str]] = [
     ("Home", "Home"),
-    ("Architecture", "Architecture"),
     ("HTTP-API", "HTTP API (OpenAPI)"),
 ]
+
+# Map of repo-relative paths → wiki page slug, for link rewriting. Links in
+# the source markdown are resolved relative to the source file's directory,
+# then looked up here. Anchors (#section) are preserved by the rewriter.
+DOC_LINK_MAP: dict[str, str] = {f"docs/{src}": slug for src, slug, _ in DOC_PAGES}
+DOC_LINK_MAP["README.md"] = "Home"
 
 # Files we manage. Anything else in the wiki directory is left alone.
 MANAGED_FILES = (
     [f"{slug}.md" for slug, _ in TOP_PAGES]
+    + [f"{slug}.md" for _, slug, _ in DOC_PAGES]
     + [f"{slug}.md" for slug, _, _ in DOMAINS]
     + ["_Sidebar.md", "_Footer.md", "api-spec.json"]
 )
@@ -71,6 +92,41 @@ def write(path: Path, content: str) -> None:
     print(f"  wrote {path.relative_to(REPO_ROOT)}")
 
 
+def _rewrite_doc_links(body: str, source: Path) -> str:
+    """Rewrite inter-doc markdown links to wiki page slugs.
+
+    Links in the source body are resolved relative to `source`'s directory,
+    then looked up in `DOC_LINK_MAP`. So a `[Backend](backend.md)` link in
+    `docs/architecture.md` becomes `[Backend](Backend)`, and a
+    `[`docs/backend.md`](docs/backend.md)` link in `README.md` becomes
+    `[`docs/backend.md`](Backend)`. Links to files not in the map (external
+    URLs, code paths, etc.) are left alone.
+    """
+    source_dir = source.parent
+
+    def repl(m: re.Match[str]) -> str:
+        text, target = m.group(1), m.group(2)
+        if "#" in target:
+            path, anchor = target.split("#", 1)
+            anchor = "#" + anchor
+        else:
+            path, anchor = target, ""
+        if not path.endswith(".md"):
+            return m.group(0)
+        try:
+            resolved = (source_dir / path).resolve()
+            rel = resolved.relative_to(REPO_ROOT)
+        except (OSError, ValueError):
+            return m.group(0)
+        key = str(rel).replace("\\", "/")
+        slug = DOC_LINK_MAP.get(key)
+        if slug is None:
+            return m.group(0)
+        return f"[{text}]({slug}{anchor})"
+
+    return re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", repl, body)
+
+
 def copy_top_level_doc(src: Path, dst: Path, *, title: str) -> None:
     body = src.read_text(encoding="utf-8")
     # Strip the leading H1 — wiki pages use the filename as the title and a
@@ -80,7 +136,17 @@ def copy_top_level_doc(src: Path, dst: Path, *, title: str) -> None:
         lines = lines[1:]
         while lines and not lines[0].strip():
             lines.pop(0)
-    write(dst, f"# {title}\n\n" + "\n".join(lines))
+    body = _rewrite_doc_links("\n".join(lines), src)
+    write(dst, f"# {title}\n\n" + body)
+
+
+def render_doc_pages(out_dir: Path) -> None:
+    print("==> Topic docs (docs/*.md)")
+    for src_name, slug, title in DOC_PAGES:
+        src = DOCS_DIR / src_name
+        if not src.is_file():
+            raise FileNotFoundError(f"missing docs page: {src}")
+        copy_top_level_doc(src, out_dir / f"{slug}.md", title=title)
 
 
 def run_pydoc_markdown(packages: list[str]) -> str:
@@ -275,10 +341,12 @@ def render_http_api(out_dir: Path) -> None:
 
 def render_sidebar(out_dir: Path) -> None:
     print("==> Sidebar")
-    lines = ["# Contents", ""]
-    for slug, title in TOP_PAGES:
+    lines = ["# Contents", "", "- [Home](Home)"]
+    lines += ["", "## Architecture & internals", ""]
+    for _, slug, title in DOC_PAGES:
         lines.append(f"- [{title}]({slug})")
-    lines += ["", "## Python API reference", ""]
+    lines += ["", "## API reference", "", "- [HTTP API (OpenAPI)](HTTP-API)"]
+    lines += ["", "### Python", ""]
     for slug, title, _ in DOMAINS:
         lines.append(f"- [{title}]({slug})")
     write(out_dir / "_Sidebar.md", "\n".join(lines))
@@ -304,7 +372,7 @@ def main(argv: list[str]) -> int:
     print(f"==> Building wiki into {out_dir}")
 
     copy_top_level_doc(REPO_ROOT / "README.md", out_dir / "Home.md", title="gallery-dl-webui")
-    copy_top_level_doc(REPO_ROOT / "ARCHITECTURE.md", out_dir / "Architecture.md", title="Architecture")
+    render_doc_pages(out_dir)
     render_http_api(out_dir)
     render_python_pages(out_dir)
     render_sidebar(out_dir)
