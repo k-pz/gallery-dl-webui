@@ -35,4 +35,30 @@ one-time migration from older `ExecStart=` lines.
 unless `FORCE=1`.
 
 `_proxmox-lib.sh` provides `log/die/in_ct/in_ct_sh/as_app` helpers shared
-by the three scripts.
+by the three host scripts.
+
+### In-CT update (`update`)
+
+`scripts/lxc-update.sh` is a self-contained updater that runs **inside** the
+CT — no Proxmox host access needed. `proxmox-install.sh` drops it at
+`/usr/local/bin/update`, and `proxmox-update.sh` refreshes that copy on
+every host-side run.
+
+```sh
+pct console <CTID>    # root autologin, set up by proxmox-install.sh
+update                # clone main, mise install:prod + build, restart unit
+REPO_REF=some-branch update    # pin a different ref
+```
+
+Pre-install bootstrap (no local copy yet):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/k-pz/gallery-dl-webui/main/scripts/lxc-update.sh \
+    | bash
+```
+
+It mirrors `proxmox-update.sh`: preserves `backend/.venv` and
+`frontend/node_modules`, runs `mise run install:prod` + `mise run build`
+as `gallery-dl`, applies the `ExecStart=` migration, then
+`systemctl restart --no-block` and waits up to 30 s for active. Defaults
+the clone to HTTPS so it works without a CT-side SSH key.

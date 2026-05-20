@@ -296,6 +296,16 @@ as_app mise run -C "$APP_DIR" install:prod
 log "building frontend via mise"
 as_app mise run -C "$APP_DIR" build
 
+# ---- In-CT updater (/usr/local/bin/update) --------------------------------
+#
+# Drop the in-CT updater on the PATH so the operator can `pct console <CTID>`
+# (root autologin is set up further down) and just type `update`. The script
+# clones a fresh checkout over HTTPS, re-runs mise install:prod + build, and
+# restarts the systemd unit. See scripts/lxc-update.sh.
+
+log "installing /usr/local/bin/update (in-CT updater)"
+in_ct install -m 0755 "$APP_DIR/scripts/lxc-update.sh" /usr/local/bin/update
+
 # ---- systemd unit ---------------------------------------------------------
 
 log "writing /etc/systemd/system/gallery-dl-webui.service"
