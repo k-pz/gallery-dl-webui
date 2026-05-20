@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ActiveJobCard } from "./components/ActiveJobCard";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { HealthBadge } from "./components/HealthBadge";
+import { MaintenancePanel } from "./components/MaintenancePanel";
 import { RecentList } from "./components/RecentList";
 import { SubmitForm } from "./components/SubmitForm";
 import { TargetsList } from "./components/TargetsList";
@@ -28,6 +29,7 @@ export default function App() {
             <Tabs.Tab value="library">Library</Tabs.Tab>
             <Tabs.Tab value="jobs">Jobs</Tabs.Tab>
             <Tabs.Tab value="config">Config</Tabs.Tab>
+            <Tabs.Tab value="maintenance">Maintenance</Tabs.Tab>
           </Tabs.List>
           <Tabs.Panel value="library" pt="md">
             <Stack gap="md">
@@ -43,6 +45,9 @@ export default function App() {
           </Tabs.Panel>
           <Tabs.Panel value="config" pt="md">
             <ConfigPanel />
+          </Tabs.Panel>
+          <Tabs.Panel value="maintenance" pt="md">
+            <MaintenancePanel />
           </Tabs.Panel>
         </Tabs>
       </Stack>

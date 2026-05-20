@@ -18,6 +18,7 @@ type ConfigShape = {
   postprocess_known_output_dirs: string[];
   delete_raw_after_pack: boolean;
   default_watch_period: string;
+  chapter_naming_template: string;
 };
 
 const emptyConfig: ConfigShape = {
@@ -26,6 +27,7 @@ const emptyConfig: ConfigShape = {
   postprocess_known_output_dirs: [],
   delete_raw_after_pack: true,
   default_watch_period: "1d",
+  chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
 };
 
 function configHandler(state: { current: ConfigShape }) {
@@ -61,6 +63,7 @@ describe("ConfigPanel", () => {
         postprocess_known_output_dirs: ["/mnt/nas/Media/comics"],
         delete_raw_after_pack: true,
         default_watch_period: "2h",
+        chapter_naming_template: "{{ series }}_{{ chapter_number }}",
       });
     });
 
@@ -75,6 +78,8 @@ describe("ConfigPanel", () => {
     expect(screen.getByLabelText(/delete raw images after packing/i)).toBeChecked();
     const periodInput = screen.getByLabelText(/default poll period/i) as HTMLInputElement;
     expect(periodInput.value).toBe("2h");
+    const tplInput = screen.getByLabelText(/chapter naming template/i) as HTMLInputElement;
+    expect(tplInput.value).toBe("{{ series }}_{{ chapter_number }}");
     expect(screen.getByText("/mnt/nas/Media/comics")).toBeInTheDocument();
   });
 
@@ -115,6 +120,7 @@ describe("ConfigPanel", () => {
       postprocess_default_output_dir: null,
       delete_raw_after_pack: true,
       default_watch_period: "1d",
+      chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
     });
     await screen.findByText(/saved/i);
   });
@@ -191,6 +197,7 @@ describe("ConfigPanel", () => {
         postprocess_known_output_dirs: [],
         delete_raw_after_pack: true,
         default_watch_period: "1d",
+        chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
       },
     };
     const fetchSpy = mockFetch(configHandler(state));
@@ -215,6 +222,7 @@ describe("ConfigPanel", () => {
       postprocess_default_output_dir: null,
       delete_raw_after_pack: true,
       default_watch_period: "1d",
+      chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
     });
   });
 });
