@@ -231,6 +231,11 @@ class Worker:
             self._publish(
                 downloads_event("target_named", id=job.target_id, name=manifest.series_name)
             )
+        if job.target_id is not None and manifest.series_status:
+            async with self._db_lock:
+                await targets_service.set_series_status(
+                    self._db, job.target_id, manifest.series_status
+                )
         return manifest.paths
 
     async def _execute_download(
@@ -373,7 +378,7 @@ class Worker:
     async def _series_metadata_overrides(
         self, job: Download, cfg: dict[str, object]
     ) -> SeriesMetadata:
-        """Resolve tags + reading direction for this job's target.
+        """Resolve tags + reading direction + series status for this job's target.
 
         Per-target settings win; otherwise we fall back to the config default
         (or the package-level default if config is missing the key).
@@ -382,6 +387,7 @@ class Worker:
         reading_direction = cfg.get("default_reading_direction")
         if not isinstance(reading_direction, str) or reading_direction not in READING_DIRECTIONS:
             reading_direction = DEFAULT_READING_DIRECTION
+        series_status = ""
         if job.target_id is not None:
             async with self._db_lock:
                 target = await targets_service.get(self._db, job.target_id)
@@ -389,9 +395,12 @@ class Worker:
                 tags = list(target.tags)
                 if target.reading_direction:
                     reading_direction = target.reading_direction
+                if target.series_status:
+                    series_status = target.series_status
         return SeriesMetadata(
             tags=normalize_tags(tags),
             reading_direction=normalize_reading_direction(reading_direction),
+            status=series_status,
         )
 
 

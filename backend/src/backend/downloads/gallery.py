@@ -9,7 +9,12 @@ from gallery_dl import config, extractor, output
 from gallery_dl.job import DownloadJob, SimulationJob
 
 from backend.config import Settings
-from backend.downloads.postprocess import FileRecord, chapter_with_minor, coerce_record_from_kwdict
+from backend.downloads.postprocess import (
+    FileRecord,
+    chapter_with_minor,
+    coerce_record_from_kwdict,
+    normalize_series_status,
+)
 
 # Predicate: given (manga, chapter) from a gallery-dl kwdict, returns True if
 # the chapter is already represented as a CBZ in the postprocess output dir,
@@ -24,10 +29,15 @@ class Manifest:
     `series_name` is the first non-empty `manga` (or `series`) value seen in any
     directory's kwdict — gallery-dl exposes a per-source metadata dict before
     pages are enumerated, so we capture it without running a real download.
+
+    `series_status` is the raw publication status surfaced by the extractor
+    (e.g. ``"Ongoing"``, ``"Completed"``), or ``None`` when the extractor does
+    not provide one.
     """
 
     paths: list[str]
     series_name: str | None = None
+    series_status: str | None = None
 
 
 def _inherit_shared_state(child: Any, parent: Any, *attrs: str) -> bool:
@@ -55,12 +65,14 @@ class _ManifestSimulationJob(SimulationJob):
 
     _manifest: list[tuple[str, str, str]]
     _series_box: list[str | None]
+    _status_box: list[str | None]
 
     def __init__(self, url: Any, parent: SimulationJob | None = None) -> None:
         super().__init__(url, parent)
-        if not _inherit_shared_state(self, parent, "_manifest", "_series_box"):
+        if not _inherit_shared_state(self, parent, "_manifest", "_series_box", "_status_box"):
             self._manifest = []
             self._series_box = [None]
+            self._status_box = [None]
 
     def handle_directory(self, kwdict: dict[str, Any]) -> None:
         # SimulationJob.handle_directory only calls initialize() and never sets
@@ -75,6 +87,14 @@ class _ManifestSimulationJob(SimulationJob):
                 value = kwdict.get(key)
                 if isinstance(value, str) and value.strip():
                     self._series_box[0] = value.strip()
+                    break
+        if self._status_box[0] is None:
+            for key in ("status", "manga_status", "publication_status"):
+                value = kwdict.get(key)
+                if isinstance(value, str) and value.strip():
+                    normalized = normalize_series_status(value.strip())
+                    if normalized:
+                        self._status_box[0] = normalized
                     break
 
     def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
@@ -204,7 +224,11 @@ class Gallery:
             if skip_chapter is not None and manga and chapter and skip_chapter(manga, chapter):
                 continue
             paths.append(full[len(base) :] if full.startswith(base) else full)
-        return Manifest(paths=paths, series_name=job._series_box[0])
+        return Manifest(
+            paths=paths,
+            series_name=job._series_box[0],
+            series_status=job._status_box[0],
+        )
 
     def run_download(
         self,

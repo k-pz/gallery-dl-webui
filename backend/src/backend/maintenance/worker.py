@@ -415,7 +415,7 @@ class MaintenanceWorker:
 
     async def _build_series_overrides(self, default_direction: str) -> dict[str, SeriesMetadata]:
         """Index targets by sanitized series name so the regen pass can map
-        CBZ-on-disk back to the user's tags + reading direction."""
+        CBZ-on-disk back to the user's tags + reading direction + series status."""
         async with self._db_lock:
             targets = await targets_service.list_all(self._db)
         result: dict[str, SeriesMetadata] = {}
@@ -430,5 +430,6 @@ class MaintenanceWorker:
                 reading_direction=normalize_reading_direction(
                     target.reading_direction or default_direction
                 ),
+                status=target.series_status or "",
             )
         return result

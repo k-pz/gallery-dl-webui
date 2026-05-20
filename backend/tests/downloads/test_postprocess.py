@@ -704,3 +704,139 @@ def test_regenerate_series_metadata_skips_archives_without_comicinfo(tmp_path: P
     result = regenerate_series_metadata([tmp_path], overrides_for=lambda _: None)
     assert result.skipped == 1
     assert result.archives_updated == 0
+
+
+# ---------------------------------------------------------------------------
+# normalize_series_status
+# ---------------------------------------------------------------------------
+
+from backend.downloads.postprocess import normalize_series_status  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # Already canonical
+        ("Ongoing", "Ongoing"),
+        ("Ended", "Ended"),
+        ("Hiatus", "Hiatus"),
+        ("Abandoned", "Abandoned"),
+        # Case-insensitive mapping
+        ("ongoing", "Ongoing"),
+        ("COMPLETED", "Ended"),
+        ("completed", "Ended"),
+        ("finished", "Ended"),
+        ("hiatus", "Hiatus"),
+        ("on_hiatus", "Hiatus"),
+        ("on-hiatus", "Hiatus"),
+        ("cancelled", "Abandoned"),
+        ("canceled", "Abandoned"),
+        ("discontinued", "Abandoned"),
+        ("dropped", "Abandoned"),
+        ("publishing", "Ongoing"),
+        ("serializing", "Ongoing"),
+        # Unrecognised → empty
+        ("Unknown", ""),
+        ("", ""),
+        (None, ""),
+    ],
+)
+def test_normalize_series_status(raw: str | None, expected: str) -> None:
+    assert normalize_series_status(raw) == expected
+
+
+def test_coerce_record_from_kwdict_captures_status(tmp_path: Path) -> None:
+    kwdict = {
+        "category": "mangadex",
+        "manga": "My Manga",
+        "chapter": "1",
+        "chapter_minor": "",
+        "title": "Opening",
+        "volume": "1",
+        "lang": "en",
+        "author": "Author",
+        "date": "2024-01-01",
+        "status": "ongoing",
+    }
+    p = tmp_path / "001.jpg"
+    p.write_bytes(b"x")
+    rec = coerce_record_from_kwdict(kwdict, p)
+    assert rec.status == "Ongoing"
+
+
+def test_coerce_record_from_kwdict_captures_manga_status_fallback(tmp_path: Path) -> None:
+    kwdict = {
+        "category": "fake",
+        "manga": "S",
+        "chapter": "1",
+        "chapter_minor": "",
+        "title": "",
+        "volume": "",
+        "lang": "",
+        "author": "",
+        "date": "",
+        "manga_status": "Completed",
+    }
+    p = tmp_path / "001.jpg"
+    p.write_bytes(b"x")
+    rec = coerce_record_from_kwdict(kwdict, p)
+    assert rec.status == "Ended"
+
+
+def test_derive_series_metadata_pulls_status_from_chapters(tmp_path: Path) -> None:
+    rec = FileRecord(
+        "c",
+        "S",
+        "1",
+        "",
+        "",
+        "en",
+        "Writer",
+        "2024-03-01",
+        Path("/x/a.jpg"),
+        status="Ongoing",
+    )
+    chapters = collect_chapters([rec])
+    meta = derive_series_metadata(chapters)
+    assert meta.status == "Ongoing"
+
+
+def test_derive_series_metadata_override_wins_over_chapter_status(tmp_path: Path) -> None:
+    rec = FileRecord("c", "S", "1", "", "", "", "", "", Path("/x/a.jpg"), status="Ongoing")
+    chapters = collect_chapters([rec])
+    overrides = SeriesMetadata(status="Ended", tags=[], reading_direction="ltr")
+    meta = derive_series_metadata(chapters, overrides)
+    assert meta.status == "Ended"
+
+
+async def test_run_includes_status_in_series_json(tmp_path: Path) -> None:
+    downloads_dir = tmp_path / "downloads"
+    output_dir = tmp_path / "out"
+    rec_dir = downloads_dir / "fake" / "StatusSeries" / "c1"
+    rec_dir.mkdir(parents=True)
+    (rec_dir / "001.jpg").write_bytes(b"\xff\xd8\xff")
+    records = [
+        FileRecord(
+            "fake",
+            "StatusSeries",
+            "1",
+            "",
+            "",
+            "",
+            "",
+            "",
+            rec_dir / "001.jpg",
+            status="Hiatus",
+        )
+    ]
+    result = await run(
+        records,
+        output_dir,
+        downloads_dir,
+        delete_raw=False,
+        metadata_overrides=None,
+    )
+    assert result.succeeded == 1
+    series_json = output_dir / "StatusSeries" / SERIES_JSON_NAME
+    payload = json.loads(series_json.read_text())
+    assert payload["metadata"]["status"] == "Hiatus"

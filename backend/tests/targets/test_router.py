@@ -222,3 +222,64 @@ def test_patch_target_rejects_invalid_reading_direction(
     target_id = client.get("/api/targets").json()[0]["id"]
     resp = client.patch(f"/api/targets/{target_id}", json={"reading_direction": "horizontal"})
     assert resp.status_code == 400
+
+
+def test_patch_target_sets_series_status(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    gallery_config.manifest_for["https://example/x"] = []
+    created = client.post("/api/downloads", json={"url": "https://example/x"}).json()
+    import time
+
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        if client.get(f"/api/downloads/{created['id']}").json()["status"] in {
+            "completed",
+            "failed",
+        }:
+            break
+        time.sleep(0.02)
+    target_id = client.get("/api/targets").json()[0]["id"]
+
+    resp = client.patch(f"/api/targets/{target_id}", json={"series_status": "Hiatus"})
+    assert resp.status_code == 200, resp.json()
+    assert resp.json()["series_status"] == "Hiatus"
+
+    # Clear the status with empty string
+    resp2 = client.patch(f"/api/targets/{target_id}", json={"series_status": ""})
+    assert resp2.status_code == 200
+    assert resp2.json()["series_status"] is None
+
+
+def test_patch_target_rejects_invalid_series_status(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    gallery_config.manifest_for["https://example/x"] = []
+    client.post("/api/downloads", json={"url": "https://example/x"})
+    target_id = client.get("/api/targets").json()[0]["id"]
+    resp = client.patch(f"/api/targets/{target_id}", json={"series_status": "Publishing"})
+    assert resp.status_code == 400
+
+
+def test_manifest_series_status_stored_on_target(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    """series_status detected during manifest simulation is persisted on the target."""
+    import time
+
+    gallery_config.manifest_for["https://example/manga-ended"] = []
+    gallery_config.series_name_for["https://example/manga-ended"] = "Ended Manga"
+    gallery_config.series_status_for["https://example/manga-ended"] = "Ended"
+
+    created = client.post("/api/downloads", json={"url": "https://example/manga-ended"}).json()
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        if client.get(f"/api/downloads/{created['id']}").json()["status"] in {
+            "completed",
+            "failed",
+        }:
+            break
+        time.sleep(0.02)
+    target = client.get("/api/targets").json()[0]
+    # Status auto-detected from FakeGallery's series_status_for.
+    assert target["series_status"] == "Ended"

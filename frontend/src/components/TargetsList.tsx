@@ -47,6 +47,31 @@ import { ListToolbar } from "./ListToolbar";
 import { Pill } from "./Pill";
 import { type SortDir, SortDirToggle } from "./SortDirToggle";
 
+// Komga-compatible series publication status values.
+const SERIES_STATUS_OPTIONS = [
+  { value: "Ongoing", label: "Ongoing" },
+  { value: "Ended", label: "Ended" },
+  { value: "Hiatus", label: "Hiatus" },
+  { value: "Abandoned", label: "Abandoned" },
+];
+
+// Maps series_status → Pill tone so readers get a visual hint at a glance.
+function seriesStatusTone(status: string | null): import("./Pill").PillTone | undefined {
+  if (!status) return undefined;
+  switch (status) {
+    case "Ongoing":
+      return "active";
+    case "Ended":
+      return "done";
+    case "Hiatus":
+      return "warn";
+    case "Abandoned":
+      return "error";
+    default:
+      return "muted";
+  }
+}
+
 type WatchedFilter = "any" | "watched" | "unwatched";
 type StatusFilter = "any" | "completed" | "failed" | "active" | "no-runs";
 type SortKey = "recent" | "name" | "created";
@@ -359,6 +384,9 @@ function TargetRow({
       >
         <Group gap="sm" wrap="nowrap" align="center" style={{ flex: 1, minWidth: 0 }}>
           <Pill tone={tone}>{jobStatusLabel(status)}</Pill>
+          {target.series_status && (
+            <Pill tone={seriesStatusTone(target.series_status)}>{target.series_status}</Pill>
+          )}
           <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
             <Text
               size="sm"
@@ -527,6 +555,21 @@ function TargetRow({
               }
               disabled={update.isPending}
               w={180}
+              comboboxProps={{ withinPortal: true }}
+              allowDeselect={false}
+            />
+            <Select
+              label="Series status"
+              value={target.series_status ?? ""}
+              data={[{ value: "", label: "Unknown" }, ...SERIES_STATUS_OPTIONS]}
+              onChange={(v) =>
+                update.mutate({
+                  path: { target_id: target.id },
+                  body: { series_status: v ?? "" },
+                })
+              }
+              disabled={update.isPending}
+              w={160}
               comboboxProps={{ withinPortal: true }}
               allowDeselect={false}
             />

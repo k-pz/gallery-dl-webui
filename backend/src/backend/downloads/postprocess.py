@@ -59,6 +59,7 @@ class FileRecord:
     path: Path
     description: str = ""
     artist: str = ""
+    status: str = ""
 
 
 @dataclass
@@ -74,6 +75,7 @@ class ChapterRecord:
     pages: list[Path] = field(default_factory=list)
     description: str = ""
     artist: str = ""
+    status: str = ""
 
 
 @dataclass
@@ -114,6 +116,52 @@ def normalize_reading_direction(value: str | None) -> str:
     if cleaned in READING_DIRECTIONS:
         return cleaned
     return DEFAULT_READING_DIRECTION
+
+
+# Komga's four recognized series publication-status values (case-sensitive).
+SERIES_STATUSES = {"Ongoing", "Ended", "Abandoned", "Hiatus"}
+
+# Mapping from lowercased gallery-dl status strings → Komga canonical value.
+_STATUS_MAP: dict[str, str] = {
+    "ongoing": "Ongoing",
+    "on-going": "Ongoing",
+    "on_going": "Ongoing",
+    "publishing": "Ongoing",
+    "active": "Ongoing",
+    "in progress": "Ongoing",
+    "in_progress": "Ongoing",
+    "serializing": "Ongoing",
+    "completed": "Ended",
+    "complete": "Ended",
+    "finished": "Ended",
+    "ended": "Ended",
+    "hiatus": "Hiatus",
+    "on-hiatus": "Hiatus",
+    "on_hiatus": "Hiatus",
+    "paused": "Hiatus",
+    "on hold": "Hiatus",
+    "on_hold": "Hiatus",
+    "abandoned": "Abandoned",
+    "cancelled": "Abandoned",
+    "canceled": "Abandoned",
+    "discontinued": "Abandoned",
+    "dropped": "Abandoned",
+}
+
+
+def normalize_series_status(value: str | None) -> str:
+    """Coerce a raw gallery-dl or user-supplied status string to a Komga-compatible value.
+
+    Returns one of ``Ongoing``, ``Ended``, ``Abandoned``, ``Hiatus``, or an empty
+    string when the input cannot be mapped to any recognised status.
+    """
+    if not value:
+        return ""
+    # If the value is already a known canonical form, return it as-is.
+    if value in SERIES_STATUSES:
+        return value
+    mapped = _STATUS_MAP.get(value.strip().lower())
+    return mapped or ""
 
 
 def normalize_tags(value: list[str] | None) -> list[str]:
@@ -220,6 +268,7 @@ def coerce_record_from_kwdict(kwdict: dict[str, Any], full_path: Path) -> FileRe
     invoke this immediately after the relevant `handle_url` step.
     """
     description = _first_str(kwdict, ("description", "summary", "abstract"))
+    raw_status = _first_str(kwdict, ("status", "manga_status", "publication_status"))
     return FileRecord(
         category=_str(kwdict.get("category")),
         manga=_str(kwdict.get("manga")),
@@ -232,6 +281,7 @@ def coerce_record_from_kwdict(kwdict: dict[str, Any], full_path: Path) -> FileRe
         path=full_path,
         description=description,
         artist=_author_name(kwdict.get("artist")),
+        status=normalize_series_status(raw_status),
     )
 
 
@@ -255,6 +305,7 @@ def collect_chapters(records: list[FileRecord]) -> list[ChapterRecord]:
                 dir=d,
                 description=rec.description,
                 artist=rec.artist,
+                status=rec.status,
             )
             by_dir[d] = ch
         if rec.path.suffix.lower() in IMAGE_SUFFIXES:
@@ -374,7 +425,7 @@ def _read_cbz_series_chapter(path: Path) -> tuple[str | None, str | None]:
     try:
         with zipfile.ZipFile(path) as zf:
             xml_bytes = zf.read("ComicInfo.xml")
-    except (OSError, zipfile.BadZipFile, KeyError):
+    except OSError, zipfile.BadZipFile, KeyError:
         return None, None
     try:
         root = ET.fromstring(xml_bytes)
@@ -411,7 +462,7 @@ def chapter_already_packed(output_dir: Path, manga: str, chapter: str) -> bool:
             stem = child.stem
             if stem == stem_prefix or stem.startswith(stem_prefix + " "):
                 return True
-    except (FileNotFoundError, NotADirectoryError):
+    except FileNotFoundError, NotADirectoryError:
         return False
     return False
 
@@ -488,7 +539,7 @@ def build_comicinfo_xml(
 def _is_under(path: Path, root: Path) -> bool:
     try:
         path.resolve().relative_to(root.resolve())
-    except (ValueError, OSError):
+    except ValueError, OSError:
         return False
     return True
 
@@ -573,6 +624,8 @@ def derive_series_metadata(
             base.language = ch.lang
         if base.year is None and ch.date and len(ch.date) >= 4 and ch.date[:4].isdigit():
             base.year = int(ch.date[:4])
+        if not base.status and ch.status:
+            base.status = ch.status
     if overrides is not None:
         if overrides.name:
             base.name = overrides.name
@@ -966,7 +1019,7 @@ def _rewrite_cbz_metadata(
         with zipfile.ZipFile(cbz) as zf:
             xml_bytes = zf.read("ComicInfo.xml")
             page_names = [n for n in zf.namelist() if n != "ComicInfo.xml"]
-    except (OSError, zipfile.BadZipFile, KeyError):
+    except OSError, zipfile.BadZipFile, KeyError:
         return None
     try:
         root = ET.fromstring(xml_bytes)
@@ -1053,7 +1106,7 @@ def regenerate_series_metadata(
         try:
             with zipfile.ZipFile(cbz) as zf:
                 xml_bytes = zf.read("ComicInfo.xml")
-        except (OSError, zipfile.BadZipFile, KeyError):
+        except OSError, zipfile.BadZipFile, KeyError:
             skipped += 1
             if progress is not None:
                 progress.step(f"skip (no ComicInfo): {_relativize(cbz, output_roots)}")
