@@ -43,6 +43,34 @@ def _exclude_dirs(cfg: dict[str, object]) -> list[str]:
     return [name for name in raw if isinstance(name, str) and name]
 
 
+async def _designated_output_dirs(db: aiosqlite.Connection, cfg: dict[str, object]) -> list[Path]:
+    """The set of output dirs targets actually write into.
+
+    Maintenance is intentionally scoped to these dirs (not the whole
+    `postprocess_root`) so unrelated directories that happen to sit under
+    root — user photo folders, exports, anything the app didn't put there —
+    are never touched. Each target's `output_dir` wins; targets without one
+    fall back to `postprocess_default_output_dir` when set, matching how the
+    downloads worker resolves a job's output_dir at pack time.
+    """
+    default_raw = cfg.get("postprocess_default_output_dir")
+    default = default_raw if isinstance(default_raw, str) and default_raw else None
+    targets = await targets_service.list_all(db)
+    # Dedupe by the string form so two targets sharing one output dir collapse
+    # to a single walk. We preserve the first-seen path object (rather than
+    # round-tripping through `.resolve()`) so symlinks in the configured path
+    # are kept verbatim — the user's exclusion rules are name-based.
+    seen: dict[str, Path] = {}
+    for summary in targets:
+        raw = summary.target.output_dir or default
+        if not raw:
+            continue
+        if raw in seen:
+            continue
+        seen[raw] = Path(raw)
+    return list(seen.values())
+
+
 def _unlink_if_exists(path: Path) -> bool:
     if path.exists():
         path.unlink()
@@ -195,9 +223,10 @@ class MaintenanceWorker:
             template = DEFAULT_CHAPTER_NAMING_TEMPLATE
         sink = _JobProgressSink(self._live, job_id)
         exclude_dirs = _exclude_dirs(cfg)
+        output_roots = await _designated_output_dirs(self._db, cfg)
         result = await asyncio.to_thread(
             postprocess.rename_packed_chapters,
-            Path(root_str),
+            output_roots,
             template,
             sink,
             self._should_cancel,
@@ -220,9 +249,10 @@ class MaintenanceWorker:
             return overrides_by_series.get(sanitize(series_name).lower())
 
         exclude_dirs = _exclude_dirs(cfg)
+        output_roots = await _designated_output_dirs(self._db, cfg)
         result = await asyncio.to_thread(
             postprocess.regenerate_series_metadata,
-            Path(root_str),
+            output_roots,
             lookup,
             sink,
             self._should_cancel,
@@ -277,18 +307,19 @@ class MaintenanceWorker:
                 {"targets": len(targets), "deleted_downloads": deleted_downloads}
             )
 
-        # Phase 3: wipe the postprocess output root if configured. Excluded
-        # names (NAS trash etc.) survive the wipe so we don't tank a
-        # /mnt/nas/Media root with a #recycle bin somebody actually cares
-        # about. Skipped silently when no root is set.
+        # Phase 3: wipe each designated output dir (the ones targets actually
+        # write into). Scoping to these dirs — not the whole postprocess_root —
+        # means unrelated content sitting next to them under root is left
+        # untouched. Excluded names (NAS trash etc.) survive the wipe so we
+        # don't tank a `#recycle` bin somebody actually cares about. With no
+        # designated dirs (no targets configured, no default), there's nothing
+        # to wipe and the phase no-ops silently.
         output_removed = 0
-        root_raw = cfg.get("postprocess_root")
-        if isinstance(root_raw, str) and root_raw:
-            output_root = Path(root_raw)
-            output_removed = await asyncio.to_thread(
-                _wipe_directory_contents, output_root, excluded
-            )
-            self._live.record(job_id, f"removed {output_removed} entries under {output_root}")
+        output_roots = await _designated_output_dirs(self._db, cfg)
+        for output_dir in output_roots:
+            removed = await asyncio.to_thread(_wipe_directory_contents, output_dir, excluded)
+            output_removed += removed
+            self._live.record(job_id, f"removed {removed} entries under {output_dir}")
         if self._should_cancel():
             raise MaintenanceCancelled(
                 {

@@ -16,7 +16,7 @@ import re
 import shutil
 import xml.etree.ElementTree as ET
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -374,7 +374,7 @@ def _read_cbz_series_chapter(path: Path) -> tuple[str | None, str | None]:
     try:
         with zipfile.ZipFile(path) as zf:
             xml_bytes = zf.read("ComicInfo.xml")
-    except (OSError, zipfile.BadZipFile, KeyError):
+    except OSError, zipfile.BadZipFile, KeyError:
         return None, None
     try:
         root = ET.fromstring(xml_bytes)
@@ -411,7 +411,7 @@ def chapter_already_packed(output_dir: Path, manga: str, chapter: str) -> bool:
             stem = child.stem
             if stem == stem_prefix or stem.startswith(stem_prefix + " "):
                 return True
-    except (FileNotFoundError, NotADirectoryError):
+    except FileNotFoundError, NotADirectoryError:
         return False
     return False
 
@@ -488,7 +488,7 @@ def build_comicinfo_xml(
 def _is_under(path: Path, root: Path) -> bool:
     try:
         path.resolve().relative_to(root.resolve())
-    except (ValueError, OSError):
+    except ValueError, OSError:
         return False
     return True
 
@@ -781,31 +781,52 @@ class RenameProgressSink(Protocol):
     def step(self, line: str) -> None: ...
 
 
-def _iter_filtered_cbzs(output_root: Path, exclude_dirs: list[str] | None) -> list[Path]:
-    """List CBZs under output_root, skipping any whose path contains a name from
-    `exclude_dirs` (case-insensitive). The match is on directory *names* in the
-    path — for example, `["#recycle"]` filters out everything under any
-    `#recycle/` ancestor anywhere in the tree.
+def _iter_filtered_cbzs(output_roots: Sequence[Path], exclude_dirs: list[str] | None) -> list[Path]:
+    """List CBZs under each of `output_roots`, skipping any whose path contains
+    a name from `exclude_dirs` (case-insensitive). The match is on directory
+    *names* in the path — for example, `["#recycle"]` filters out everything
+    under any `#recycle/` ancestor anywhere in the tree. Results are deduped by
+    resolved path so overlapping roots don't double-process the same archive.
     """
     excluded_lower = {name.lower() for name in (exclude_dirs or []) if name}
-    if not excluded_lower:
-        return sorted(output_root.rglob("*.cbz"))
-    out: list[Path] = []
-    for cbz in output_root.rglob("*.cbz"):
-        if any(part.lower() in excluded_lower for part in cbz.parts):
+    seen: dict[Path, Path] = {}
+    for root in output_roots:
+        if not root.exists() or not root.is_dir():
             continue
-        out.append(cbz)
-    return sorted(out)
+        for cbz in root.rglob("*.cbz"):
+            if excluded_lower and any(part.lower() in excluded_lower for part in cbz.parts):
+                continue
+            try:
+                key = cbz.resolve()
+            except OSError:
+                key = cbz
+            seen.setdefault(key, cbz)
+    return sorted(seen.values())
+
+
+def _relativize(cbz: Path, roots: Sequence[Path]) -> Path:
+    """Return `cbz` rendered relative to whichever of `roots` contains it.
+
+    Falls back to the bare path so progress lines stay readable even for
+    archives that don't sit cleanly under any of the supplied roots (e.g. when
+    roots overlap via symlinks).
+    """
+    for root in roots:
+        try:
+            return cbz.relative_to(root)
+        except ValueError:
+            continue
+    return cbz
 
 
 def rename_packed_chapters(
-    output_root: Path,
+    output_roots: Sequence[Path],
     naming_template: str,
     progress: RenameProgressSink | None = None,
     should_cancel: Callable[[], bool] | None = None,
     exclude_dirs: list[str] | None = None,
 ) -> RenamePackedResult:
-    cbz_paths = _iter_filtered_cbzs(output_root, exclude_dirs)
+    cbz_paths = _iter_filtered_cbzs(output_roots, exclude_dirs)
     if progress is not None:
         progress.total(len(cbz_paths))
     total = 0
@@ -823,12 +844,12 @@ def rename_packed_chapters(
             ch = _chapter_from_comicinfo(cbz, root)
             stem = _render_chapter_stem(ch, naming_template)
             # Rename in place — keep each archive in its source directory.
-            # Per-target output dirs can sit anywhere under output_root; moving
-            # everything into <output_root>/<series>/ would erase that layout.
+            # Per-target output dirs can sit anywhere under the roots; moving
+            # everything into <root>/<series>/ would erase that layout.
             desired = cbz.with_name(f"{stem}.cbz")
             if desired == cbz:
                 if progress is not None:
-                    progress.step(f"skip (already named): {cbz.relative_to(output_root)}")
+                    progress.step(f"skip (already named): {_relativize(cbz, output_roots)}")
                 continue
             target = desired
             if target.exists():
@@ -842,18 +863,19 @@ def rename_packed_chapters(
                         break
             if target == cbz:
                 if progress is not None:
-                    progress.step(f"skip (already named): {cbz.relative_to(output_root)}")
+                    progress.step(f"skip (already named): {_relativize(cbz, output_roots)}")
                 continue
             cbz.replace(target)
             renamed += 1
             if progress is not None:
                 progress.step(
-                    f"renamed: {cbz.relative_to(output_root)} -> {target.relative_to(output_root)}"
+                    f"renamed: {_relativize(cbz, output_roots)} -> "
+                    f"{_relativize(target, output_roots)}"
                 )
         except Exception as exc:
             logger.exception("failed to rename chapter archive: %s", cbz)
             if progress is not None:
-                progress.step(f"failed: {cbz.relative_to(output_root)}: {exc!r}")
+                progress.step(f"failed: {_relativize(cbz, output_roots)}: {exc!r}")
             continue
     return RenamePackedResult(total=total, renamed=renamed, skipped=total - renamed)
 
@@ -887,7 +909,7 @@ def _rewrite_cbz_metadata(
         with zipfile.ZipFile(cbz) as zf:
             xml_bytes = zf.read("ComicInfo.xml")
             page_names = [n for n in zf.namelist() if n != "ComicInfo.xml"]
-    except (OSError, zipfile.BadZipFile, KeyError):
+    except OSError, zipfile.BadZipFile, KeyError:
         return None
     try:
         root = ET.fromstring(xml_bytes)
@@ -932,13 +954,14 @@ class RegenProgressSink(Protocol):
 
 
 def regenerate_series_metadata(
-    output_root: Path,
+    output_roots: Sequence[Path],
     overrides_for: SeriesOverrideLookup | None = None,
     progress: RegenProgressSink | None = None,
     should_cancel: Callable[[], bool] | None = None,
     exclude_dirs: list[str] | None = None,
 ) -> RegenMetadataResult:
-    """Walk `output_root`, rewrite ComicInfo.xml + series.json for every series.
+    """Walk each of `output_roots`, rewrite ComicInfo.xml + series.json for
+    every series found within.
 
     Each `<series_dir>` is the parent of one or more CBZs; we rewrite every
     archive (so author normalisation + reading direction + tags propagate),
@@ -946,7 +969,7 @@ def regenerate_series_metadata(
     supplies user-set tags / reading direction / description on a per-series
     basis — the maintenance worker plumbs this in from the targets table.
     """
-    cbz_paths = _iter_filtered_cbzs(output_root, exclude_dirs)
+    cbz_paths = _iter_filtered_cbzs(output_roots, exclude_dirs)
     if progress is not None:
         progress.total(len(cbz_paths))
     archives_updated = 0
@@ -973,17 +996,17 @@ def regenerate_series_metadata(
         try:
             with zipfile.ZipFile(cbz) as zf:
                 xml_bytes = zf.read("ComicInfo.xml")
-        except (OSError, zipfile.BadZipFile, KeyError):
+        except OSError, zipfile.BadZipFile, KeyError:
             skipped += 1
             if progress is not None:
-                progress.step(f"skip (no ComicInfo): {cbz.relative_to(output_root)}")
+                progress.step(f"skip (no ComicInfo): {_relativize(cbz, output_roots)}")
             continue
         try:
             root = ET.fromstring(xml_bytes)
         except ET.ParseError:
             skipped += 1
             if progress is not None:
-                progress.step(f"skip (bad ComicInfo): {cbz.relative_to(output_root)}")
+                progress.step(f"skip (bad ComicInfo): {_relativize(cbz, output_roots)}")
             continue
         try:
             series_name = root.findtext("Series") or cbz.parent.name
@@ -992,18 +1015,18 @@ def regenerate_series_metadata(
             if ch is None:
                 skipped += 1
                 if progress is not None:
-                    progress.step(f"skip (no ComicInfo): {cbz.relative_to(output_root)}")
+                    progress.step(f"skip (no ComicInfo): {_relativize(cbz, output_roots)}")
                 continue
             archives_updated += 1
             series_to_chapters.setdefault(cbz.parent, []).append(ch)
             series_to_overrides[cbz.parent] = overrides
             if progress is not None:
-                progress.step(f"updated: {cbz.relative_to(output_root)}")
+                progress.step(f"updated: {_relativize(cbz, output_roots)}")
         except Exception as exc:
             failed += 1
             logger.exception("regen failed for %s", cbz)
             if progress is not None:
-                progress.step(f"failed: {cbz.relative_to(output_root)}: {exc!r}")
+                progress.step(f"failed: {_relativize(cbz, output_roots)}: {exc!r}")
 
     series_json_written = 0
     for series_dir, chapters in series_to_chapters.items():
@@ -1023,17 +1046,14 @@ def regenerate_series_metadata(
             write_series_json(series_dir, meta, total_issues=len(chapters))
             series_json_written += 1
             if progress is not None:
-                progress.step(f"series.json: {series_dir.relative_to(output_root)}")
+                progress.step(f"series.json: {_relativize(series_dir, output_roots)}")
         except Exception as exc:
             failed += 1
             logger.exception("failed to write series.json under %s", series_dir)
             if progress is not None:
-                rel = (
-                    series_dir.relative_to(output_root)
-                    if _is_under(series_dir, output_root)
-                    else series_dir
+                progress.step(
+                    f"failed series.json: {_relativize(series_dir, output_roots)}: {exc!r}"
                 )
-                progress.step(f"failed series.json: {rel}: {exc!r}")
 
     return RegenMetadataResult(
         series=len(series_to_chapters),
