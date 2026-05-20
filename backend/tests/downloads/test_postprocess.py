@@ -621,7 +621,7 @@ def test_regenerate_series_metadata_writes_series_json_and_rewrites_cbz(tmp_path
             )
         return None
 
-    result = regenerate_series_metadata(tmp_path, overrides_for=lookup)
+    result = regenerate_series_metadata([tmp_path], overrides_for=lookup)
     assert result.archives_updated == 2
     assert result.series == 1
     assert result.series_json_written == 1
@@ -651,6 +651,6 @@ def test_regenerate_series_metadata_skips_archives_without_comicinfo(tmp_path: P
     bare = series_dir / "no-comicinfo.cbz"
     with zipfile.ZipFile(bare, "w") as zf:
         zf.writestr("001.jpg", b"x")
-    result = regenerate_series_metadata(tmp_path, overrides_for=lambda _: None)
+    result = regenerate_series_metadata([tmp_path], overrides_for=lambda _: None)
     assert result.skipped == 1
     assert result.archives_updated == 0

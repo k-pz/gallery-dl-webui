@@ -37,7 +37,8 @@ def _wait_for_completion(client: TestClient, job_id: int) -> dict[str, object]:
 
 def test_schedule_rename_chapters_job(client: TestClient, tmp_path: Path) -> None:
     root = tmp_path / "media"
-    series_dir = root / "Series"
+    output_dir = root / "Manga"
+    series_dir = output_dir / "Series"
     old = series_dir / "Series - c001.cbz"
     _write_cbz(old, "Series", "1")
 
@@ -52,6 +53,12 @@ def test_schedule_rename_chapters_job(client: TestClient, tmp_path: Path) -> Non
         },
     )
     assert cfg_resp.status_code == 200, cfg_resp.json()
+    # Maintenance is scoped to the output dirs targets actually use, so stage a
+    # target whose output_dir contains the CBZ we want renamed.
+    sub = client.post(
+        "/api/downloads", json={"url": "https://example/x", "output_dir": str(output_dir)}
+    )
+    assert sub.status_code == 200, sub.json()
 
     created = client.post("/api/maintenance/jobs", json={"kind": "rename_chapters"})
     assert created.status_code == 200, created.json()
@@ -68,7 +75,8 @@ def test_rename_keeps_archives_in_their_source_directory(
     client: TestClient, tmp_path: Path
 ) -> None:
     root = tmp_path / "media"
-    nested = root / "custom-output" / "Series"
+    output_dir = root / "custom-output"
+    nested = output_dir / "Series"
     old = nested / "Series - c001.cbz"
     _write_cbz(old, "Series", "1")
 
@@ -83,6 +91,10 @@ def test_rename_keeps_archives_in_their_source_directory(
         },
     )
     assert cfg_resp.status_code == 200, cfg_resp.json()
+    sub = client.post(
+        "/api/downloads", json={"url": "https://example/x", "output_dir": str(output_dir)}
+    )
+    assert sub.status_code == 200, sub.json()
 
     created = client.post("/api/maintenance/jobs", json={"kind": "rename_chapters"})
     job_id = created.json()["id"]
@@ -95,7 +107,8 @@ def test_rename_keeps_archives_in_their_source_directory(
 
 def test_progress_endpoint_for_terminal_job(client: TestClient, tmp_path: Path) -> None:
     root = tmp_path / "media"
-    series_dir = root / "Series"
+    output_dir = root / "Manga"
+    series_dir = output_dir / "Series"
     _write_cbz(series_dir / "Series - c001.cbz", "Series", "1")
 
     cfg_resp = client.put(
@@ -109,6 +122,10 @@ def test_progress_endpoint_for_terminal_job(client: TestClient, tmp_path: Path) 
         },
     )
     assert cfg_resp.status_code == 200, cfg_resp.json()
+    sub = client.post(
+        "/api/downloads", json={"url": "https://example/x", "output_dir": str(output_dir)}
+    )
+    assert sub.status_code == 200, sub.json()
 
     created = client.post("/api/maintenance/jobs", json={"kind": "rename_chapters"})
     job_id = created.json()["id"]
@@ -132,7 +149,8 @@ def test_progress_endpoint_missing_job(client: TestClient) -> None:
 
 def test_schedule_regenerate_series_metadata_job(client: TestClient, tmp_path: Path) -> None:
     root = tmp_path / "media"
-    series_dir = root / "Series"
+    output_dir = root / "Manga"
+    series_dir = output_dir / "Series"
     _write_cbz(series_dir / "Series - c001.cbz", "Series", "1")
 
     cfg_resp = client.put(
@@ -147,6 +165,10 @@ def test_schedule_regenerate_series_metadata_job(client: TestClient, tmp_path: P
         },
     )
     assert cfg_resp.status_code == 200, cfg_resp.json()
+    sub = client.post(
+        "/api/downloads", json={"url": "https://example/x", "output_dir": str(output_dir)}
+    )
+    assert sub.status_code == 200, sub.json()
 
     created = client.post("/api/maintenance/jobs", json={"kind": "regenerate_series_metadata"})
     assert created.status_code == 200, created.json()
@@ -186,7 +208,8 @@ def test_cancel_pending_maintenance_job(client: TestClient, tmp_path: Path) -> N
 
 def test_cancel_terminal_job_is_rejected(client: TestClient, tmp_path: Path) -> None:
     root = tmp_path / "media"
-    series_dir = root / "Series"
+    output_dir = root / "Manga"
+    series_dir = output_dir / "Series"
     _write_cbz(series_dir / "Series - c001.cbz", "Series", "1")
 
     cfg_resp = client.put(
@@ -200,6 +223,10 @@ def test_cancel_terminal_job_is_rejected(client: TestClient, tmp_path: Path) -> 
         },
     )
     assert cfg_resp.status_code == 200, cfg_resp.json()
+    sub = client.post(
+        "/api/downloads", json={"url": "https://example/x", "output_dir": str(output_dir)}
+    )
+    assert sub.status_code == 200, sub.json()
 
     created = client.post("/api/maintenance/jobs", json={"kind": "rename_chapters"})
     job_id = created.json()["id"]
@@ -218,22 +245,27 @@ def test_cancel_missing_job_is_404(client: TestClient) -> None:
 def test_rebuild_library_wipes_and_reenqueues(
     client: TestClient, tmp_path: Path, gallery_config
 ) -> None:
-    """End-to-end: a target + one finished download → rebuild wipes the download
-    + output dir contents and re-enqueues a fresh pending row."""
+    """End-to-end: a target + one finished download → rebuild wipes the
+    target's designated output dir and re-enqueues a fresh pending row.
+
+    A `#recycle` directory and an unrelated sibling directory both live next to
+    the output dir; the rebuild must spare them. The output dir itself
+    contains its own `#recycle` to also confirm the in-dir exclusion path.
+    """
     root = tmp_path / "media"
     root.mkdir()
-    # Stage a target with a finished download so the rebuild has something to
-    # wipe. We also drop a `#recycle` directory in the root to confirm the
-    # exclusion list spares it.
-    series_dir = root / "Series"
+    output_dir = root / "Manga"
+    series_dir = output_dir / "Series"
     _write_cbz(series_dir / "Series - c001.cbz", "Series", "1")
-    recycle = root / "#recycle"
+    # `#recycle` sits inside the output dir so the wipe encounters it directly.
+    recycle = output_dir / "#recycle"
     recycle.mkdir()
     (recycle / "marker.txt").write_text("keep me")
-
-    gallery_config.manifest_for["https://example/x"] = []
-    sub = client.post("/api/downloads", json={"url": "https://example/x"})
-    assert sub.status_code == 200
+    # An unrelated directory sitting under root but outside any designated
+    # output dir — this is what the bug report was about. It must survive.
+    unrelated = root / "Family Photos"
+    unrelated.mkdir()
+    (unrelated / "irreplaceable.txt").write_text("priceless")
 
     cfg_resp = client.put(
         "/api/config",
@@ -248,6 +280,12 @@ def test_rebuild_library_wipes_and_reenqueues(
     )
     assert cfg_resp.status_code == 200, cfg_resp.json()
 
+    gallery_config.manifest_for["https://example/x"] = []
+    sub = client.post(
+        "/api/downloads", json={"url": "https://example/x", "output_dir": str(output_dir)}
+    )
+    assert sub.status_code == 200
+
     created = client.post("/api/maintenance/jobs", json={"kind": "rebuild_library"})
     assert created.status_code == 200, created.json()
     job_id = created.json()["id"]
@@ -256,7 +294,90 @@ def test_rebuild_library_wipes_and_reenqueues(
     assert done["status"] == "completed", done
     assert done["result"]["targets"] >= 1
     assert done["result"]["enqueued"] >= 1
-    # Output dir wiped...
-    assert not (root / "Series").exists()
-    # ...but the excluded recycle bin survives.
+    # Designated output dir wiped...
+    assert not (output_dir / "Series").exists()
+    # ...but the excluded recycle bin inside it survives...
     assert (recycle / "marker.txt").read_text() == "keep me"
+    # ...and content sitting under root outside any designated dir is untouched.
+    assert (unrelated / "irreplaceable.txt").read_text() == "priceless"
+
+
+def test_rename_ignores_archives_outside_designated_output_dirs(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """A CBZ sitting in a root subdir that no target has designated as its
+    output_dir must not be touched by the rename job — regression for the
+    "maintenance walks the whole root" bug.
+    """
+    root = tmp_path / "media"
+    designated = root / "Manga"
+    unrelated_dir = root / "Borrowed Library"
+    target_cbz = designated / "Series" / "Series - c001.cbz"
+    other_cbz = unrelated_dir / "Other Series" / "Other Series - c001.cbz"
+    _write_cbz(target_cbz, "Series", "1")
+    _write_cbz(other_cbz, "Other Series", "1")
+
+    cfg_resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "default_watch_period": "1d",
+            "chapter_naming_template": "{{ series }}_{{ chapter_number }}",
+        },
+    )
+    assert cfg_resp.status_code == 200, cfg_resp.json()
+    sub = client.post(
+        "/api/downloads", json={"url": "https://example/x", "output_dir": str(designated)}
+    )
+    assert sub.status_code == 200, sub.json()
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "rename_chapters"})
+    job_id = created.json()["id"]
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "completed", done
+
+    # The designated archive got renamed; the unrelated one is left exactly
+    # where it was, with its original filename intact.
+    assert (designated / "Series" / "Series_001.cbz").is_file()
+    assert other_cbz.is_file()
+    assert not (unrelated_dir / "Other Series" / "Other Series_001.cbz").exists()
+
+
+def test_regenerate_metadata_ignores_archives_outside_designated_output_dirs(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """series.json must only land next to archives in a designated output dir."""
+    root = tmp_path / "media"
+    designated = root / "Manga"
+    unrelated_dir = root / "Borrowed Library" / "Other Series"
+    _write_cbz(designated / "Series" / "Series - c001.cbz", "Series", "1")
+    _write_cbz(unrelated_dir / "Other Series - c001.cbz", "Other Series", "1")
+
+    cfg_resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "default_watch_period": "1d",
+            "chapter_naming_template": "{{ series }} - c{{ chapter_number }}",
+            "default_reading_direction": "rtl",
+        },
+    )
+    assert cfg_resp.status_code == 200, cfg_resp.json()
+    sub = client.post(
+        "/api/downloads", json={"url": "https://example/x", "output_dir": str(designated)}
+    )
+    assert sub.status_code == 200, sub.json()
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "regenerate_series_metadata"})
+    job_id = created.json()["id"]
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "completed", done
+    assert done["result"]["archives_updated"] == 1
+    assert done["result"]["series_json_written"] == 1
+
+    assert (designated / "Series" / "series.json").is_file()
+    assert not (unrelated_dir / "series.json").exists()
