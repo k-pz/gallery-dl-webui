@@ -192,7 +192,9 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
           </ListToolbar>
         )}
         {totalCount === 0 && (
-          <EmptyHint>No targets yet. Submit a gallery URL above to add one.</EmptyHint>
+          <EmptyHint>
+            Your library is empty. Submit a gallery URL above to start tracking a series.
+          </EmptyHint>
         )}
         {totalCount > 0 && visible.length === 0 && (
           <EmptyHint>No series match the current filters.</EmptyHint>
@@ -286,8 +288,8 @@ function TargetRow({
     ...pollTargetMutation(),
     onSuccess: () => {
       notifications.show({
-        title: "Polling",
-        message: `Queued a fresh download for ${target.url}`,
+        title: "Poll queued",
+        message: `Queued a fresh job for ${target.url}`,
         color: "blue",
       });
       invalidate.targets();
@@ -360,7 +362,7 @@ function TargetRow({
               label="Runs"
               value={`${target.download_count}${target.download_count === 1 ? " run" : " runs"}`}
             />
-            <MetaLabel label="Last" value={formatRel(target.last_finished_at) ?? "—"} />
+            <MetaLabel label="Last run" value={formatRel(target.last_finished_at) ?? "—"} />
             {target.last_download_id !== null && onOpenJob && (
               <Anchor
                 size="xs"

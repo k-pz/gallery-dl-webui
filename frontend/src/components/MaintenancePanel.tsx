@@ -104,10 +104,10 @@ export function MaintenancePanel() {
               onClick={() => {
                 const ok = window.confirm(
                   "Rebuild library?\n\n" +
-                    "This wipes the download history, the gallery-dl archive, the raw " +
+                    "This wipes the job history, the gallery-dl archive, the raw " +
                     "downloads dir, and EVERYTHING under the postprocess root " +
-                    "(excluded directory names are spared). The library (your " +
-                    "targets) is kept and a fresh download is enqueued for each.",
+                    "(excluded directory names are spared). Your library (the " +
+                    "tracked series) is kept and a fresh job is enqueued for each.",
                 );
                 if (ok) schedule.mutate({ body: { kind: "rebuild_library" } });
               }}

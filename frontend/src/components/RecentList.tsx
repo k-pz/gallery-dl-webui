@@ -181,13 +181,16 @@ export function RecentList({
 
   const pagination = usePagination(visible, `${search}|${statusFilter}|${sortKey}|${sortDir}`);
 
+  const kicker =
+    statusFilter === "active" ? "queue" : statusFilter === "any" ? "all jobs" : "history";
+
   return (
     <Card>
       <Stack gap="md">
         <Stack gap={4}>
-          <span className="app-section-kicker">history</span>
+          <span className="app-section-kicker">{kicker}</span>
           <ListHeader
-            title="Recent downloads"
+            title="Jobs"
             titleOrder={4}
             totalCount={totalCount}
             visibleCount={visible.length}
@@ -200,7 +203,7 @@ export function RecentList({
             search={search}
             setSearch={setSearch}
             searchPlaceholder="Search name or URL"
-            searchAriaLabel="Filter downloads by name or URL"
+            searchAriaLabel="Filter jobs by name or URL"
             searchMinWidth={180}
           >
             <Select
@@ -245,13 +248,13 @@ export function RecentList({
             }}
           >
             <Text size="sm" c="dimmed">
-              No downloads yet.
+              No jobs yet.
             </Text>
           </Box>
         )}
         {totalCount > 0 && visible.length === 0 && (
           <Text size="sm" c="dimmed">
-            No downloads match the current filters.
+            No jobs match the current filters.
           </Text>
         )}
         {visible.length > 0 && (
@@ -279,7 +282,7 @@ export function RecentList({
           start={pagination.start}
           end={pagination.end}
           total={pagination.total}
-          ariaLabel="Recent jobs pagination"
+          ariaLabel="Jobs pagination"
         />
       </Stack>
     </Card>
