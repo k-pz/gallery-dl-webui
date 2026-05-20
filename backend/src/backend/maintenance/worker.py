@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import asdict
 from pathlib import Path
 
 import aiosqlite
@@ -64,4 +65,4 @@ class MaintenanceWorker:
         result = await asyncio.to_thread(
             postprocess.rename_packed_chapters, Path(root_str), template
         )
-        return {"total": result.total, "renamed": result.renamed, "skipped": result.skipped}
+        return asdict(result)
