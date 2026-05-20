@@ -53,6 +53,22 @@ def test_resubmitting_same_url_reuses_target(
     assert targets[0]["last_download_id"] == second["id"]
 
 
+def test_create_download_can_enable_watch_for_new_target(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    gallery_config.extractor_for["https://example/watch-new"] = "fake"
+    gallery_config.manifest_for["https://example/watch-new"] = []
+    created = client.post(
+        "/api/downloads",
+        json={"url": "https://example/watch-new", "watched": True},
+    ).json()
+    _wait_terminal(client, created["id"])
+
+    target = client.get("/api/targets").json()[0]
+    assert target["url"] == "https://example/watch-new"
+    assert target["watched"] is True
+
+
 def test_patch_target_sets_watch_flag_and_period(
     client: TestClient, gallery_config: FakeGalleryConfig
 ) -> None:

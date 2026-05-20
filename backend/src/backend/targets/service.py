@@ -35,6 +35,7 @@ async def upsert(
     url: str,
     extractor: str | None,
     output_dir: str | None,
+    watched: bool = False,
 ) -> Target:
     """Find a target by URL, or create a fresh one. Updates output_dir/extractor
     from the latest submit so the next poll reuses what the user picked."""
@@ -60,8 +61,9 @@ async def upsert(
 
     created_at = now_iso()
     cursor = await db.execute(
-        "INSERT INTO targets(url, extractor, output_dir, created_at) VALUES(?, ?, ?, ?)",
-        (url, extractor, output_dir, created_at),
+        "INSERT INTO targets(url, extractor, output_dir, watched, created_at) "
+        "VALUES(?, ?, ?, ?, ?)",
+        (url, extractor, output_dir, 1 if watched else 0, created_at),
     )
     await db.commit()
     new_id = cursor.lastrowid
@@ -72,7 +74,7 @@ async def upsert(
         name=None,
         extractor=extractor,
         output_dir=output_dir,
-        watched=False,
+        watched=watched,
         watch_period=None,
         last_polled_at=None,
         created_at=created_at,
