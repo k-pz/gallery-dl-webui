@@ -39,6 +39,8 @@ type ConfigShape = {
   postprocess_known_output_dirs: string[];
   delete_raw_after_pack: boolean;
   default_watch_period: string;
+  chapter_naming_template: string;
+  default_reading_direction: string;
 };
 
 const noRootConfig: ConfigShape = {
@@ -47,6 +49,8 @@ const noRootConfig: ConfigShape = {
   postprocess_known_output_dirs: [],
   delete_raw_after_pack: true,
   default_watch_period: "1d",
+  chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
+  default_reading_direction: "ltr",
 };
 
 const withRootConfig: ConfigShape = {
@@ -55,6 +59,8 @@ const withRootConfig: ConfigShape = {
   postprocess_known_output_dirs: ["/mnt/nas/Media/comics"],
   delete_raw_after_pack: true,
   default_watch_period: "1d",
+  chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
+  default_reading_direction: "ltr",
 };
 
 function makeHandler(config: ConfigShape, outputDirs: { path: string }[] = []) {
@@ -93,6 +99,8 @@ describe("SubmitForm", () => {
       url: "https://example/x",
       output_dir: null,
       watched: false,
+      tags: null,
+      reading_direction: null,
     });
   });
 
@@ -124,6 +132,8 @@ describe("SubmitForm", () => {
       url: "https://example/x",
       output_dir: "/mnt/nas/Media/manga",
       watched: false,
+      tags: null,
+      reading_direction: null,
     });
   });
 
@@ -145,6 +155,33 @@ describe("SubmitForm", () => {
       url: "https://example/x",
       output_dir: null,
       watched: true,
+      tags: null,
+      reading_direction: null,
+    });
+  });
+
+  it("submits supplied tags with the form", async () => {
+    const fetchSpy = mockFetch(makeHandler(noRootConfig));
+
+    renderWithProviders(<SubmitForm onCreated={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText(/gallery url/i), "https://example/x");
+    const tagsField = screen.getByLabelText(/^tags$/i, { selector: "input" }) as HTMLInputElement;
+    await userEvent.type(tagsField, "action{enter}romance{enter}");
+    await userEvent.click(screen.getByRole("button", { name: /download/i }));
+
+    let postCall: FetchArgs | undefined;
+    await waitFor(() => {
+      postCall = findCall(fetchSpy, (i, init) => methodOf(i, init) === "POST");
+      expect(postCall).toBeDefined();
+    });
+    const [postInput, postInit] = postCall as FetchArgs;
+    expect(JSON.parse(await bodyOf(postInput, postInit))).toEqual({
+      url: "https://example/x",
+      output_dir: null,
+      watched: false,
+      tags: ["action", "romance"],
+      // Reading direction stays null until the user explicitly picks one.
+      reading_direction: null,
     });
   });
 

@@ -20,6 +20,8 @@ class TargetOut(BaseModel):
     last_finished_at: str | None
     last_created_at: str | None
     download_count: int
+    tags: list[str]
+    reading_direction: str | None
 
     @classmethod
     def from_summary(cls, s: TargetSummary) -> TargetOut:
@@ -38,6 +40,8 @@ class TargetOut(BaseModel):
             last_finished_at=s.last_finished_at,
             last_created_at=s.last_created_at,
             download_count=s.download_count,
+            tags=list(s.target.tags),
+            reading_direction=s.target.reading_direction,
         )
 
 
@@ -46,3 +50,5 @@ class TargetUpdate(BaseModel):
     # Empty string clears the per-target override (falls back to default).
     watch_period: str | None = None
     output_dir: str | None = None
+    tags: list[str] | None = None
+    reading_direction: str | None = None

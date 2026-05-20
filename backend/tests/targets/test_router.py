@@ -157,3 +157,70 @@ def test_target_unknown_id_returns_404(client: TestClient) -> None:
     assert client.patch("/api/targets/9999", json={"watched": True}).status_code == 404
     assert client.post("/api/targets/9999/poll").status_code == 404
     assert client.delete("/api/targets/9999").status_code == 404
+
+
+def test_create_download_stores_tags_and_reading_direction_on_target(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    gallery_config.manifest_for["https://example/x"] = []
+    resp = client.post(
+        "/api/downloads",
+        json={
+            "url": "https://example/x",
+            "tags": ["[Action]", "Romance", "action"],
+            "reading_direction": "RTL",
+        },
+    )
+    assert resp.status_code == 200, resp.json()
+
+    targets = client.get("/api/targets").json()
+    assert len(targets) == 1
+    assert targets[0]["tags"] == ["Action", "Romance"]
+    assert targets[0]["reading_direction"] == "rtl"
+
+
+def test_create_download_rejects_invalid_reading_direction(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    gallery_config.manifest_for["https://example/x"] = []
+    resp = client.post(
+        "/api/downloads",
+        json={"url": "https://example/x", "reading_direction": "sideways"},
+    )
+    assert resp.status_code == 400
+
+
+def test_patch_target_updates_tags_and_clears_reading_direction(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    gallery_config.manifest_for["https://example/x"] = []
+    client.post(
+        "/api/downloads",
+        json={
+            "url": "https://example/x",
+            "tags": ["initial"],
+            "reading_direction": "rtl",
+        },
+    )
+    target_id = client.get("/api/targets").json()[0]["id"]
+
+    resp = client.patch(
+        f"/api/targets/{target_id}",
+        json={"tags": ["Action", "Drama"], "reading_direction": ""},
+    )
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    assert body["tags"] == ["Action", "Drama"]
+    assert body["reading_direction"] is None
+
+
+def test_patch_target_rejects_invalid_reading_direction(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    gallery_config.manifest_for["https://example/x"] = []
+    client.post("/api/downloads", json={"url": "https://example/x"})
+    target_id = client.get("/api/targets").json()[0]["id"]
+    resp = client.patch(
+        f"/api/targets/{target_id}", json={"reading_direction": "horizontal"}
+    )
+    assert resp.status_code == 400

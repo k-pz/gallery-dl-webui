@@ -64,6 +64,13 @@ export function MaintenancePanel() {
           >
             Schedule chapter rename
           </Button>
+          <Button
+            variant="light"
+            onClick={() => schedule.mutate({ body: { kind: "regenerate_series_metadata" } })}
+            loading={schedule.isPending}
+          >
+            Regenerate series metadata
+          </Button>
         </Group>
         {schedule.isError && (
           <Alert color="red" variant="light">

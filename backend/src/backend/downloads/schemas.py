@@ -9,6 +9,8 @@ class DownloadCreate(BaseModel):
     url: str
     output_dir: str | None = None
     watched: bool = False
+    tags: list[str] | None = None
+    reading_direction: str | None = None
 
 
 class DownloadOut(BaseModel):

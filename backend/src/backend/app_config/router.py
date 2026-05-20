@@ -6,7 +6,9 @@ from backend.app_config import service
 from backend.app_config.constants import (
     DEFAULT_CHAPTER_NAMING_TEMPLATE,
     DEFAULT_DELETE_RAW,
+    DEFAULT_READING_DIRECTION,
     DEFAULT_WATCH_PERIOD,
+    READING_DIRECTIONS,
 )
 from backend.app_config.exceptions import DefaultOutputDirWithoutRoot
 from backend.app_config.schemas import AppConfigIn, AppConfigOut
@@ -35,6 +37,9 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
     chapter_template = cfg.get("chapter_naming_template")
     if not isinstance(chapter_template, str) or not chapter_template:
         chapter_template = DEFAULT_CHAPTER_NAMING_TEMPLATE
+    reading_direction = cfg.get("default_reading_direction")
+    if not isinstance(reading_direction, str) or reading_direction not in READING_DIRECTIONS:
+        reading_direction = DEFAULT_READING_DIRECTION
     return AppConfigOut(
         postprocess_root=root,
         postprocess_default_output_dir=default,
@@ -42,6 +47,7 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
         delete_raw_after_pack=bool(cfg.get("delete_raw_after_pack", DEFAULT_DELETE_RAW)),
         default_watch_period=period,
         chapter_naming_template=chapter_template,
+        default_reading_direction=reading_direction,
     )
 
 
@@ -77,6 +83,17 @@ async def put_config(body: AppConfigIn, db: DbDep) -> AppConfigOut:
             status_code=400,
             detail=f"invalid chapter_naming_template: {exc}",
         ) from exc
+    direction_raw = (
+        coerce_optional(body.default_reading_direction) or DEFAULT_READING_DIRECTION
+    ).lower()
+    if direction_raw not in READING_DIRECTIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"invalid default_reading_direction: {direction_raw!r}; "
+                f"expected one of {sorted(READING_DIRECTIONS)}"
+            ),
+        )
 
     # When the root changes, drop the remembered dirs — they may no longer be valid.
     existing = await service.get_all(db)
@@ -95,6 +112,7 @@ async def put_config(body: AppConfigIn, db: DbDep) -> AppConfigOut:
         "delete_raw_after_pack": bool(body.delete_raw_after_pack),
         "default_watch_period": period_raw,
         "chapter_naming_template": template_raw,
+        "default_reading_direction": direction_raw,
     }
     await service.set_many(db, updates)
     return _load_config(updates)

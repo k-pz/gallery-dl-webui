@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from backend.app_config import service as app_config_service
+from backend.app_config.constants import READING_DIRECTIONS
 from backend.app_config.exceptions import PostprocessRootNotConfigured
 from backend.dependencies import DbDep, SettingsDep
 from backend.downloads import service
@@ -18,6 +19,7 @@ from backend.downloads.exceptions import (
     DownloadNotTerminal,
     DownloadVanished,
 )
+from backend.downloads.postprocess import normalize_tags
 from backend.downloads.progress import chapter_progress, chapter_progress_from_completed
 from backend.downloads.schemas import (
     ChapterProgress,
@@ -74,7 +76,33 @@ async def create_download(
         output_dir_str = str(resolved)
         await app_config_service.remember_output_dir(db, output_dir_str)
 
-    target = await targets_service.upsert(db, url, category, output_dir_str, watched=body.watched)
+    tags: list[str] | None = None
+    if body.tags is not None:
+        tags = normalize_tags(body.tags)
+
+    reading_direction: str | None = None
+    if body.reading_direction is not None:
+        cleaned = body.reading_direction.strip().lower()
+        if cleaned:
+            if cleaned not in READING_DIRECTIONS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"invalid reading_direction: {body.reading_direction!r}; "
+                        f"expected one of {sorted(READING_DIRECTIONS)}"
+                    ),
+                )
+            reading_direction = cleaned
+
+    target = await targets_service.upsert(
+        db,
+        url,
+        category,
+        output_dir_str,
+        watched=body.watched,
+        tags=tags,
+        reading_direction=reading_direction,
+    )
     download = await service.insert_pending(
         db, url, category, output_dir=output_dir_str, target_id=target.id
     )

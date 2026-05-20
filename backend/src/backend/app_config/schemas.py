@@ -10,6 +10,7 @@ class AppConfigOut(BaseModel):
     delete_raw_after_pack: bool
     default_watch_period: str
     chapter_naming_template: str
+    default_reading_direction: str
 
 
 class AppConfigIn(BaseModel):
@@ -18,3 +19,4 @@ class AppConfigIn(BaseModel):
     delete_raw_after_pack: bool
     default_watch_period: str | None = None
     chapter_naming_template: str | None = None
+    default_reading_direction: str | None = None

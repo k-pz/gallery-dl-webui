@@ -24,6 +24,10 @@ def series_to_dict(target: Target) -> dict[str, Any]:
     if target.watch_period:
         watch["period"] = target.watch_period
     out["watch"] = watch
+    if target.tags:
+        out["tags"] = list(target.tags)
+    if target.reading_direction:
+        out["reading_direction"] = target.reading_direction
     return out
 
 

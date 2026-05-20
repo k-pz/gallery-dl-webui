@@ -14,7 +14,7 @@ from backend.maintenance.schemas import (
 
 router = APIRouter(tags=["maintenance"])
 
-SUPPORTED_KINDS = {"rename_chapters"}
+SUPPORTED_KINDS = {"rename_chapters", "regenerate_series_metadata"}
 
 
 def _to_out(job) -> MaintenanceJobOut:

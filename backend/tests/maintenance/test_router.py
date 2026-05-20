@@ -128,3 +128,40 @@ def test_progress_endpoint_for_terminal_job(client: TestClient, tmp_path: Path) 
 def test_progress_endpoint_missing_job(client: TestClient) -> None:
     resp = client.get("/api/maintenance/jobs/9999/progress")
     assert resp.status_code == 404
+
+
+def test_schedule_regenerate_series_metadata_job(client: TestClient, tmp_path: Path) -> None:
+    root = tmp_path / "media"
+    series_dir = root / "Series"
+    _write_cbz(series_dir / "Series - c001.cbz", "Series", "1")
+
+    cfg_resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "default_watch_period": "1d",
+            "chapter_naming_template": "{{ series }} - c{{ chapter_number }}",
+            "default_reading_direction": "rtl",
+        },
+    )
+    assert cfg_resp.status_code == 200, cfg_resp.json()
+
+    created = client.post(
+        "/api/maintenance/jobs", json={"kind": "regenerate_series_metadata"}
+    )
+    assert created.status_code == 200, created.json()
+    job_id = created.json()["id"]
+
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "completed", done
+    assert done["result"]["archives_updated"] == 1
+    assert done["result"]["series_json_written"] == 1
+    # series.json was emitted next to the CBZ.
+    assert (series_dir / "series.json").is_file()
+
+
+def test_unsupported_maintenance_kind_is_rejected(client: TestClient) -> None:
+    resp = client.post("/api/maintenance/jobs", json={"kind": "nonexistent"})
+    assert resp.status_code == 400

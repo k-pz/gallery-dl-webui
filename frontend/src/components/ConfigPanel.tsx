@@ -8,6 +8,7 @@ import {
   Loader,
   type MantineColorScheme,
   SegmentedControl,
+  Select,
   Stack,
   Switch,
   Text,
@@ -22,6 +23,7 @@ import type { LibraryImportResult } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
 import { exportLibrary, importLibrary } from "../lib/libraryBackup";
+import { READING_DIRECTION_OPTIONS } from "../lib/readingDirection";
 import { DirectoryPicker } from "./DirectoryPicker";
 
 export function ConfigPanel() {
@@ -34,6 +36,7 @@ export function ConfigPanel() {
   const [defaultPeriod, setDefaultPeriod] = useState("");
   const [chapterTemplate, setChapterTemplate] = useState("");
   const [deleteRaw, setDeleteRaw] = useState(true);
+  const [readingDirection, setReadingDirection] = useState("ltr");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
@@ -44,6 +47,7 @@ export function ConfigPanel() {
       setDefaultPeriod(data.default_watch_period ?? "");
       setChapterTemplate(data.chapter_naming_template ?? "");
       setDeleteRaw(data.delete_raw_after_pack);
+      setReadingDirection(data.default_reading_direction ?? "ltr");
     }
   }, [data]);
 
@@ -65,7 +69,8 @@ export function ConfigPanel() {
       (defaultDir || null) !== (data.postprocess_default_output_dir ?? null) ||
       (defaultPeriod.trim() || null) !== (data.default_watch_period ?? null) ||
       chapterTemplate.trim() !== (data.chapter_naming_template ?? "") ||
-      deleteRaw !== data.delete_raw_after_pack);
+      deleteRaw !== data.delete_raw_after_pack ||
+      readingDirection !== (data.default_reading_direction ?? "ltr"));
 
   const save = () => {
     setSubmitError(null);
@@ -77,6 +82,7 @@ export function ConfigPanel() {
         delete_raw_after_pack: deleteRaw,
         default_watch_period: defaultPeriod.trim() || null,
         chapter_naming_template: chapterTemplate.trim() || null,
+        default_reading_direction: readingDirection,
       },
     });
   };
@@ -152,6 +158,16 @@ export function ConfigPanel() {
           value={chapterTemplate}
           onChange={(e) => setChapterTemplate(e.currentTarget.value)}
           disabled={mutation.isPending}
+        />
+        <Select
+          label="Default reading direction"
+          description="Applied to series.json + ComicInfo.xml when a download doesn't override it. Komga only reads LTR vs RTL from CBZ metadata; vertical/webtoon are passed through series.json."
+          value={readingDirection}
+          onChange={(v) => v && setReadingDirection(v)}
+          data={READING_DIRECTION_OPTIONS}
+          disabled={mutation.isPending}
+          maw={260}
+          allowDeselect={false}
         />
         <Title order={3}>Watching</Title>
         <TextInput
