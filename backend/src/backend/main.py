@@ -55,7 +55,12 @@ def create_app(
         worker = Worker(db, gallery, live_progress)
         worker.start()
         maintenance_live = MaintenanceLiveProgress()
-        maintenance_worker = MaintenanceWorker(db, maintenance_live)
+        maintenance_worker = MaintenanceWorker(
+            db,
+            maintenance_live,
+            settings=settings,
+            downloads_worker=worker,
+        )
         maintenance_worker.start()
         poller = Poller(db, worker)
         poller.start()

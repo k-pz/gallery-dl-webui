@@ -80,6 +80,23 @@ export function MaintenancePanel() {
           >
             Regenerate series metadata
           </Button>
+          <Button
+            variant="outline"
+            color="red"
+            onClick={() => {
+              const ok = window.confirm(
+                "Rebuild library?\n\n" +
+                  "This wipes the download history, the gallery-dl archive, the raw " +
+                  "downloads dir, and EVERYTHING under the postprocess root " +
+                  "(excluded directory names are spared). The library (your " +
+                  "targets) is kept and a fresh download is enqueued for each.",
+              );
+              if (ok) schedule.mutate({ body: { kind: "rebuild_library" } });
+            }}
+            loading={schedule.isPending}
+          >
+            Rebuild library
+          </Button>
         </Group>
         {schedule.isError && (
           <Alert color="red" variant="light">

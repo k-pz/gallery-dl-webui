@@ -197,6 +197,22 @@ async def mark_postprocess(
     await db.commit()
 
 
+async def delete_all(db: aiosqlite.Connection) -> int:
+    """Drop every row from downloads + download_files. Returns the count deleted.
+
+    Used by the rebuild_library maintenance job to fully reset download
+    history; targets are preserved (they're the source of truth) and so is
+    app_config (user-set knobs).
+    """
+    async with db.execute("SELECT COUNT(*) AS c FROM downloads") as cur:
+        row = await cur.fetchone()
+    count = int(row["c"]) if row else 0
+    await db.execute("DELETE FROM download_files")
+    await db.execute("DELETE FROM downloads")
+    await db.commit()
+    return count
+
+
 async def has_active_for_target(db: aiosqlite.Connection, target_id: int) -> bool:
     async with db.execute(
         "SELECT 1 FROM downloads WHERE target_id = ? AND status IN "

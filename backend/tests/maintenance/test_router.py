@@ -213,3 +213,50 @@ def test_cancel_terminal_job_is_rejected(client: TestClient, tmp_path: Path) -> 
 def test_cancel_missing_job_is_404(client: TestClient) -> None:
     resp = client.post("/api/maintenance/jobs/9999/cancel")
     assert resp.status_code == 404
+
+
+def test_rebuild_library_wipes_and_reenqueues(
+    client: TestClient, tmp_path: Path, gallery_config
+) -> None:
+    """End-to-end: a target + one finished download → rebuild wipes the download
+    + output dir contents and re-enqueues a fresh pending row."""
+    root = tmp_path / "media"
+    root.mkdir()
+    # Stage a target with a finished download so the rebuild has something to
+    # wipe. We also drop a `#recycle` directory in the root to confirm the
+    # exclusion list spares it.
+    series_dir = root / "Series"
+    _write_cbz(series_dir / "Series - c001.cbz", "Series", "1")
+    recycle = root / "#recycle"
+    recycle.mkdir()
+    (recycle / "marker.txt").write_text("keep me")
+
+    gallery_config.manifest_for["https://example/x"] = []
+    sub = client.post("/api/downloads", json={"url": "https://example/x"})
+    assert sub.status_code == 200
+
+    cfg_resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "default_watch_period": "1d",
+            "chapter_naming_template": "{{ series }}_{{ chapter_number }}",
+            "postprocess_excluded_dir_names": ["#recycle"],
+        },
+    )
+    assert cfg_resp.status_code == 200, cfg_resp.json()
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "rebuild_library"})
+    assert created.status_code == 200, created.json()
+    job_id = created.json()["id"]
+
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "completed", done
+    assert done["result"]["targets"] >= 1
+    assert done["result"]["enqueued"] >= 1
+    # Output dir wiped...
+    assert not (root / "Series").exists()
+    # ...but the excluded recycle bin survives.
+    assert (recycle / "marker.txt").read_text() == "keep me"
