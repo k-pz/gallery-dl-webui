@@ -35,5 +35,6 @@ export function SortDirToggle({
 function describe(sortKey: string, dir: SortDir): string {
   if (sortKey === "name") return dir === "asc" ? "A → Z" : "Z → A";
   if (sortKey === "status") return dir === "asc" ? "Earliest stage first" : "Latest stage first";
+  if (sortKey === "queue") return dir === "asc" ? "Next to process first" : "Last in queue first";
   return dir === "asc" ? "Oldest first" : "Newest first";
 }
