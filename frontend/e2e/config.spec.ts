@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
@@ -6,7 +6,9 @@ import { expect, test } from "@playwright/test";
 let outputDir = "";
 
 test.beforeAll(() => {
-  outputDir = mkdtempSync(join(tmpdir(), "gdl-webui-e2e-"));
+  // realpathSync collapses macOS's /var → /private/var symlink up front so the
+  // value we feed the form matches the resolved path the backend persists.
+  outputDir = realpathSync(mkdtempSync(join(tmpdir(), "gdl-webui-e2e-")));
 });
 
 test.afterAll(() => {
@@ -25,14 +27,14 @@ test.describe("config tab", () => {
     });
   });
 
-  test("saves the output directory and persists across reload", async ({ page }) => {
+  test("saves the postprocess root and persists across reload", async ({ page }) => {
     await page.getByRole("tab", { name: /config/i }).click();
 
-    const input = page.getByLabel(/output directory/i);
-    await expect(input).toBeVisible();
-    await expect(input).toHaveValue("");
+    const root = page.getByRole("textbox", { name: /^root$/i });
+    await expect(root).toBeVisible();
+    await expect(root).toHaveValue("");
 
-    await input.fill(outputDir);
+    await root.fill(outputDir);
     await page.getByLabel(/delete raw images after packing/i).uncheck();
     await page.getByRole("button", { name: /save/i }).click();
 
@@ -41,17 +43,33 @@ test.describe("config tab", () => {
     // Reload and confirm the values persist.
     await page.reload();
     await page.getByRole("tab", { name: /config/i }).click();
-    await expect(page.getByLabel(/output directory/i)).toHaveValue(outputDir);
+    await expect(page.getByRole("textbox", { name: /^root$/i })).toHaveValue(outputDir);
     await expect(page.getByLabel(/delete raw images after packing/i)).not.toBeChecked();
   });
 
-  test("rejects a relative path with a clear error", async ({ page }) => {
+  test("rejects a relative root with a clear error", async ({ page }) => {
     await page.getByRole("tab", { name: /config/i }).click();
-    await page.getByLabel(/output directory/i).fill("relative/dir");
+    await page.getByRole("textbox", { name: /^root$/i }).fill("relative/dir");
     await page.getByRole("button", { name: /save/i }).click();
 
     // The validation error is rendered inside a Mantine Alert; scope to it so
     // we don't match the field's own "absolute path" description text.
     await expect(page.getByRole("alert")).toContainText(/absolute path/i);
+  });
+
+  test("persists the excluded directory names across reload", async ({ page }) => {
+    await page.getByRole("tab", { name: /config/i }).click();
+
+    const excluded = page.getByLabel(/excluded directory names/i);
+    await expect(excluded).toBeVisible();
+    await excluded.fill("#recycle, @eaDir, .Trash");
+    await page.getByRole("button", { name: /save/i }).click();
+    await expect(page.getByText(/^saved\.$/i)).toBeVisible();
+
+    await page.reload();
+    await page.getByRole("tab", { name: /config/i }).click();
+    await expect(page.getByLabel(/excluded directory names/i)).toHaveValue(
+      "#recycle, @eaDir, .Trash",
+    );
   });
 });
