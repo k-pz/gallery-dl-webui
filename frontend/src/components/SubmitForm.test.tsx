@@ -92,6 +92,7 @@ describe("SubmitForm", () => {
     expect(JSON.parse(await bodyOf(postInput, postInit))).toEqual({
       url: "https://example/x",
       output_dir: null,
+      watched: false,
     });
   });
 
@@ -122,6 +123,28 @@ describe("SubmitForm", () => {
     expect(JSON.parse(await bodyOf(postInput, postInit))).toEqual({
       url: "https://example/x",
       output_dir: "/mnt/nas/Media/manga",
+      watched: false,
+    });
+  });
+
+  it("submits with watch enabled when checked", async () => {
+    const fetchSpy = mockFetch(makeHandler(noRootConfig));
+
+    renderWithProviders(<SubmitForm onCreated={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText(/gallery url/i), "https://example/x");
+    await userEvent.click(screen.getByLabelText(/^watch$/i));
+    await userEvent.click(screen.getByRole("button", { name: /download/i }));
+
+    let postCall: FetchArgs | undefined;
+    await waitFor(() => {
+      postCall = findCall(fetchSpy, (i, init) => methodOf(i, init) === "POST");
+      expect(postCall).toBeDefined();
+    });
+    const [postInput, postInit] = postCall as FetchArgs;
+    expect(JSON.parse(await bodyOf(postInput, postInit))).toEqual({
+      url: "https://example/x",
+      output_dir: null,
+      watched: true,
     });
   });
 

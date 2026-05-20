@@ -114,6 +114,10 @@ export type DownloadCreate = {
      * Output Dir
      */
     output_dir?: string | null;
+    /**
+     * Watched
+     */
+    watched?: boolean;
 };
 
 /**
