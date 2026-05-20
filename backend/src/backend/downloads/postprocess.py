@@ -262,7 +262,7 @@ def _read_cbz_series_chapter(path: Path) -> tuple[str | None, str | None]:
     try:
         with zipfile.ZipFile(path) as zf:
             xml_bytes = zf.read("ComicInfo.xml")
-    except (OSError, zipfile.BadZipFile, KeyError):
+    except OSError, zipfile.BadZipFile, KeyError:
         return None, None
     try:
         root = ET.fromstring(xml_bytes)
@@ -299,7 +299,7 @@ def chapter_already_packed(output_dir: Path, manga: str, chapter: str) -> bool:
             stem = child.stem
             if stem == stem_prefix or stem.startswith(stem_prefix + " "):
                 return True
-    except (FileNotFoundError, NotADirectoryError):
+    except FileNotFoundError, NotADirectoryError:
         return False
     return False
 
@@ -347,7 +347,7 @@ def build_comicinfo_xml(ch: ChapterRecord) -> bytes:
 def _is_under(path: Path, root: Path) -> bool:
     try:
         path.resolve().relative_to(root.resolve())
-    except (ValueError, OSError):
+    except ValueError, OSError:
         return False
     return True
 
@@ -515,8 +515,7 @@ def rename_packed_chapters(
             renamed += 1
             if progress is not None:
                 progress.step(
-                    f"renamed: {cbz.relative_to(output_root)} -> "
-                    f"{target.relative_to(output_root)}"
+                    f"renamed: {cbz.relative_to(output_root)} -> {target.relative_to(output_root)}"
                 )
         except Exception as exc:
             logger.exception("failed to rename chapter archive: %s", cbz)
