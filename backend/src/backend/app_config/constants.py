@@ -2,6 +2,11 @@ from __future__ import annotations
 
 DEFAULT_DELETE_RAW = True
 DEFAULT_WATCH_PERIOD = "1d"
+# Directory names that maintenance + output-dir scans should always skip,
+# matched anywhere in the path. Synology shares hide their recycle bin under
+# `#recycle/`; NAS-mounted output trees pick up similar trash directories
+# from time-machine, Dropbox, etc. The user can extend this via Config.
+DEFAULT_EXCLUDED_DIR_NAMES: tuple[str, ...] = ("#recycle", "@eaDir", ".Trash", ".Trashes")
 DEFAULT_CHAPTER_NAMING_TEMPLATE = (
     "{{ series }} - c{{ chapter_number }}{% if title %} - {{ title }}{% endif %}"
 )

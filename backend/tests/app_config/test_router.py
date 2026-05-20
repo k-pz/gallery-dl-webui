@@ -146,3 +146,21 @@ def test_changing_root_clears_known_dirs(client: TestClient, tmp_path: Path) -> 
     resp = _put(client, postprocess_root=str(root_b))
     assert resp.status_code == 200
     assert resp.json()["postprocess_known_output_dirs"] == []
+
+
+def test_get_config_surfaces_default_excluded_dir_names(client: TestClient) -> None:
+    cfg = client.get("/api/config").json()
+    assert "#recycle" in cfg["postprocess_excluded_dir_names"]
+
+
+def test_put_config_persists_excluded_dir_names(client: TestClient, tmp_path: Path) -> None:
+    resp = _put(
+        client,
+        postprocess_excluded_dir_names=["#recycle", "  @eaDir  ", "", "#recycle"],
+    )
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    # Whitespace is stripped, blanks dropped, dedup preserved-order.
+    assert body["postprocess_excluded_dir_names"] == ["#recycle", "@eaDir"]
+    follow = client.get("/api/config").json()
+    assert follow["postprocess_excluded_dir_names"] == ["#recycle", "@eaDir"]

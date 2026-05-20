@@ -85,3 +85,19 @@ def test_create_output_dir_accepts_absolute_direct_child(
     resp = client.post("/api/output-dirs", json={"path": str(target)})
     assert resp.status_code == 200
     assert target.is_dir()
+
+
+def test_list_output_dirs_omits_configured_exclusions(client: TestClient, tmp_path: Path) -> None:
+    root = tmp_path / "media"
+    root.mkdir()
+    (root / "manga").mkdir()
+    (root / "#recycle").mkdir()
+    (root / "@eaDir").mkdir()
+    _set_root(client, root)
+
+    names = [e["name"] for e in client.get("/api/output-dirs").json()]
+    assert "manga" in names
+    # Defaults pulled from DEFAULT_EXCLUDED_DIR_NAMES — Synology recycle bin
+    # and the @eaDir indexer dir — never reach the picker.
+    assert "#recycle" not in names
+    assert "@eaDir" not in names

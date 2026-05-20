@@ -7,6 +7,7 @@ class AppConfigOut(BaseModel):
     postprocess_root: str | None
     postprocess_default_output_dir: str | None
     postprocess_known_output_dirs: list[str]
+    postprocess_excluded_dir_names: list[str]
     delete_raw_after_pack: bool
     default_watch_period: str
     chapter_naming_template: str
@@ -20,3 +21,4 @@ class AppConfigIn(BaseModel):
     default_watch_period: str | None = None
     chapter_naming_template: str | None = None
     default_reading_direction: str | None = None
+    postprocess_excluded_dir_names: list[str] | None = None

@@ -37,6 +37,7 @@ export function ConfigPanel() {
   const [chapterTemplate, setChapterTemplate] = useState("");
   const [deleteRaw, setDeleteRaw] = useState(true);
   const [readingDirection, setReadingDirection] = useState("ltr");
+  const [excludedDirsRaw, setExcludedDirsRaw] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
@@ -48,8 +49,18 @@ export function ConfigPanel() {
       setChapterTemplate(data.chapter_naming_template ?? "");
       setDeleteRaw(data.delete_raw_after_pack);
       setReadingDirection(data.default_reading_direction ?? "ltr");
+      setExcludedDirsRaw((data.postprocess_excluded_dir_names ?? []).join(", "));
     }
   }, [data]);
+
+  const parsedExcluded = excludedDirsRaw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const existingExcluded = data?.postprocess_excluded_dir_names ?? [];
+  const excludedDirty =
+    parsedExcluded.length !== existingExcluded.length ||
+    parsedExcluded.some((name, idx) => name !== existingExcluded[idx]);
 
   const mutation = useMutation({
     ...putConfigMutation(),
@@ -70,7 +81,8 @@ export function ConfigPanel() {
       (defaultPeriod.trim() || null) !== (data.default_watch_period ?? null) ||
       chapterTemplate.trim() !== (data.chapter_naming_template ?? "") ||
       deleteRaw !== data.delete_raw_after_pack ||
-      readingDirection !== (data.default_reading_direction ?? "ltr"));
+      readingDirection !== (data.default_reading_direction ?? "ltr") ||
+      excludedDirty);
 
   const save = () => {
     setSubmitError(null);
@@ -83,6 +95,7 @@ export function ConfigPanel() {
         default_watch_period: defaultPeriod.trim() || null,
         chapter_naming_template: chapterTemplate.trim() || null,
         default_reading_direction: readingDirection,
+        postprocess_excluded_dir_names: parsedExcluded,
       },
     });
   };
@@ -168,6 +181,14 @@ export function ConfigPanel() {
           disabled={mutation.isPending}
           maw={260}
           allowDeselect={false}
+        />
+        <TextInput
+          label="Excluded directory names"
+          description="Comma-separated. Directories whose name matches (anywhere in the path) are skipped by the output-dir picker and by maintenance scans. Useful for NAS trash like #recycle or @eaDir."
+          placeholder="#recycle, @eaDir, .Trash"
+          value={excludedDirsRaw}
+          onChange={(e) => setExcludedDirsRaw(e.currentTarget.value)}
+          disabled={mutation.isPending}
         />
         <Title order={3}>Watching</Title>
         <TextInput

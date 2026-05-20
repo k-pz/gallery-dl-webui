@@ -32,6 +32,10 @@ export type AppConfigIn = {
      * Default Reading Direction
      */
     default_reading_direction?: string | null;
+    /**
+     * Postprocess Excluded Dir Names
+     */
+    postprocess_excluded_dir_names?: Array<string> | null;
 };
 
 /**
@@ -50,6 +54,10 @@ export type AppConfigOut = {
      * Postprocess Known Output Dirs
      */
     postprocess_known_output_dirs: Array<string>;
+    /**
+     * Postprocess Excluded Dir Names
+     */
+    postprocess_excluded_dir_names: Array<string>;
     /**
      * Delete Raw After Pack
      */

@@ -28,8 +28,23 @@ async def resolve_root(db: aiosqlite.Connection) -> Path:
     return Path(root_raw)
 
 
-def list_direct_children(root: Path) -> list[DirEntry]:
+async def resolve_excluded_dir_names(db: aiosqlite.Connection) -> set[str]:
+    """Lower-cased set of directory names the picker should hide.
+
+    Falls back to DEFAULT_EXCLUDED_DIR_NAMES until the user touches the config.
+    """
+    from backend.app_config.constants import DEFAULT_EXCLUDED_DIR_NAMES
+
+    cfg = await app_config_service.get_all(db)
+    raw = cfg.get("postprocess_excluded_dir_names")
+    if isinstance(raw, list):
+        return {name.lower() for name in raw if isinstance(name, str) and name}
+    return {name.lower() for name in DEFAULT_EXCLUDED_DIR_NAMES}
+
+
+def list_direct_children(root: Path, excluded: set[str] | None = None) -> list[DirEntry]:
     """Return non-hidden first-level subdirectories of root."""
+    excluded_lower = excluded or set()
     try:
         children = sorted(p for p in root.iterdir() if p.is_dir())
     except OSError:
@@ -37,5 +52,5 @@ def list_direct_children(root: Path) -> list[DirEntry]:
     return [
         DirEntry(path=str(child), name=child.name, depth=1)
         for child in children
-        if not child.name.startswith(".")
+        if not child.name.startswith(".") and child.name.lower() not in excluded_lower
     ]
