@@ -1,4 +1,4 @@
-import { ActionIcon, Badge, Box, Card, Group, Select, Stack, Text, Tooltip } from "@mantine/core";
+import { Box, Card, Group, Select, Stack, Text, Tooltip } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -20,11 +20,14 @@ import {
   isCancellable,
   isTerminal,
   jobStep,
-  statusColor,
+  statusTone,
 } from "../lib/status";
+import { EmptyState } from "./EmptyState";
+import { IconActivity, IconRefresh, IconX } from "./Icons";
 import { ListHeader } from "./ListHeader";
 import { ListPagination } from "./ListPagination";
 import { ListToolbar } from "./ListToolbar";
+import { Pill } from "./Pill";
 import { type SortDir, SortDirToggle } from "./SortDirToggle";
 
 type StatusFilter = "any" | "active" | "completed" | "failed" | "cancelled";
@@ -62,9 +65,11 @@ function chapterCountLabel(item: DownloadOut): string {
 export function RecentList({
   onSelect,
   selectedId,
+  hideEmpty,
 }: {
   onSelect: (id: number) => void;
   selectedId: number | null;
+  hideEmpty?: boolean;
 }) {
   const invalidate = useDataInvalidators();
   const { data, isLoading } = useQuery({
@@ -237,20 +242,12 @@ export function RecentList({
             </Group>
           </ListToolbar>
         )}
-        {totalCount === 0 && (
-          <Box
-            style={{
-              padding: "1.5rem 1rem",
-              textAlign: "center",
-              border: "1px dashed var(--app-border-subtle)",
-              borderRadius: "var(--mantine-radius-md)",
-              background: "var(--app-surface-muted)",
-            }}
-          >
-            <Text size="sm" c="dimmed">
-              No jobs yet.
-            </Text>
-          </Box>
+        {totalCount === 0 && !hideEmpty && (
+          <EmptyState
+            icon={<IconActivity size={22} />}
+            title="No jobs yet"
+            body="When you submit a URL the queue lands here. Watched series schedule jobs automatically."
+          />
         )}
         {totalCount > 0 && visible.length === 0 && (
           <Text size="sm" c="dimmed">
@@ -316,6 +313,7 @@ function RecentRow({
   const canCancel = isCancellable(item.status) && !showCancelling;
   const displayName = item.name ?? item.url;
   const showUrlSubtitle = Boolean(item.name);
+  const tone = statusTone(displayStatus);
 
   return (
     <Box
@@ -333,9 +331,7 @@ function RecentRow({
     >
       <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
         <Group gap="xs" wrap="nowrap" align="center">
-          <Badge color={statusColor(displayStatus)} variant="light" size="sm">
-            {step.label}
-          </Badge>
+          <Pill tone={tone}>{step.label}</Pill>
           <Text size="xs" c="dimmed" ff="monospace">
             #{item.id}
           </Text>
@@ -370,33 +366,35 @@ function RecentRow({
           </Text>
         )}
       </Stack>
-      <Group gap={4} wrap="nowrap" onClick={(e) => e.stopPropagation()}>
+      <Group gap={2} wrap="nowrap" onClick={(e) => e.stopPropagation()}>
         {(canCancel || showCancelling) && (
           <Tooltip label={showCancelling ? "Cancelling…" : "Cancel"} withArrow>
-            <ActionIcon
-              variant="subtle"
-              color="red"
-              loading={(inflight && isCancelPending) || showCancelling}
-              disabled={inflight || showCancelling}
-              onClick={onCancel}
+            <button
+              type="button"
+              className="icon-btn"
+              data-tone="danger"
+              data-size="sm"
               aria-label={`Cancel #${item.id}`}
+              disabled={inflight || showCancelling || (inflight && isCancelPending)}
+              onClick={onCancel}
             >
-              ✕
-            </ActionIcon>
+              <IconX size={14} />
+            </button>
           </Tooltip>
         )}
         {isTerminal(item.status) && (
           <Tooltip label="Requeue" withArrow>
-            <ActionIcon
-              variant="subtle"
-              color="amber"
-              loading={inflight && isRequeuePending}
-              disabled={inflight}
-              onClick={onRequeue}
+            <button
+              type="button"
+              className="icon-btn"
+              data-tone="accent"
+              data-size="sm"
               aria-label={`Requeue #${item.id}`}
+              disabled={inflight && isRequeuePending}
+              onClick={onRequeue}
             >
-              ↻
-            </ActionIcon>
+              <IconRefresh size={14} />
+            </button>
           </Tooltip>
         )}
       </Group>

@@ -1,11 +1,13 @@
-import { Badge, Box, Container, Stack, Tabs } from "@mantine/core";
+import { Box, Container, Stack, Tabs } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { listDownloadsOptions } from "./api/@tanstack/react-query.gen";
 import { ActiveJobCard } from "./components/ActiveJobCard";
 import { ConfigPanel } from "./components/ConfigPanel";
+import { CountBadge } from "./components/CountBadge";
 import { HealthBadge } from "./components/HealthBadge";
 import { MaintenancePanel } from "./components/MaintenancePanel";
+import { MobileBottomNav } from "./components/MobileBottomNav";
 import { RecentList } from "./components/RecentList";
 import { RunningJobsPanel } from "./components/RunningJobsPanel";
 import { SubmitForm } from "./components/SubmitForm";
@@ -32,7 +34,6 @@ export default function App() {
       scheduled: list.reduce((n, d) => n + (isScheduled(d.status) ? 1 : 0), 0),
     };
   }, [downloads]);
-  const jobsBadgeCount = running + scheduled;
 
   const openJob = (id: number) => {
     setSelectedId(id);
@@ -57,25 +58,14 @@ export default function App() {
           </div>
         </Container>
       </header>
-      <Container size="lg" py="xl">
+      <Container size="lg" py="xl" className="app-shell-body">
         <Stack gap="xl">
           <Tabs value={tab} onChange={setTab} keepMounted className="app-tabs" variant="default">
             <Tabs.List>
               <Tabs.Tab value="library">Library</Tabs.Tab>
               <Tabs.Tab
                 value="jobs"
-                rightSection={
-                  jobsBadgeCount > 0 ? (
-                    <Badge
-                      size="xs"
-                      variant="light"
-                      color={running > 0 ? "blue" : "gray"}
-                      aria-label={`${running} running, ${scheduled} scheduled`}
-                    >
-                      {running}/{scheduled}
-                    </Badge>
-                  ) : null
-                }
+                rightSection={<CountBadge running={running} queued={scheduled} />}
               >
                 Jobs
               </Tabs.Tab>
@@ -89,11 +79,11 @@ export default function App() {
               </Stack>
             </Tabs.Panel>
             <Tabs.Panel value="jobs" pt="xl">
-              <Stack gap="lg">
-                <RunningJobsPanel onSelect={setSelectedId} selectedId={selectedId} />
-                {selectedId !== null && <ActiveJobCard jobId={selectedId} />}
-                <RecentList onSelect={setSelectedId} selectedId={selectedId} />
-              </Stack>
+              <JobsTabBody
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                hasAnyActive={running > 0 || scheduled > 0}
+              />
             </Tabs.Panel>
             <Tabs.Panel value="config" pt="xl">
               <ConfigPanel />
@@ -105,6 +95,44 @@ export default function App() {
           <div className="app-footnote">gallery-dl · webui</div>
         </Stack>
       </Container>
+      <MobileBottomNav active={tab} jobsBadge={running} onChange={(k) => setTab(k)} />
     </Box>
+  );
+}
+
+/**
+ * Two-column master-detail (Direction B) on desktop. The running panel and
+ * the recent list live in the left column; the active job card fills the
+ * right. Under 880px both columns collapse to a single stack.
+ */
+function JobsTabBody({
+  selectedId,
+  onSelect,
+  hasAnyActive,
+}: {
+  selectedId: number | null;
+  onSelect: (id: number | null) => void;
+  hasAnyActive: boolean;
+}) {
+  const hasSelection = selectedId !== null;
+  // On desktop with a selection, the active card sits in the right column;
+  // when nothing is selected (or on mobile), the layout falls back to a
+  // single column with the running and recent panels stacked.
+  if (!hasSelection) {
+    return (
+      <Stack gap="lg">
+        <RunningJobsPanel onSelect={onSelect} selectedId={selectedId} />
+        <RecentList onSelect={onSelect} selectedId={selectedId} hideEmpty={!hasAnyActive} />
+      </Stack>
+    );
+  }
+  return (
+    <div className="jobs-grid">
+      <Stack gap="md">
+        <RunningJobsPanel onSelect={onSelect} selectedId={selectedId} />
+        <RecentList onSelect={onSelect} selectedId={selectedId} />
+      </Stack>
+      <ActiveJobCard jobId={selectedId} onClose={() => onSelect(null)} />
+    </div>
   );
 }

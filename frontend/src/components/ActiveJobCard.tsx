@@ -1,16 +1,15 @@
 import {
-  Alert,
   Anchor,
-  Badge,
+  Box,
   Button,
   Card,
   Divider,
   Group,
-  Loader,
   Stack,
   Stepper,
   Text,
   Title,
+  Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -24,10 +23,12 @@ import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
 import { useOptimisticCancel } from "../lib/optimisticCancel";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
-import { isCancellable, isTerminal, JOB_STEPS, jobStep, statusColor } from "../lib/status";
+import { isCancellable, isTerminal, JOB_STEPS, jobStep, statusTone } from "../lib/status";
+import { IconAlertTriangle, IconX } from "./Icons";
+import { Pill } from "./Pill";
 import { ProgressCard } from "./ProgressCard";
 
-export function ActiveJobCard({ jobId }: { jobId: number }) {
+export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () => void }) {
   const invalidate = useDataInvalidators();
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -105,12 +106,43 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
   if (isLoading || !job) {
     return (
       <Card>
-        <Group>
-          <Loader size="sm" />
-          <Text c="dimmed" size="sm">
-            Loading job…
-          </Text>
-        </Group>
+        <Stack gap="lg">
+          <Stack gap={4}>
+            <Group gap="sm">
+              <span className="app-section-kicker">active job</span>
+              <span className="app-sk" style={{ width: 30, height: 11 }} />
+            </Group>
+            <span className="app-sk" style={{ width: "70%", height: 24 }} />
+            <span className="app-sk" style={{ width: "40%", height: 12 }} />
+          </Stack>
+          <Group gap={6} wrap="nowrap">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <Group key={i} gap={6} wrap="nowrap" style={{ flex: i < 5 ? 1 : undefined }}>
+                <span className="app-sk" style={{ width: 22, height: 22, borderRadius: 999 }} />
+                {i < 5 && (
+                  <div
+                    style={{
+                      flex: 1,
+                      height: 1,
+                      background: "var(--app-border-subtle)",
+                    }}
+                  />
+                )}
+              </Group>
+            ))}
+          </Group>
+          <Divider />
+          <Group gap="xl">
+            <Stack gap={4}>
+              <span className="app-sk" style={{ width: 50, height: 9 }} />
+              <span className="app-sk" style={{ width: 80, height: 14 }} />
+            </Stack>
+          </Group>
+          <Stack gap="xs">
+            <span className="app-sk" style={{ width: 80, height: 9 }} />
+            <span className="app-sk" style={{ width: "100%", height: 8 }} />
+          </Stack>
+        </Stack>
       </Card>
     );
   }
@@ -127,11 +159,26 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
     <Card>
       <Stack gap="lg">
         <Stack gap={4}>
-          <Group gap="sm" wrap="wrap" align="center">
-            <span className="app-section-kicker">active job</span>
-            <Text size="xs" c="dimmed" ff="monospace">
-              #{job.id}
-            </Text>
+          <Group justify="space-between" align="center" wrap="nowrap">
+            <Group gap="sm" wrap="wrap" align="center">
+              <span className="app-section-kicker">active job</span>
+              <Text size="xs" c="dimmed" ff="monospace">
+                #{job.id}
+              </Text>
+            </Group>
+            {onClose && (
+              <Tooltip label="Close active job" withArrow>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  data-size="sm"
+                  aria-label="Close active job"
+                  onClick={onClose}
+                >
+                  <IconX size={14} />
+                </button>
+              </Tooltip>
+            )}
           </Group>
           <Group justify="space-between" align="flex-start" wrap="nowrap">
             <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
@@ -180,14 +227,21 @@ export function ActiveJobCard({ jobId }: { jobId: number }) {
           )}
         </Group>
         {job.error && (
-          <Alert color="red" variant="light" title="Job error">
-            {job.error}
-          </Alert>
+          <Box className="app-alert">
+            <IconAlertTriangle size={16} className="alert-icon" />
+            <Box>
+              <Text size="sm" fw={600}>
+                Job error
+              </Text>
+              <Text size="sm">{job.error}</Text>
+            </Box>
+          </Box>
         )}
         {actionError && (
-          <Alert color="red" variant="light">
-            {actionError}
-          </Alert>
+          <Box className="app-alert">
+            <IconAlertTriangle size={16} className="alert-icon" />
+            <Text size="sm">{actionError}</Text>
+          </Box>
         )}
         <ProgressCard jobId={jobId} status={job.status} />
       </Stack>
@@ -213,9 +267,9 @@ function JobStepper({ job }: { job: { status: string; step: ReturnType<typeof jo
   if (step.kind === "failed" || step.kind === "cancelled") {
     return (
       <Group gap="xs">
-        <Badge size="lg" color={statusColor(job.status)} variant="filled">
+        <Pill tone={statusTone(job.status)} solid noDot>
           {step.label}
-        </Badge>
+        </Pill>
       </Group>
     );
   }

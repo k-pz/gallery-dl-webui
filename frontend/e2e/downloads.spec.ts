@@ -67,11 +67,11 @@ test.describe("downloads UI", () => {
     await cancelBtn.click();
 
     // Once cancelled, the active card swaps Cancel for Requeue and the
-    // filled badge that replaces the stepper reads "Cancelled".
+    // solid pill that replaces the stepper reads "Cancelled".
     await expect(activeJobButton(page, /^requeue$/i)).toBeVisible({ timeout: 15_000 });
     await expect(
       page
-        .locator(".mantine-Badge-root")
+        .locator(".pill")
         .getByText(/^cancelled$/i)
         .first(),
     ).toBeVisible();

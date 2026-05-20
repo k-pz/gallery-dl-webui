@@ -1,7 +1,5 @@
 import {
   ActionIcon,
-  Alert,
-  Badge,
   Box,
   Button,
   Card,
@@ -11,11 +9,12 @@ import {
   Stack,
   Table,
   Text,
+  TextInput,
   Title,
   Tooltip,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   cancelMaintenanceJobMutation,
   listMaintenanceJobsOptions,
@@ -24,18 +23,19 @@ import {
 } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { usePagination } from "../lib/pagination";
+import { statusTone } from "../lib/status";
+import { EmptyState } from "./EmptyState";
+import { IconAlertTriangle, IconClock, IconFileText, IconRefresh } from "./Icons";
 import { ListPagination } from "./ListPagination";
 import { MaintenanceLog } from "./MaintenanceLog";
+import { Pill } from "./Pill";
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
 
-const STATUS_COLOR: Record<string, string> = {
-  pending: "gray",
-  running: "blue",
-  completed: "green",
-  failed: "red",
-  cancelled: "orange",
-};
+// The literal the user must type to arm the rebuild. Kept short, lowercase
+// only — anything longer becomes annoying to type for a deliberately
+// frequent-enough op.
+const REBUILD_CONFIRM_WORD = "rebuild";
 
 const KIND_LABEL: Record<string, string> = {
   rename_chapters: "Rename chapters",
@@ -72,20 +72,24 @@ export function MaintenancePanel() {
     setSelectedJobId(jobList[0].id);
   }, [jobList, userPicked]);
 
+  const scheduleError = schedule.isError ? extractErrorMessage(schedule.error) : null;
+
   return (
     <Stack gap="lg">
       <Card>
         <Stack gap="md">
           <Stack gap={4}>
-            <span className="app-section-kicker">background jobs</span>
+            <span className="app-section-kicker">postprocessing</span>
             <Title order={3}>Schedule maintenance</Title>
             <Text size="sm" c="dimmed">
-              One-off jobs that fan out over the library: rename CBZs, refresh series metadata, or
-              wipe + re-download from scratch.
+              One-off jobs that fan out over the library: rename CBZs, refresh series metadata. Safe
+              and idempotent.
             </Text>
           </Stack>
           <Group wrap="wrap">
             <Button
+              variant="light"
+              leftSection={<IconRefresh size={14} />}
               onClick={() => schedule.mutate({ body: { kind: "rename_chapters" } })}
               loading={schedule.isPending}
             >
@@ -93,36 +97,25 @@ export function MaintenancePanel() {
             </Button>
             <Button
               variant="light"
+              leftSection={<IconFileText size={14} />}
               onClick={() => schedule.mutate({ body: { kind: "regenerate_series_metadata" } })}
               loading={schedule.isPending}
             >
               Regenerate series metadata
             </Button>
-            <Button
-              variant="outline"
-              color="red"
-              onClick={() => {
-                const ok = window.confirm(
-                  "Rebuild library?\n\n" +
-                    "This wipes the job history, the gallery-dl archive, the raw " +
-                    "downloads dir, and EVERYTHING under the postprocess root " +
-                    "(excluded directory names are spared). Your library (the " +
-                    "tracked series) is kept and a fresh job is enqueued for each.",
-                );
-                if (ok) schedule.mutate({ body: { kind: "rebuild_library" } });
-              }}
-              loading={schedule.isPending}
-            >
-              Rebuild library
-            </Button>
           </Group>
-          {schedule.isError && (
-            <Alert color="red" variant="light">
-              {extractErrorMessage(schedule.error)}
-            </Alert>
+          {scheduleError && (
+            <Box className="app-alert">
+              <Text size="sm">{scheduleError}</Text>
+            </Box>
           )}
         </Stack>
       </Card>
+
+      <RebuildLibraryCard
+        scheduling={schedule.isPending}
+        onSchedule={() => schedule.mutate({ body: { kind: "rebuild_library" } })}
+      />
 
       <Card>
         <Stack gap="md">
@@ -134,29 +127,23 @@ export function MaintenancePanel() {
             </Group>
           </Stack>
           {jobs.isError && (
-            <Alert color="red" variant="light">
-              {extractErrorMessage(jobs.error)}
-            </Alert>
+            <Box className="app-alert">
+              <IconAlertTriangle size={16} className="alert-icon" />
+              <Text size="sm">{extractErrorMessage(jobs.error)}</Text>
+            </Box>
           )}
           {cancel.isError && (
-            <Alert color="red" variant="light">
-              {extractErrorMessage(cancel.error)}
-            </Alert>
+            <Box className="app-alert">
+              <IconAlertTriangle size={16} className="alert-icon" />
+              <Text size="sm">{extractErrorMessage(cancel.error)}</Text>
+            </Box>
           )}
           {jobList.length === 0 && !jobs.isLoading && (
-            <Box
-              style={{
-                padding: "1.5rem 1rem",
-                textAlign: "center",
-                border: "1px dashed var(--app-border-subtle)",
-                borderRadius: "var(--mantine-radius-md)",
-                background: "var(--app-surface-muted)",
-              }}
-            >
-              <Text size="sm" c="dimmed">
-                No maintenance jobs yet.
-              </Text>
-            </Box>
+            <EmptyState
+              icon={<IconClock size={20} />}
+              title="No maintenance jobs yet"
+              body="Scheduled background jobs (rename, regenerate, rebuild) and their results show up here."
+            />
           )}
           {jobList.length > 0 && (
             <Box
@@ -209,13 +196,7 @@ export function MaintenancePanel() {
                           </Stack>
                         </Table.Td>
                         <Table.Td>
-                          <Badge
-                            color={STATUS_COLOR[job.status] ?? "gray"}
-                            variant="light"
-                            size="sm"
-                          >
-                            {job.status}
-                          </Badge>
+                          <Pill tone={statusTone(job.status)}>{job.status}</Pill>
                         </Table.Td>
                         <Table.Td>
                           <Text size="xs" ff="monospace" c="dimmed" lineClamp={1}>
@@ -267,5 +248,101 @@ export function MaintenancePanel() {
         </Stack>
       </Card>
     </Stack>
+  );
+}
+
+/**
+ * Destructive op lives on its own card with a red border and a type-to-confirm
+ * field. The button doesn't accept the click until the user has typed exactly
+ * `rebuild`, so a stray cursor never wipes anyone's library.
+ */
+function RebuildLibraryCard({
+  scheduling,
+  onSchedule,
+}: {
+  scheduling: boolean;
+  onSchedule: () => void;
+}) {
+  const [armed, setArmed] = useState(false);
+  const [typed, setTyped] = useState("");
+  const matches = useMemo(() => typed.trim().toLowerCase() === REBUILD_CONFIRM_WORD, [typed]);
+
+  const reset = () => {
+    setArmed(false);
+    setTyped("");
+  };
+
+  return (
+    <Card className="maintenance-destructive">
+      <Stack gap="md">
+        <Group justify="space-between" align="flex-start" wrap="nowrap">
+          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+            <span className="app-section-kicker">destructive</span>
+            <Title order={3} style={{ color: "var(--tone-error)" }}>
+              Rebuild library
+            </Title>
+            <Text size="sm" c="dimmed">
+              Wipes every downloaded chapter, the gallery-dl archive, the raw downloads dir, and
+              everything under the postprocess root (excluded directory names are spared). Every
+              watched series is re-queued from scratch. There's no undo. Plan to be offline for
+              several hours.
+            </Text>
+          </Stack>
+          <IconAlertTriangle size={20} style={{ color: "var(--tone-error)", flexShrink: 0 }} />
+        </Group>
+        {!armed ? (
+          <Group>
+            <Button
+              variant="outline"
+              color="red"
+              leftSection={<IconAlertTriangle size={14} />}
+              onClick={() => setArmed(true)}
+              loading={scheduling}
+            >
+              Rebuild library…
+            </Button>
+          </Group>
+        ) : (
+          <Stack gap="sm">
+            <Text size="sm">
+              To confirm, type <span className="code-chip">{REBUILD_CONFIRM_WORD}</span> below. The
+              next run is scheduled immediately and cannot be reverted.
+            </Text>
+            <Group gap="sm" wrap="wrap" align="flex-end">
+              <TextInput
+                aria-label="Type rebuild to confirm"
+                placeholder={REBUILD_CONFIRM_WORD}
+                value={typed}
+                onChange={(e) => setTyped(e.currentTarget.value)}
+                style={{ flex: 1, minWidth: 200, maxWidth: 240 }}
+                styles={{ input: { fontFamily: "var(--app-mono)" } }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && matches) {
+                    onSchedule();
+                    reset();
+                  }
+                }}
+                autoFocus
+              />
+              <Button
+                color="red"
+                leftSection={<IconAlertTriangle size={14} />}
+                disabled={!matches}
+                loading={scheduling}
+                onClick={() => {
+                  onSchedule();
+                  reset();
+                }}
+              >
+                Rebuild library
+              </Button>
+              <Button variant="subtle" color="gray" onClick={reset} disabled={scheduling}>
+                Cancel
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Stack>
+    </Card>
   );
 }
