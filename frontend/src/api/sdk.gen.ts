@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, ExportLibraryData, ExportLibraryResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetTargetData, GetTargetErrors, GetTargetResponses, ImportLibraryData, ImportLibraryResponses, ListDownloadsData, ListDownloadsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
+import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, ExportLibraryData, ExportLibraryResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetTargetData, GetTargetErrors, GetTargetResponses, ImportLibraryData, ImportLibraryResponses, ListDownloadsData, ListDownloadsResponses, ListMaintenanceJobsData, ListMaintenanceJobsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, ScheduleMaintenanceJobData, ScheduleMaintenanceJobErrors, ScheduleMaintenanceJobResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -135,3 +135,20 @@ export const exportLibrary = <ThrowOnError extends boolean = false>(options?: Op
  * Import Library
  */
 export const importLibrary = <ThrowOnError extends boolean = false>(options?: Options<ImportLibraryData, ThrowOnError>) => (options?.client ?? client).post<ImportLibraryResponses, unknown, ThrowOnError>({ url: '/api/library/import', ...options });
+
+/**
+ * List Maintenance Jobs
+ */
+export const listMaintenanceJobs = <ThrowOnError extends boolean = false>(options?: Options<ListMaintenanceJobsData, ThrowOnError>) => (options?.client ?? client).get<ListMaintenanceJobsResponses, unknown, ThrowOnError>({ url: '/api/maintenance/jobs', ...options });
+
+/**
+ * Schedule Maintenance Job
+ */
+export const scheduleMaintenanceJob = <ThrowOnError extends boolean = false>(options: Options<ScheduleMaintenanceJobData, ThrowOnError>) => (options.client ?? client).post<ScheduleMaintenanceJobResponses, ScheduleMaintenanceJobErrors, ThrowOnError>({
+    url: '/api/maintenance/jobs',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
