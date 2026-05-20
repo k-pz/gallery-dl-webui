@@ -6,6 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>gallery-dl-webui</title>
     <script>
+      // Resolve the saved color scheme before React mounts so the first paint
+      // already matches the theme — no white flash on a dark "paper" body.
       (() => {
         var stored, scheme, resolved;
         try {
@@ -13,6 +15,7 @@
           scheme = stored === "light" || stored === "dark" || stored === "auto" ? stored : "auto";
           resolved = scheme !== "auto" ? scheme : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
           document.documentElement.setAttribute("data-mantine-color-scheme", resolved);
+          document.documentElement.style.backgroundColor = resolved === "dark" ? "#16130d" : "#f7f2e8";
         } catch (_e) {}
       })();
     </script>

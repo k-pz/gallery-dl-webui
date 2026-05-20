@@ -3,6 +3,7 @@ import {
   Button,
   Group,
   Loader,
+  Paper,
   Select,
   Stack,
   Text,
@@ -87,10 +88,10 @@ export function DirectoryPicker({
   };
 
   return (
-    <Stack gap={4}>
+    <Stack gap="xs">
       <Group align="flex-end" gap="xs" wrap="nowrap">
         <Select
-          style={{ flex: 1 }}
+          style={{ flex: 1, fontFamily: "var(--app-mono)" }}
           label={label}
           description={description}
           placeholder={placeholder ?? "Pick a folder"}
@@ -104,52 +105,62 @@ export function DirectoryPicker({
           comboboxProps={{ withinPortal: true }}
           rightSection={isLoading ? <Loader size="xs" /> : undefined}
         />
-        <Tooltip label="Create folder" withArrow>
+        <Tooltip label={showCreate ? "Cancel" : "Create folder"} withArrow>
           <ActionIcon
-            variant="light"
+            variant="default"
             size="lg"
             disabled={disabled || !enabled}
             onClick={() => setShowCreate((s) => !s)}
             aria-label="Create folder"
           >
-            +
+            {showCreate ? "×" : "+"}
           </ActionIcon>
         </Tooltip>
       </Group>
       {showCreate && (
-        <Group align="flex-end" gap="xs" wrap="nowrap">
-          <TextInput
-            style={{ flex: 1 }}
-            label="New folder name"
-            description="A single folder under the root — no slashes."
-            placeholder="manga"
-            value={createPath}
-            onChange={(e) => setCreatePath(e.currentTarget.value)}
-            disabled={create.isPending}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submitCreate();
-            }}
-          />
-          <Button onClick={submitCreate} loading={create.isPending}>
-            Create
-          </Button>
-          <Button
-            variant="subtle"
-            onClick={() => {
-              setShowCreate(false);
-              setCreateError(null);
-              setCreatePath("");
-            }}
-            disabled={create.isPending}
-          >
-            Cancel
-          </Button>
-        </Group>
-      )}
-      {createError && (
-        <Text size="sm" c="red">
-          {createError}
-        </Text>
+        <Paper
+          withBorder
+          p="md"
+          radius="md"
+          style={{ backgroundColor: "var(--app-surface-muted)" }}
+        >
+          <Stack gap="xs">
+            <Group align="flex-end" gap="xs" wrap="nowrap">
+              <TextInput
+                style={{ flex: 1 }}
+                label="New folder name"
+                description="A single folder under the root — no slashes."
+                placeholder="manga"
+                value={createPath}
+                onChange={(e) => setCreatePath(e.currentTarget.value)}
+                disabled={create.isPending}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") submitCreate();
+                }}
+              />
+              <Button onClick={submitCreate} loading={create.isPending}>
+                Create
+              </Button>
+              <Button
+                variant="subtle"
+                color="gray"
+                onClick={() => {
+                  setShowCreate(false);
+                  setCreateError(null);
+                  setCreatePath("");
+                }}
+                disabled={create.isPending}
+              >
+                Cancel
+              </Button>
+            </Group>
+            {createError && (
+              <Text size="sm" c="red">
+                {createError}
+              </Text>
+            )}
+          </Stack>
+        </Paper>
       )}
     </Stack>
   );

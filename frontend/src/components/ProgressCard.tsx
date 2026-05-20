@@ -33,12 +33,15 @@ export function ProgressCard({ jobId, status }: { jobId: number; status: Status 
 
   if (isLoading || !data) {
     return (
-      <Box>
-        <Text size="xs" c="dimmed" mb={4}>
-          progress
-        </Text>
-        <Loader size="sm" />
-      </Box>
+      <Stack gap="xs">
+        <span className="app-section-kicker">progress</span>
+        <Group gap="sm">
+          <Loader size="sm" />
+          <Text size="sm" c="dimmed">
+            Waiting for the manifest…
+          </Text>
+        </Group>
+      </Stack>
     );
   }
 
@@ -48,44 +51,61 @@ export function ProgressCard({ jobId, status }: { jobId: number; status: Status 
   const manifestReady = totalChapters > 0;
 
   return (
-    <Box>
-      <Group justify="space-between" mb={4}>
-        <Text size="xs" c="dimmed">
-          progress
-        </Text>
-        <Text size="xs" c="dimmed">
+    <Stack gap="sm">
+      <Group justify="space-between" align="baseline">
+        <span className="app-section-kicker">progress</span>
+        <Text size="sm" c="dimmed" ff="monospace">
           {manifestReady ? `${settledChapters} / ${totalChapters} chapters` : "preparing…"}
         </Text>
       </Group>
-      <Progress value={pct} size="md" striped={!terminal} animated={!terminal} />
+      <Progress value={pct} size="md" radius="sm" striped={!terminal} animated={!terminal} />
       {manifestReady && (
-        <ScrollArea h={220} mt="sm" type="auto">
-          <Stack gap={4}>
-            {data.chapters.map((ch) => {
-              const stage = chapterStage(ch);
-              const label = ch.name || "(root)";
-              return (
-                <Group key={label} justify="space-between" gap="xs" wrap="nowrap">
-                  <Text
-                    size="sm"
+        <Box
+          style={{
+            border: "1px solid var(--app-border-subtle)",
+            borderRadius: "var(--mantine-radius-md)",
+            background: "var(--app-surface-muted)",
+          }}
+        >
+          <ScrollArea h={220} type="auto">
+            <Stack gap={0} p="xs">
+              {data.chapters.map((ch, i) => {
+                const stage = chapterStage(ch);
+                const label = ch.name || "(root)";
+                return (
+                  <Group
+                    key={label}
+                    justify="space-between"
+                    gap="xs"
+                    wrap="nowrap"
+                    py={6}
+                    px="xs"
                     style={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      borderTop: i > 0 ? "1px solid var(--app-border-subtle)" : undefined,
                     }}
-                    title={label}
                   >
-                    {label}
-                  </Text>
-                  <Badge size="sm" color={STAGE_COLOR[stage]} variant="light">
-                    {chapterStageLabel(stage)}
-                  </Badge>
-                </Group>
-              );
-            })}
-          </Stack>
-        </ScrollArea>
+                    <Text
+                      size="sm"
+                      ff="monospace"
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={label}
+                    >
+                      {label}
+                    </Text>
+                    <Badge size="sm" color={STAGE_COLOR[stage]} variant="light">
+                      {chapterStageLabel(stage)}
+                    </Badge>
+                  </Group>
+                );
+              })}
+            </Stack>
+          </ScrollArea>
+        </Box>
       )}
-    </Box>
+    </Stack>
   );
 }
