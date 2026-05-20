@@ -3,18 +3,21 @@ import { useQuery } from "@tanstack/react-query";
 import { getDownloadProgressOptions } from "../api/@tanstack/react-query.gen";
 import type { ChapterProgress } from "../api/types.gen";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
-import { isTerminal, type Status } from "../lib/status";
+import { chapterStageLabel, isTerminal, type Status } from "../lib/status";
 
-type ChapterStage = "downloading" | "processing" | "completed";
+type ChapterStage = "downloading" | "downloaded" | "processing" | "completed";
 
 const STAGE_COLOR: Record<ChapterStage, string> = {
   downloading: "blue",
+  downloaded: "cyan",
   processing: "yellow",
   completed: "green",
 };
 
 function chapterStage(ch: ChapterProgress): ChapterStage {
-  if (ch.stage === "completed" || ch.stage === "processing") return ch.stage;
+  if (ch.stage === "downloaded" || ch.stage === "completed" || ch.stage === "processing") {
+    return ch.stage;
+  }
   return "downloading";
 }
 
@@ -75,7 +78,7 @@ export function ProgressCard({ jobId, status }: { jobId: number; status: Status 
                     {label}
                   </Text>
                   <Badge size="sm" color={STAGE_COLOR[stage]} variant="light">
-                    {stage}
+                    {chapterStageLabel(stage)}
                   </Badge>
                 </Group>
               );
