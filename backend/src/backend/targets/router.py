@@ -7,10 +7,11 @@ from fastapi import APIRouter, HTTPException
 from backend.app_config import service as app_config_service
 from backend.app_config.constants import READING_DIRECTIONS
 from backend.app_config.exceptions import PostprocessRootNotConfigured
-from backend.dependencies import DbDep
+from backend.dependencies import DbDep, EventBusDep
 from backend.downloads import service as downloads_service
 from backend.downloads.dependencies import WorkerDep
 from backend.downloads.postprocess import normalize_tags
+from backend.events import downloads_event, targets_event
 from backend.output_dirs.utils import coerce_optional, validate_under_root
 from backend.targets import service
 from backend.targets.dependencies import PollerDep, TargetDep
@@ -46,6 +47,7 @@ async def update_target(
     target: TargetDep,
     db: DbDep,
     poller: PollerDep,
+    bus: EventBusDep,
 ) -> TargetOut:
     new_watched = target.watched if body.watched is None else body.watched
     new_period: str | None | Unset = UNSET
@@ -110,18 +112,23 @@ async def update_target(
     summary = await service.get_summary(db, target.id)
     if summary is None:
         raise TargetNotFound()
+    bus.publish(targets_event("updated", id=target.id))
     return TargetOut.from_summary(summary)
 
 
 @router.post("/targets/{target_id}/poll", operation_id="pollTarget")
-async def poll_target(target: TargetDep, db: DbDep, worker: WorkerDep) -> TargetOut:
+async def poll_target(
+    target: TargetDep, db: DbDep, worker: WorkerDep, bus: EventBusDep
+) -> TargetOut:
     if await downloads_service.has_active_for_target(db, target.id):
         raise TargetHasActiveDownload()
-    await downloads_service.insert_pending(
+    download = await downloads_service.insert_pending(
         db, target.url, target.extractor, output_dir=target.output_dir, target_id=target.id
     )
     await service.mark_polled(db, target.id)
     worker.notify()
+    bus.publish(downloads_event("created", id=download.id))
+    bus.publish(targets_event("updated", id=target.id))
     summary = await service.get_summary(db, target.id)
     if summary is None:
         raise TargetNotFound()
@@ -129,8 +136,9 @@ async def poll_target(target: TargetDep, db: DbDep, worker: WorkerDep) -> Target
 
 
 @router.delete("/targets/{target_id}", operation_id="deleteTarget")
-async def delete_target(target: TargetDep, db: DbDep) -> dict[str, bool]:
+async def delete_target(target: TargetDep, db: DbDep, bus: EventBusDep) -> dict[str, bool]:
     if await downloads_service.has_active_for_target(db, target.id):
         raise TargetHasActiveDownloadOnDelete()
     await service.delete(db, target.id)
+    bus.publish(targets_event("deleted", id=target.id))
     return {"deleted": True}

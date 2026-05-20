@@ -13,6 +13,7 @@ import aiosqlite
 from fastapi import Depends, Request
 
 from backend.config import Settings
+from backend.events import EventBus
 
 
 def get_settings(request: Request) -> Settings:
@@ -23,5 +24,10 @@ def get_db(request: Request) -> aiosqlite.Connection:
     return request.app.state.db
 
 
+def get_event_bus(request: Request) -> EventBus:
+    return request.app.state.event_bus
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 DbDep = Annotated[aiosqlite.Connection, Depends(get_db)]
+EventBusDep = Annotated[EventBus, Depends(get_event_bus)]

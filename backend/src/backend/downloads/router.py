@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from backend.app_config import service as app_config_service
 from backend.app_config.constants import READING_DIRECTIONS
 from backend.app_config.exceptions import PostprocessRootNotConfigured
-from backend.dependencies import DbDep, SettingsDep
+from backend.dependencies import DbDep, EventBusDep, SettingsDep
 from backend.downloads import service
 from backend.downloads.constants import TERMINAL_STATUSES
 from backend.downloads.dependencies import (
@@ -27,6 +27,7 @@ from backend.downloads.schemas import (
     DownloadOut,
     ProgressOut,
 )
+from backend.events import Event, downloads_event
 from backend.output_dirs.utils import coerce_optional, validate_under_root
 from backend.targets import service as targets_service
 
@@ -54,6 +55,7 @@ async def create_download(
     db: DbDep,
     worker: WorkerDep,
     gallery: GalleryDep,
+    bus: EventBusDep,
 ) -> DownloadOut:
     url = body.url.strip()
     if not url:
@@ -107,6 +109,8 @@ async def create_download(
         db, url, category, output_dir=output_dir_str, target_id=target.id
     )
     worker.notify()
+    bus.publish(downloads_event("created", id=download.id))
+    bus.publish(Event(topic="targets", type="updated", data={"id": target.id}))
     return DownloadOut.from_download(download, name=target.name)
 
 
@@ -124,23 +128,29 @@ async def get_download(download: DownloadDep, db: DbDep) -> DownloadOut:
 
 
 @router.post("/downloads/{download_id}/cancel", operation_id="cancelDownload")
-async def cancel_download(download: DownloadDep, db: DbDep, worker: WorkerDep) -> DownloadOut:
+async def cancel_download(
+    download: DownloadDep, db: DbDep, worker: WorkerDep, bus: EventBusDep
+) -> DownloadOut:
     if download.status in TERMINAL_STATUSES:
         raise DownloadAlreadyTerminal(download.status)
     # Best-effort: tell the worker so an in-flight job unwinds on its next
     # file callback. Independently flip a still-pending row directly.
     worker.request_cancel(download.id)
     await service.cancel_pending(db, download.id)
+    bus.publish(downloads_event("updated", id=download.id))
     return await _refresh_view(db, download.id)
 
 
 @router.post("/downloads/{download_id}/requeue", operation_id="requeueDownload")
-async def requeue_download(download: DownloadDep, db: DbDep, worker: WorkerDep) -> DownloadOut:
+async def requeue_download(
+    download: DownloadDep, db: DbDep, worker: WorkerDep, bus: EventBusDep
+) -> DownloadOut:
     if download.status not in TERMINAL_STATUSES:
         raise DownloadNotTerminal(download.status)
     if not await service.reset_to_pending(db, download.id):
         raise HTTPException(status_code=409, detail="download is no longer terminal")
     worker.notify()
+    bus.publish(downloads_event("updated", id=download.id, status="pending"))
     return await _refresh_view(db, download.id)
 
 

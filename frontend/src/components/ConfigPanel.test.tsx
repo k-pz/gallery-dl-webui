@@ -21,6 +21,8 @@ type ConfigShape = {
   default_watch_period: string;
   chapter_naming_template: string;
   default_reading_direction: string;
+  max_concurrent_downloads: number;
+  max_parallel_postprocess: number;
 };
 
 const emptyConfig: ConfigShape = {
@@ -32,6 +34,8 @@ const emptyConfig: ConfigShape = {
   default_watch_period: "1d",
   chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
   default_reading_direction: "ltr",
+  max_concurrent_downloads: 2,
+  max_parallel_postprocess: 3,
 };
 
 function configHandler(state: { current: ConfigShape }) {
@@ -129,6 +133,8 @@ describe("ConfigPanel", () => {
       chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
       default_reading_direction: "ltr",
       postprocess_excluded_dir_names: [],
+      max_concurrent_downloads: 2,
+      max_parallel_postprocess: 3,
     });
     await screen.findByText(/saved/i);
   });
@@ -208,6 +214,8 @@ describe("ConfigPanel", () => {
         default_watch_period: "1d",
         chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
         default_reading_direction: "ltr",
+        max_concurrent_downloads: 2,
+        max_parallel_postprocess: 3,
       },
     };
     const fetchSpy = mockFetch(configHandler(state));
@@ -235,6 +243,8 @@ describe("ConfigPanel", () => {
       chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
       default_reading_direction: "ltr",
       postprocess_excluded_dir_names: [],
+      max_concurrent_downloads: 2,
+      max_parallel_postprocess: 3,
     });
   });
 });

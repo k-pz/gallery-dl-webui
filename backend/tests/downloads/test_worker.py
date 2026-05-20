@@ -133,9 +133,10 @@ async def test_worker_cancel_after_extract_skips_download(
 
     def extract_and_request_cancel(url: str, skip_chapter: SkipChapterFn | None = None) -> Manifest:
         result = real_extract(url, skip_chapter)
-        # The worker sets _current_id before starting extract, so this is safe.
-        if worker._current_id is not None:
-            worker.request_cancel(worker._current_id)
+        # The slot puts the job id into `_cancel_flags` before starting extract,
+        # so iterating that dict yields the currently-claimed job.
+        for active_id in list(worker._cancel_flags.keys()):
+            worker.request_cancel(active_id)
         return result
 
     gallery.extract_manifest = extract_and_request_cancel  # type: ignore[method-assign]

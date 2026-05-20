@@ -73,7 +73,8 @@ selected (via `openJob` callback).
 | File                  | Exports                                                                                                                                   |
 |-----------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | `status.ts`           | `Status`, `statusColor`, `isTerminal`, `isActive`, `isCancellable`, the `JOB_STEPS` constant, `jobStep(...)`. Owns the UI-only `CANCELLING_LABEL` (`"cancelling"`) which is *not* a backend status. |
-| `polling.ts`          | `REFETCH_ACTIVE_MS = 1000`, `REFETCH_LIST_MS = 2000`.                                                                                     |
+| `polling.ts`          | `REFETCH_ACTIVE_MS = 5000`, `REFETCH_LIST_MS = 10000`. Fallbacks only — the websocket event stream is what keeps the cache fresh. |
+| `eventStream.ts`      | `useEventStream()` — opens `/api/ws` for the app lifetime and pushes server events into the TanStack Query cache (invalidates the matching `queryKey` per topic). Reconnects with exponential backoff; re-syncs every cached list on reconnect. |
 | `invalidate.ts`       | `useDataInvalidators()` hook returning `{ downloads, targets, config, outputDirs, download(id) }` — named invalidators reused everywhere. |
 | `apiError.ts`         | `extractErrorMessage(err)` — peeks at FastAPI's `detail` shape before falling back to `Error.message`.                                    |
 | `optimisticCancel.ts` | `useOptimisticCancel(id, status)` (single job) + `useOptimisticCancelMany(items)` (list). Shows "Cancelling…" between the user clicking Cancel and the server reflecting it. Auto-clears on terminal. |
@@ -86,10 +87,15 @@ selected (via `openJob` callback).
 There's effectively no global client state. All data is owned by TanStack
 Query:
 
-- Lists poll on a fixed interval (2 s) and aren't paginated.
-- The active-job view polls on a faster interval (1 s) and self-disables
-  once the job is terminal (via `refetchInterval: (q) => isTerminal(...) ?
-  false : ...`).
+- **Realtime stream**: `useEventStream()` runs once at app mount, opens a
+  websocket to `/api/ws`, and on every server-published event invalidates the
+  matching `queryKey`. This is the primary mechanism that keeps the UI in
+  sync; users see status changes essentially instantly.
+- **Polling fallback**: lists still set a long `refetchInterval`
+  (`REFETCH_LIST_MS = 10 s`) and the active-job view a shorter one
+  (`REFETCH_ACTIVE_MS = 5 s`). These only matter when the websocket has been
+  disconnected (proxy timeout, suspended laptop); on reconnect the event
+  stream catches the cache up.
 - Mutations call `useDataInvalidators` after success — there's no manual
   `setQueryData` write-through.
 - Two pieces of genuinely-UI state escape this rule: the optimistic-cancel

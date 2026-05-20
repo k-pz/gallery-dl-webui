@@ -27,19 +27,21 @@ One uvicorn process hosts the FastAPI app. Inside that process:
 ```
 ┌──────────────────────────────── uvicorn / asyncio loop ───────────────────────────────┐
 │                                                                                       │
-│   FastAPI routers ──┐                                                                 │
-│   (request handlers)│                                                                 │
-│                     ▼                                                                 │
-│              ┌──────────────┐    asyncio.Event (wakeup) ┌────────────────┐            │
-│              │  Worker task │ ◄──────────────────────── │  HTTP handlers │            │
-│              │ (downloads)  │ ────────────────────────► │ (notify/cancel)│            │
-│              └──────┬───────┘    request_cancel(id)     └────────────────┘            │
-│                     │                                                                 │
+│   FastAPI routers ──┐         WebSocket /api/ws ──── browser cache invalidation      │
+│   (request handlers)│         ▲                                                       │
+│                     ▼         │                                                       │
+│              ┌──────────────┐ │   asyncio.Event (wakeup) ┌────────────────┐           │
+│              │ Worker slots │ │ ◄──────────────────────── │  HTTP handlers │           │
+│              │ (downloads)  │ │ ────────────────────────► │ (notify/cancel)│           │
+│              └──────┬───────┘ │   request_cancel(id)     └────────────────┘           │
+│                     │         │                                                       │
+│           publishes to ──► EventBus ──► every websocket subscriber                    │
+│                     │         ▲                                                       │
 │       asyncio.to_thread( gallery-dl Sim / Download Job )                              │
 │                     │                                                                 │
 │              ┌──────▼─────────┐                                                       │
 │              │ aiosqlite conn │  ◄── shared single connection (jobs.db)               │
-│              └────────────────┘                                                       │
+│              └────────────────┘     guarded by app.state.db_lock                      │
 │                                                                                       │
 │              ┌──────────────┐ TICK_SECONDS=30  + .notify() on watch-flag-on           │
 │              │  Poller task │                                                         │
@@ -55,19 +57,35 @@ One uvicorn process hosts the FastAPI app. Inside that process:
 
 Key properties:
 
-- **Single worker**: there is exactly one Worker coroutine; it processes one
-  download at a time, in FIFO order over `downloads.id`. Concurrency comes
-  later, if ever — for now the simplicity (no per-job sandbox, no rate-limit
-  juggling) is the feature.
+- **Worker pool**: `Worker` runs N slots (configurable via
+  `max_concurrent_downloads`, default 2) each draining the FIFO over
+  `downloads.id`. `claim_next_pending` is a guarded UPDATE so two slots can
+  never claim the same row. Per-job cancel flags live in a dict keyed by
+  download id.
+- **Parallel postprocess**: each job's CBZ packing runs through an
+  `asyncio.Semaphore` (`max_parallel_postprocess`, default 3) — chapter
+  target paths are reserved sequentially before the parallel pack so stems
+  don't collide.
 - **No background process / Celery / Redis** — the asyncio event loop is the
   only scheduler.
+- **One aiosqlite connection**: every domain shares `app.state.db`. A
+  process-wide `db_lock` serialises multi-statement transactions across the
+  download slots, the poller, and the maintenance worker so concurrent
+  cursors never block another coroutine's `commit()`.
 - **No HTTP-server lifecycle for state**: app state lives on `app.state`
-  (`db`, `settings`, `gallery`, `worker`, `poller`, `live_progress`), populated
-  by the FastAPI `lifespan` context manager and torn down on shutdown.
+  (`db`, `settings`, `gallery`, `worker`, `poller`, `live_progress`,
+  `event_bus`, `db_lock`), populated by the FastAPI `lifespan` context
+  manager and torn down on shutdown.
 - **gallery-dl runs on a worker thread** via `asyncio.to_thread(...)`.
   Cancellation is cooperative: a bool flag the worker reads inside its
   per-file callback raises `gallery_dl.exception.StopExtraction`, which the
   gallery-dl dispatcher catches and unwinds cleanly.
+- **Realtime UI**: state changes publish to an in-process `EventBus`
+  (`backend/events.py`). A websocket endpoint `/api/ws` fan-outs to every
+  connected browser; the React app pushes incoming events into the TanStack
+  Query cache so lists refresh without polling. The existing
+  `refetchInterval`s remain as a generous fallback when the socket is
+  disconnected.
 
 ### Deployment topology
 
@@ -117,7 +135,9 @@ gallery-dl-webui/
 │   │   ├── __main__.py        ← `python -m backend` entrypoint (uvicorn)
 │   │   ├── config.py          ← Settings (data_dir, host, port from env)
 │   │   ├── database.py        ← aiosqlite lifecycle + schema + migrations
-│   │   ├── dependencies.py    ← cross-domain FastAPI deps (db, settings)
+│   │   ├── dependencies.py    ← cross-domain FastAPI deps (db, settings, event_bus)
+│   │   ├── events.py          ← in-process pub/sub (EventBus + helpers)
+│   │   ├── realtime/          ← websocket router that fan-outs EventBus to clients
 │   │   ├── exceptions.py      ← shared HTTPException subclasses
 │   │   │
 │   │   ├── downloads/         ← submit / list / cancel / requeue / progress

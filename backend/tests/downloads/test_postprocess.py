@@ -154,6 +154,56 @@ async def test_run_collision_appends_suffix(tmp_path: Path) -> None:
     assert (series_dir / "S - c001.cbz").read_bytes() == b"existing"
 
 
+async def test_run_parallel_packing_reserves_distinct_targets(tmp_path: Path) -> None:
+    """With max_parallel > 1, two chapters that resolve to the same stem still
+    end up at distinct paths via the `(1)` suffix — the in-run reservation set
+    plays the same role disk-existence checks do in the sequential path.
+    """
+    downloads_dir = tmp_path / "downloads"
+    output_dir = tmp_path / "out"
+    # Two records that intentionally collide on stem (`S - c001`) — only way
+    # to get there is records under different parent dirs sharing manga+chapter.
+    ch_a = downloads_dir / "fake" / "S" / "c1"
+    ch_b = downloads_dir / "fake" / "S" / "c1_alt"
+    ch_a.mkdir(parents=True)
+    ch_b.mkdir(parents=True)
+    (ch_a / "001.jpg").write_bytes(b"\x89PNG\r\n\x1a\n")
+    (ch_b / "001.jpg").write_bytes(b"\x89PNG\r\n\x1a\n")
+    records = [
+        FileRecord("fake", "S", "1", "", "", "", "", "", ch_a / "001.jpg"),
+        FileRecord("fake", "S", "1", "", "", "", "", "", ch_b / "001.jpg"),
+    ]
+
+    result = await run(records, output_dir, downloads_dir, delete_raw=False, max_parallel=4)
+
+    assert result.succeeded == 2, result
+    assert result.failed == 0, result.error_summary
+    assert (output_dir / "S" / "S - c001.cbz").is_file()
+    assert (output_dir / "S" / "S - c001 (1).cbz").is_file()
+
+
+async def test_run_invokes_on_chapter_done_for_every_chapter(tmp_path: Path) -> None:
+    downloads_dir = tmp_path / "downloads"
+    output_dir = tmp_path / "out"
+    records = [
+        _make_record(downloads_dir, "S", "1", "001.jpg"),
+        _make_record(downloads_dir, "S", "2", "001.jpg"),
+        _make_record(downloads_dir, "S", "3", "001.jpg"),
+    ]
+    seen: list[tuple[str, bool]] = []
+
+    await run(
+        records,
+        output_dir,
+        downloads_dir,
+        delete_raw=False,
+        max_parallel=2,
+        on_chapter_done=lambda chapter, ok: seen.append((chapter, ok)),
+    )
+
+    assert sorted(seen) == [("1", True), ("2", True), ("3", True)]
+
+
 async def test_run_applies_custom_naming_template(tmp_path: Path) -> None:
     downloads_dir = tmp_path / "downloads"
     output_dir = tmp_path / "out"

@@ -4,7 +4,8 @@ import json
 
 from fastapi import APIRouter, HTTPException, Request
 
-from backend.dependencies import DbDep
+from backend.dependencies import DbDep, EventBusDep
+from backend.events import maintenance_event
 from backend.maintenance import service
 from backend.maintenance.schemas import (
     MaintenanceJobOut,
@@ -49,11 +50,13 @@ async def schedule_maintenance_job(
     body: MaintenanceScheduleIn,
     db: DbDep,
     request: Request,
+    bus: EventBusDep,
 ) -> MaintenanceJobOut:
     if body.kind not in SUPPORTED_KINDS:
         raise HTTPException(status_code=400, detail=f"unsupported maintenance kind: {body.kind}")
     created = await service.create_pending(db, body.kind)
     request.app.state.maintenance_worker.notify()
+    bus.publish(maintenance_event("created", id=created.id))
     return _to_out(created)
 
 
@@ -62,6 +65,7 @@ async def cancel_maintenance_job(
     job_id: int,
     db: DbDep,
     request: Request,
+    bus: EventBusDep,
 ) -> MaintenanceJobOut:
     job = await service.get_job(db, job_id)
     if job is None:
@@ -77,6 +81,7 @@ async def cancel_maintenance_job(
     refreshed = await service.get_job(db, job_id)
     if refreshed is None:
         raise HTTPException(status_code=404, detail="maintenance job not found")
+    bus.publish(maintenance_event("updated", id=job_id))
     return _to_out(refreshed)
 
 
