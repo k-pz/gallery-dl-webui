@@ -220,7 +220,5 @@ def test_patch_target_rejects_invalid_reading_direction(
     gallery_config.manifest_for["https://example/x"] = []
     client.post("/api/downloads", json={"url": "https://example/x"})
     target_id = client.get("/api/targets").json()[0]["id"]
-    resp = client.patch(
-        f"/api/targets/{target_id}", json={"reading_direction": "horizontal"}
-    )
+    resp = client.patch(f"/api/targets/{target_id}", json={"reading_direction": "horizontal"})
     assert resp.status_code == 400

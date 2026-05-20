@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelDownload, createDownload, createOutputDir, deleteTarget, exportLibrary, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, putConfig, requeueDownload, scheduleMaintenanceJob, updateTarget } from '../sdk.gen';
-import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, ExportLibraryData, ExportLibraryResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetError, GetTargetResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
+import { cancelDownload, cancelMaintenanceJob, createDownload, createOutputDir, deleteTarget, exportLibrary, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, putConfig, requeueDownload, scheduleMaintenanceJob, updateTarget } from '../sdk.gen';
+import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CancelMaintenanceJobData, CancelMaintenanceJobError, CancelMaintenanceJobResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, ExportLibraryData, ExportLibraryResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetError, GetTargetResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -379,6 +379,23 @@ export const scheduleMaintenanceJobMutation = (options?: Partial<Options<Schedul
     const mutationOptions: UseMutationOptions<ScheduleMaintenanceJobResponse, ScheduleMaintenanceJobError, Options<ScheduleMaintenanceJobData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await scheduleMaintenanceJob({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Cancel Maintenance Job
+ */
+export const cancelMaintenanceJobMutation = (options?: Partial<Options<CancelMaintenanceJobData>>): UseMutationOptions<CancelMaintenanceJobResponse, CancelMaintenanceJobError, Options<CancelMaintenanceJobData>> => {
+    const mutationOptions: UseMutationOptions<CancelMaintenanceJobResponse, CancelMaintenanceJobError, Options<CancelMaintenanceJobData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await cancelMaintenanceJob({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

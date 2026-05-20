@@ -469,9 +469,7 @@ def test_build_comicinfo_webtoon_adds_format_hint() -> None:
 
 
 def test_build_comicinfo_emits_description_as_summary() -> None:
-    rec = FileRecord(
-        "c", "S", "1", "", "", "", "", "", Path("/x/a.jpg"), description="About"
-    )
+    rec = FileRecord("c", "S", "1", "", "", "", "", "", Path("/x/a.jpg"), description="About")
     ch = collect_chapters([rec])[0]
     xml_bytes = build_comicinfo_xml(ch)
     root = ET.fromstring(xml_bytes)
@@ -493,8 +491,16 @@ def test_build_series_json_omits_blank_fields() -> None:
 
 def test_derive_series_metadata_prefers_overrides() -> None:
     rec = FileRecord(
-        "c", "S", "1", "", "", "en", "Writer", "2024-03-01",
-        Path("/x/a.jpg"), description="auto",
+        "c",
+        "S",
+        "1",
+        "",
+        "",
+        "en",
+        "Writer",
+        "2024-03-01",
+        Path("/x/a.jpg"),
+        description="auto",
     )
     chapters = collect_chapters([rec])
     overrides = SeriesMetadata(

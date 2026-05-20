@@ -148,9 +148,7 @@ def test_schedule_regenerate_series_metadata_job(client: TestClient, tmp_path: P
     )
     assert cfg_resp.status_code == 200, cfg_resp.json()
 
-    created = client.post(
-        "/api/maintenance/jobs", json={"kind": "regenerate_series_metadata"}
-    )
+    created = client.post("/api/maintenance/jobs", json={"kind": "regenerate_series_metadata"})
     assert created.status_code == 200, created.json()
     job_id = created.json()["id"]
 
@@ -165,3 +163,53 @@ def test_schedule_regenerate_series_metadata_job(client: TestClient, tmp_path: P
 def test_unsupported_maintenance_kind_is_rejected(client: TestClient) -> None:
     resp = client.post("/api/maintenance/jobs", json={"kind": "nonexistent"})
     assert resp.status_code == 400
+
+
+def test_cancel_pending_maintenance_job(client: TestClient, tmp_path: Path) -> None:
+    """Flipping a still-pending row to cancelled before the worker claims it.
+
+    The worker has nothing to schedule (no root configured), so the job stays
+    pending long enough to be cancelled directly.
+    """
+    created = client.post("/api/maintenance/jobs", json={"kind": "rename_chapters"})
+    assert created.status_code == 200, created.json()
+    job_id = created.json()["id"]
+
+    resp = client.post(f"/api/maintenance/jobs/{job_id}/cancel")
+    # Race: the worker may have already claimed the job and failed it
+    # (postprocess_root unset). Either outcome is acceptable from the cancel
+    # endpoint as long as the terminal status sticks.
+    assert resp.status_code in (200, 409), resp.json()
+    final = next(j for j in client.get("/api/maintenance/jobs").json() if j["id"] == job_id)
+    assert final["status"] in ("cancelled", "failed")
+
+
+def test_cancel_terminal_job_is_rejected(client: TestClient, tmp_path: Path) -> None:
+    root = tmp_path / "media"
+    series_dir = root / "Series"
+    _write_cbz(series_dir / "Series - c001.cbz", "Series", "1")
+
+    cfg_resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "default_watch_period": "1d",
+            "chapter_naming_template": "{{ series }}_{{ chapter_number }}",
+        },
+    )
+    assert cfg_resp.status_code == 200, cfg_resp.json()
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "rename_chapters"})
+    job_id = created.json()["id"]
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "completed"
+
+    resp = client.post(f"/api/maintenance/jobs/{job_id}/cancel")
+    assert resp.status_code == 409
+
+
+def test_cancel_missing_job_is_404(client: TestClient) -> None:
+    resp = client.post("/api/maintenance/jobs/9999/cancel")
+    assert resp.status_code == 404

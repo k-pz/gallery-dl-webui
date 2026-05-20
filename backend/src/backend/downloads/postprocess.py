@@ -169,11 +169,7 @@ def strip_enclosing_brackets(value: str) -> str:
     cleaned = value.strip()
     while True:
         for open_c, close_c in _ENCLOSING_PAIRS:
-            if (
-                len(cleaned) >= 2
-                and cleaned.startswith(open_c)
-                and cleaned.endswith(close_c)
-            ):
+            if len(cleaned) >= 2 and cleaned.startswith(open_c) and cleaned.endswith(close_c):
                 cleaned = cleaned[len(open_c) : -len(close_c)].strip()
                 break
         else:
@@ -703,9 +699,7 @@ async def run(
             continue
         try:
             target = cbz_target_path(output_dir, ch, naming_template=naming_template)
-            await _pack_chapter(
-                ch, target, downloads_dir, delete_raw, reading_direction, tags
-            )
+            await _pack_chapter(ch, target, downloads_dir, delete_raw, reading_direction, tags)
             chapters_by_series.setdefault(target.parent, []).append(ch)
             succeeded += 1
         except Exception as exc:
@@ -739,6 +733,18 @@ async def run(
             error_summary=summary,
         )
     return PostResult(total=total, succeeded=succeeded, failed=0)
+
+
+class MaintenanceCancelled(Exception):
+    """Raised by a maintenance routine when its cancel-check fires.
+
+    Carries the partial progress accumulated up to the cancel point so the
+    caller can persist what actually happened before unwinding.
+    """
+
+    def __init__(self, partial: dict[str, int]) -> None:
+        super().__init__("maintenance cancelled")
+        self.partial = partial
 
 
 @dataclass
@@ -775,17 +781,40 @@ class RenameProgressSink(Protocol):
     def step(self, line: str) -> None: ...
 
 
+def _iter_filtered_cbzs(output_root: Path, exclude_dirs: list[str] | None) -> list[Path]:
+    """List CBZs under output_root, skipping any whose path contains a name from
+    `exclude_dirs` (case-insensitive). The match is on directory *names* in the
+    path — for example, `["#recycle"]` filters out everything under any
+    `#recycle/` ancestor anywhere in the tree.
+    """
+    excluded_lower = {name.lower() for name in (exclude_dirs or []) if name}
+    if not excluded_lower:
+        return sorted(output_root.rglob("*.cbz"))
+    out: list[Path] = []
+    for cbz in output_root.rglob("*.cbz"):
+        if any(part.lower() in excluded_lower for part in cbz.parts):
+            continue
+        out.append(cbz)
+    return sorted(out)
+
+
 def rename_packed_chapters(
     output_root: Path,
     naming_template: str,
     progress: RenameProgressSink | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+    exclude_dirs: list[str] | None = None,
 ) -> RenamePackedResult:
-    cbz_paths = sorted(output_root.rglob("*.cbz"))
+    cbz_paths = _iter_filtered_cbzs(output_root, exclude_dirs)
     if progress is not None:
         progress.total(len(cbz_paths))
     total = 0
     renamed = 0
     for cbz in cbz_paths:
+        if should_cancel is not None and should_cancel():
+            raise MaintenanceCancelled(
+                {"total": total, "renamed": renamed, "skipped": total - renamed}
+            )
         total += 1
         try:
             with zipfile.ZipFile(cbz) as zf:
@@ -883,9 +912,10 @@ def _rewrite_cbz_metadata(
     part = cbz.with_suffix(cbz.suffix + ".part")
     if part.exists():
         part.unlink()
-    with zipfile.ZipFile(cbz) as src, zipfile.ZipFile(
-        part, "w", zipfile.ZIP_DEFLATED, compresslevel=6
-    ) as dst:
+    with (
+        zipfile.ZipFile(cbz) as src,
+        zipfile.ZipFile(part, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as dst,
+    ):
         dst.writestr("ComicInfo.xml", new_xml)
         for name in src.namelist():
             if name == "ComicInfo.xml":
@@ -905,6 +935,8 @@ def regenerate_series_metadata(
     output_root: Path,
     overrides_for: SeriesOverrideLookup | None = None,
     progress: RegenProgressSink | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+    exclude_dirs: list[str] | None = None,
 ) -> RegenMetadataResult:
     """Walk `output_root`, rewrite ComicInfo.xml + series.json for every series.
 
@@ -914,7 +946,7 @@ def regenerate_series_metadata(
     supplies user-set tags / reading direction / description on a per-series
     basis — the maintenance worker plumbs this in from the targets table.
     """
-    cbz_paths = sorted(output_root.rglob("*.cbz"))
+    cbz_paths = _iter_filtered_cbzs(output_root, exclude_dirs)
     if progress is not None:
         progress.total(len(cbz_paths))
     archives_updated = 0
@@ -924,6 +956,16 @@ def regenerate_series_metadata(
     series_to_overrides: dict[Path, SeriesMetadata | None] = {}
 
     for cbz in cbz_paths:
+        if should_cancel is not None and should_cancel():
+            raise MaintenanceCancelled(
+                {
+                    "series": len(series_to_chapters),
+                    "archives_updated": archives_updated,
+                    "series_json_written": 0,
+                    "skipped": skipped,
+                    "failed": failed,
+                }
+            )
         # First read to learn the series name so the override lookup is keyed
         # by what the archive actually claims, not by its parent dir. Missing
         # or unreadable ComicInfo.xml is reported as a skip; other I/O errors
@@ -965,6 +1007,16 @@ def regenerate_series_metadata(
 
     series_json_written = 0
     for series_dir, chapters in series_to_chapters.items():
+        if should_cancel is not None and should_cancel():
+            raise MaintenanceCancelled(
+                {
+                    "series": len(series_to_chapters),
+                    "archives_updated": archives_updated,
+                    "series_json_written": series_json_written,
+                    "skipped": skipped,
+                    "failed": failed,
+                }
+            )
         overrides = series_to_overrides.get(series_dir)
         try:
             meta = derive_series_metadata(chapters, overrides)
