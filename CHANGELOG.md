@@ -1,3 +1,9 @@
+## v1.1.2 (2026-05-21)
+
+### Refactor
+
+- **maintenance**: write series.json before chapter rewrites in regen
+
 ## v1.1.1 (2026-05-21)
 
 ### Perf
