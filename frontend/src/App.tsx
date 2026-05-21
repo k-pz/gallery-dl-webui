@@ -6,6 +6,7 @@ import { ActiveJobCard } from "./components/ActiveJobCard";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { CountBadge } from "./components/CountBadge";
 import { HealthBadge } from "./components/HealthBadge";
+import { LogsPanel } from "./components/LogsPanel";
 import { MaintenancePanel } from "./components/MaintenancePanel";
 import { MobileBottomNav } from "./components/MobileBottomNav";
 import { RecentList } from "./components/RecentList";
@@ -71,6 +72,7 @@ export default function App() {
               </Tabs.Tab>
               <Tabs.Tab value="config">Config</Tabs.Tab>
               <Tabs.Tab value="maintenance">Maintenance</Tabs.Tab>
+              <Tabs.Tab value="logs">Logs</Tabs.Tab>
             </Tabs.List>
             <Tabs.Panel value="library" pt="xl">
               <Stack gap="lg">
@@ -90,6 +92,11 @@ export default function App() {
             </Tabs.Panel>
             <Tabs.Panel value="maintenance" pt="xl">
               <MaintenancePanel />
+            </Tabs.Panel>
+            <Tabs.Panel value="logs" pt="xl">
+              {/* Only mount when active so the SSE stream is opened on demand
+                  and torn down when the user navigates away. */}
+              {tab === "logs" ? <LogsPanel /> : null}
             </Tabs.Panel>
           </Tabs>
           <div className="app-footnote">gallery-dl · webui</div>

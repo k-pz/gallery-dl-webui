@@ -261,6 +261,13 @@ in_ct_sh "id -u '$APP_USER' >/dev/null 2>&1 || \
 in_ct_sh "mkdir -p '$APP_DIR' '$DATA_DIR/downloads' && \
     chown -R '$APP_USER:$APP_USER' '$APP_DIR' '$DATA_DIR'"
 
+# Allow the service user to read its own system-unit journal via journalctl
+# — required by the in-app Live Log Tail. systemd-journal exists on Debian
+# by default; if not, fall back to `adm` (also accepted by journald ACLs).
+in_ct_sh "getent group systemd-journal >/dev/null \
+    && usermod -aG systemd-journal '${APP_USER}' \
+    || usermod -aG adm '${APP_USER}' || true"
+
 if [[ -n "$NAS_SHARE" ]]; then
     log "creating 'lxc_shares' group (GID ${NAS_LXC_GID}) and adding $APP_USER to it"
     in_ct_sh "getent group lxc_shares >/dev/null || groupadd -g ${NAS_LXC_GID} lxc_shares"

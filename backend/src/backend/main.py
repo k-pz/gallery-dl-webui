@@ -19,6 +19,8 @@ from backend.downloads.worker import Worker
 from backend.events import EventBus
 from backend.health.router import router as health_router
 from backend.library.router import router as library_router
+from backend.logging_setup import configure_logging
+from backend.logs.router import router as logs_router
 from backend.maintenance import service as maintenance_service
 from backend.maintenance.live_progress import MaintenanceLiveProgress
 from backend.maintenance.router import router as maintenance_router
@@ -44,6 +46,9 @@ def create_app(
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        level = configure_logging()
+        logger.info("logging configured at level %s", logging.getLevelName(level))
+
         settings = settings_factory()
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         settings.downloads_dir.mkdir(parents=True, exist_ok=True)
@@ -115,6 +120,7 @@ def create_app(
     app.include_router(library_router, prefix="/api")
     app.include_router(maintenance_router, prefix="/api")
     app.include_router(realtime_router, prefix="/api")
+    app.include_router(logs_router, prefix="/api")
 
     if serve_frontend and FRONTEND_DIST.is_dir():
         app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
