@@ -176,6 +176,16 @@ jobs:
         working-directory: backend
         run: uv sync --frozen
 
+      - name: Pre-warm backend imports
+        # Importing the ASGI app once builds the __pycache__ for FastAPI +
+        # gallery-dl + the backend package itself. Without this the first
+        # `uv run uvicorn` (the one Playwright launches) easily eats the
+        # webServer timeout budget on a cold runner, and any import error
+        # surfaces here as a clear traceback instead of as an opaque
+        # "Timed out waiting for webServer".
+        working-directory: backend
+        run: PYTHONPATH=. uv run python -c "import tests.e2e_server; print('e2e app import ok')"
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
