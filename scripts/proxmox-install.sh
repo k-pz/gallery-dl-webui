@@ -32,6 +32,12 @@
 # NAS_MOUNT, NAS_HOST_DIR, NAS_LXC_GID). When configured, NAS_MOUNT is added
 # to EXTRA_RW_PATHS automatically and the service user is added to the
 # in-CT 'lxc_shares' group.
+#
+# Host SSH key: the host's private SSH key is copied into the CT's
+# /root/.ssh/ so the in-CT `update` command (lxc-update.sh) can pull the repo
+# over SSH using the same identity the Proxmox host uses. Auto-detected from
+# /root/.ssh/id_{ed25519,rsa,ecdsa}; override with HOST_SSH_KEY=/path/to/key,
+# or set HOST_SSH_KEY="" to skip (in-CT updates then fall back to HTTPS).
 
 set -euo pipefail
 
@@ -70,6 +76,10 @@ NAS_PASS="${NAS_PASS-}"
 NAS_MOUNT="${NAS_MOUNT:-/mnt/nas}"
 NAS_HOST_DIR="${NAS_HOST_DIR:-/mnt/lxc_shares/${CT_HOSTNAME}}"
 NAS_LXC_GID="${NAS_LXC_GID:-10000}"
+
+# Host SSH key: __AUTO__ → detect; "" → skip; <path> → use that file.
+# Consumed by install_host_ssh_key (see _proxmox-lib.sh).
+HOST_SSH_KEY="${HOST_SSH_KEY-__AUTO__}"
 
 # ---- Helpers --------------------------------------------------------------
 
@@ -296,11 +306,20 @@ as_app mise run -C "$APP_DIR" install:prod
 log "building frontend via mise"
 as_app mise run -C "$APP_DIR" build
 
+# ---- Host SSH key for in-CT git over SSH ---------------------------------
+#
+# Copy the Proxmox host's SSH key into the CT so the in-CT `update` command
+# can pull the repo over SSH with the same identity the host uses. Skipped
+# silently if no key is found (HOST_SSH_KEY="" or no /root/.ssh/id_*).
+
+install_host_ssh_key
+
 # ---- In-CT updater (/usr/local/bin/update) --------------------------------
 #
 # Drop the in-CT updater on the PATH so the operator can `pct console <CTID>`
 # (root autologin is set up further down) and just type `update`. The script
-# clones a fresh checkout over HTTPS, re-runs mise install:prod + build, and
+# clones a fresh checkout — over SSH if install_host_ssh_key seeded the
+# host's key, otherwise over HTTPS — re-runs mise install:prod + build, and
 # restarts the systemd unit. See scripts/lxc-update.sh.
 
 log "installing /usr/local/bin/update (in-CT updater)"

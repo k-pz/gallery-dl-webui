@@ -20,10 +20,20 @@ set -euo pipefail
 
 # ---- Config ---------------------------------------------------------------
 
-# Default to HTTPS so the in-CT clone works without any GitHub SSH key. The
-# host-side proxmox-install.sh defaults to SSH because the Proxmox node is
-# expected to have a key; the CT typically doesn't.
-REPO_URL="${REPO_URL:-https://github.com/k-pz/gallery-dl-webui.git}"
+# Default REPO_URL: prefer SSH when proxmox-install / proxmox-update has
+# seeded /root/.ssh/ with the host's key (look for the common defaults).
+# Otherwise fall back to HTTPS so the curl-pipe bootstrap and CTs without a
+# key still work.
+if [[ -z "${REPO_URL:-}" ]]; then
+    REPO_URL="https://github.com/k-pz/gallery-dl-webui.git"
+    for _k in /root/.ssh/id_ed25519 /root/.ssh/id_rsa /root/.ssh/id_ecdsa; do
+        if [[ -f "$_k" ]]; then
+            REPO_URL="git@github.com:k-pz/gallery-dl-webui.git"
+            break
+        fi
+    done
+    unset _k
+fi
 REPO_REF="${REPO_REF:-main}"
 
 APP_USER="${APP_USER:-gallery-dl}"
