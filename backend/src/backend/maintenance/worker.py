@@ -26,6 +26,12 @@ from backend.downloads.postprocess import (
 )
 from backend.events import EventBus, maintenance_event, maintenance_progress_event
 from backend.maintenance import service
+from backend.maintenance.komga import (
+    KomgaPushResult,
+    TargetForPush,
+    push_series_statuses,
+    validate_credentials,
+)
 from backend.maintenance.live_progress import MaintenanceLiveProgress
 from backend.targets import service as targets_service
 
@@ -177,6 +183,12 @@ class MaintenanceWorker:
         # GIL-atomic, which is all the sync we need.
         self._current_id: int | None = None
         self._cancel_requested: bool = False
+        # Per-job credentials for kinds that need them (only push_komga_series_status
+        # today). Stashed by the router before the DB row is created so the
+        # worker can claim → execute → drop without ever persisting secrets.
+        # Bounded by the number of pending+running jobs; cleared on terminal
+        # transitions and on cancel-pending.
+        self._pending_params: dict[int, dict[str, object]] = {}
 
     def start(self) -> None:
         self._loop = asyncio.get_event_loop()
@@ -205,6 +217,14 @@ class MaintenanceWorker:
             return True
         return False
 
+    def stash_params(self, id_: int, params: dict[str, object]) -> None:
+        """Register per-job parameters (e.g. Komga credentials) by job id."""
+        self._pending_params[id_] = params
+
+    def drop_params(self, id_: int) -> None:
+        """Discard stashed params (called when a pending job is cancelled before claim)."""
+        self._pending_params.pop(id_, None)
+
     async def _run(self) -> None:
         while not self._stop.is_set():
             self._wakeup.clear()
@@ -227,6 +247,7 @@ class MaintenanceWorker:
                 self._live.clear(job.id)
                 self._current_id = None
                 self._cancel_requested = False
+                self._pending_params.pop(job.id, None)
                 self._emit("updated", id=job.id, status="cancelled")
                 continue
             except Exception as exc:
@@ -237,6 +258,7 @@ class MaintenanceWorker:
                 self._live.clear(job.id)
                 self._current_id = None
                 self._cancel_requested = False
+                self._pending_params.pop(job.id, None)
                 self._emit("updated", id=job.id, status="failed")
                 continue
             self._live.record(job.id, f"done: {result}")
@@ -245,6 +267,7 @@ class MaintenanceWorker:
             self._live.clear(job.id)
             self._current_id = None
             self._cancel_requested = False
+            self._pending_params.pop(job.id, None)
             self._emit("updated", id=job.id, status="completed")
 
     def _should_cancel(self) -> bool:
@@ -257,6 +280,8 @@ class MaintenanceWorker:
             return await self._run_regenerate_metadata(job_id)
         if kind == "rebuild_library":
             return await self._run_rebuild_library(job_id)
+        if kind == "push_komga_series_status":
+            return await self._run_push_komga_status(job_id)
         raise ValueError(f"unsupported maintenance kind: {kind}")
 
     async def _run_rename(self, job_id: int) -> dict[str, int]:
@@ -484,6 +509,45 @@ class MaintenanceWorker:
             "output_removed": output_removed,
             "enqueued": enqueued,
         }
+
+    async def _run_push_komga_status(self, job_id: int) -> dict[str, int]:
+        """Push every target's local `series_status` into the matching Komga series.
+
+        Credentials come from `_pending_params` (router-stashed at schedule
+        time); we pop them up front so a retry would correctly fail rather
+        than silently re-using stale values. Series with no local status or a
+        local status that doesn't map to a Komga enum are skipped; same for
+        zero/multiple Komga matches by name. The job itself never fails on
+        per-series errors — it tallies them and reports the breakdown.
+        """
+        params = self._pending_params.pop(job_id, None)
+        creds = validate_credentials(params)
+
+        async with self._db_lock:
+            targets = await targets_service.list_all(self._db)
+        # Only push for targets that have a name to search by. Status-less
+        # targets are still counted (and skipped with a clear log line) so the
+        # totals make sense.
+        candidates: list[TargetForPush] = [
+            TargetForPush(name=t.target.name, series_status=t.target.series_status or "")
+            for t in targets
+            if t.target.name
+        ]
+
+        sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
+
+        async def _on_cancel(partial: KomgaPushResult) -> None:
+            raise MaintenanceCancelled(partial.as_dict())
+
+        result = await push_series_statuses(
+            creds,
+            candidates,
+            on_total=sink.total,
+            on_step=sink.step,
+            should_cancel=self._should_cancel,
+            on_cancel=_on_cancel,
+        )
+        return result.as_dict()
 
     async def _build_series_overrides(self, default_direction: str) -> dict[str, SeriesMetadata]:
         """Index targets by sanitized series name so the regen pass can map

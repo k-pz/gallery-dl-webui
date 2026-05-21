@@ -344,6 +344,12 @@ export type MaintenanceScheduleIn = {
      * Kind
      */
     kind: string;
+    /**
+     * Params
+     */
+    params?: {
+        [key: string]: unknown;
+    } | null;
 };
 
 /**
