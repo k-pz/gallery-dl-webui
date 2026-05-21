@@ -67,6 +67,10 @@ def test_create_download_can_enable_watch_for_new_target(
     target = client.get("/api/targets").json()[0]
     assert target["url"] == "https://example/watch-new"
     assert target["watched"] is True
+    # Submit-with-watch must seed last_polled_at; otherwise the poller's
+    # `last_polled_at IS NULL → due` shortcut re-queues the target the instant
+    # this manual download finishes.
+    assert target["last_polled_at"] is not None
 
 
 def test_patch_target_sets_watch_flag_and_period(
