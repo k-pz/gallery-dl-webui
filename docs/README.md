@@ -6,6 +6,11 @@ Companion to the top-level [`README.md`](../README.md) — the README covers
 These pages also feed the [auto-published wiki](https://github.com/k-pz/gallery-dl-webui/wiki)
 via `scripts/build-wiki.py` on every push to `main`.
 
+> **Disclaimer — AI-authored code.** Substantially all of the source in this
+> repository, including these docs, was written by
+> [Claude Code](https://www.anthropic.com/claude-code), Anthropic's AI coding
+> assistant. Read and review accordingly.
+
 ## Contents
 
 - [Architecture](architecture.md) — what it is, process model, deployment

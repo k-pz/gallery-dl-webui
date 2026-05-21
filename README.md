@@ -4,6 +4,11 @@ A small web UI for [gallery-dl](https://github.com/mikf/gallery-dl). Submit a
 gallery URL and watch downloads progress in the browser. Backed by a FastAPI
 service that runs `gallery-dl` against a single-process worker queue.
 
+> **Disclaimer — AI-authored code.** Substantially all of the source in this
+> repository (backend, frontend, scripts, deployment glue, and these docs) was
+> written by [Claude Code](https://www.anthropic.com/claude-code), Anthropic's
+> AI coding assistant. Read and review accordingly.
+
 📖 **Docs:** topic-organised pages live in [`docs/`](docs/) — see the
 [Docs](#docs) section below for the index. They are mirrored to the
 [wiki](https://github.com/k-pz/gallery-dl-webui/wiki), which is auto-published
