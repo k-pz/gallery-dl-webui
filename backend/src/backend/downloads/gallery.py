@@ -14,6 +14,7 @@ from backend.downloads.postprocess import (
     chapter_with_minor,
     coerce_record_from_kwdict,
     normalize_series_status,
+    normalize_tags,
 )
 
 # Predicate: given (manga, chapter) from a gallery-dl kwdict, returns True if
@@ -34,11 +35,17 @@ class Manifest:
     to map to a Komga-compatible label (one of `SERIES_STATUSES`). `None` when
     no directory exposed a recognised status — leaves the target's existing
     value untouched.
+
+    `series_tags` is the first non-empty list of tags/genres surfaced by any
+    directory's kwdict (gallery-dl extractors variously expose this as `tags`,
+    `genres`, or `genre`). `None` when no directory exposed any — leaves the
+    target's existing value untouched.
     """
 
     paths: list[str]
     series_name: str | None = None
     series_status: str | None = None
+    series_tags: list[str] | None = None
 
 
 def _inherit_shared_state(child: Any, parent: Any, *attrs: str) -> bool:
@@ -67,13 +74,17 @@ class _ManifestSimulationJob(SimulationJob):
     _manifest: list[tuple[str, str, str]]
     _series_box: list[str | None]
     _status_box: list[str | None]
+    _tags_box: list[list[str] | None]
 
     def __init__(self, url: Any, parent: SimulationJob | None = None) -> None:
         super().__init__(url, parent)
-        if not _inherit_shared_state(self, parent, "_manifest", "_series_box", "_status_box"):
+        if not _inherit_shared_state(
+            self, parent, "_manifest", "_series_box", "_status_box", "_tags_box"
+        ):
             self._manifest = []
             self._series_box = [None]
             self._status_box = [None]
+            self._tags_box = [None]
 
     def handle_directory(self, kwdict: dict[str, Any]) -> None:
         # SimulationJob.handle_directory only calls initialize() and never sets
@@ -96,6 +107,21 @@ class _ManifestSimulationJob(SimulationJob):
                     normalised = normalize_series_status(value)
                     if normalised:
                         self._status_box[0] = normalised
+                    break
+        if self._tags_box[0] is None:
+            # Extractors variously call this `tags`, `genres`, or `genre`
+            # (mangapark uses the singular for what is in fact a list).
+            for key in ("tags", "genres", "genre"):
+                raw = kwdict.get(key)
+                if isinstance(raw, list):
+                    candidates = [v for v in raw if isinstance(v, str)]
+                elif isinstance(raw, str) and raw.strip():
+                    candidates = [raw]
+                else:
+                    continue
+                cleaned = normalize_tags(candidates)
+                if cleaned:
+                    self._tags_box[0] = cleaned
                     break
 
     def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
@@ -229,6 +255,7 @@ class Gallery:
             paths=paths,
             series_name=job._series_box[0],
             series_status=job._status_box[0],
+            series_tags=job._tags_box[0],
         )
 
     def run_download(

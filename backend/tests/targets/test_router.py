@@ -285,3 +285,37 @@ def test_manifest_series_status_does_not_overwrite_user_override(
     _wait_terminal(client, client.get("/api/targets").json()[0]["last_download_id"])
 
     assert client.get(f"/api/targets/{target_id}").json()["series_status"] == "Hiatus"
+
+
+def test_manifest_series_tags_auto_populates_target(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    """Tags/genres surfaced by the sim pass should land on the target row."""
+    gallery_config.manifest_for["https://example/auto-tags"] = []
+    gallery_config.series_tags_for["https://example/auto-tags"] = ["Action", "Romance"]
+
+    created = client.post("/api/downloads", json={"url": "https://example/auto-tags"}).json()
+    _wait_terminal(client, created["id"])
+
+    target = client.get("/api/targets").json()[0]
+    assert target["tags"] == ["Action", "Romance"]
+
+
+def test_manifest_series_tags_do_not_overwrite_user_tags(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    """User-set tags survive a subsequent poll surfacing different extractor tags."""
+    gallery_config.manifest_for["https://example/tu"] = []
+    gallery_config.series_tags_for["https://example/tu"] = ["Action"]
+
+    created = client.post("/api/downloads", json={"url": "https://example/tu"}).json()
+    _wait_terminal(client, created["id"])
+    target_id = client.get("/api/targets").json()[0]["id"]
+    assert client.get(f"/api/targets/{target_id}").json()["tags"] == ["Action"]
+
+    client.patch(f"/api/targets/{target_id}", json={"tags": ["Shounen"]})
+    # Re-poll. The sim pass still says ["Action"], but the user said ["Shounen"].
+    client.post(f"/api/targets/{target_id}/poll")
+    _wait_terminal(client, client.get("/api/targets").json()[0]["last_download_id"])
+
+    assert client.get(f"/api/targets/{target_id}").json()["tags"] == ["Shounen"]

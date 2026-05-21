@@ -195,6 +195,9 @@ time.
   auto-detected publication status from the sim pass when (and only when)
   the existing row value is blank. A user PATCH always wins because of
   that guard, so re-polling never overwrites a manual override.
+- `service.set_series_tags(id, tags)` — fill-only counterpart for the
+  tags/genres list surfaced by the extractor's kwdict. Same guard:
+  written only when the row's `tags` column is NULL, empty, or `'[]'`.
 
 Routes:
 

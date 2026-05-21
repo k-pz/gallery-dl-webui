@@ -31,6 +31,8 @@ class FakeGalleryConfig:
         # Optional per-URL series publication status (already normalised to a
         # Komga label) surfaced by extract_manifest.
         self.series_status_for: dict[str, str | None] = {}
+        # Optional per-URL series tags/genres surfaced by extract_manifest.
+        self.series_tags_for: dict[str, list[str] | None] = {}
         self.default_extractor: str | None = "fake"
         self.write_files: bool = True
 
@@ -78,6 +80,7 @@ class FakeGallery:
             paths=paths,
             series_name=self._config.series_name_for.get(url),
             series_status=self._config.series_status_for.get(url),
+            series_tags=self._config.series_tags_for.get(url),
         )
 
     def run_download(

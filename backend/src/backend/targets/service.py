@@ -207,6 +207,26 @@ async def set_series_status(db: aiosqlite.Connection, id_: int, status: str) -> 
     return await get(db, id_)
 
 
+async def set_series_tags(db: aiosqlite.Connection, id_: int, tags: list[str]) -> Target | None:
+    """Persist freshly auto-detected series tags/genres (no-op when empty).
+
+    Fill-only: same shape as `set_series_status`. The user's explicit PATCH (or
+    a re-submit that carries tags) always wins; auto-detect only populates
+    targets whose tags column is NULL or an empty JSON array.
+    """
+    if not tags:
+        return await get(db, id_)
+    # `tags = '[]'` is the JSON sentinel for "user cleared all tags", but for
+    # auto-fill purposes that and `NULL` mean the same thing — no value yet.
+    await db.execute(
+        "UPDATE targets SET tags = ? WHERE id = ? "
+        "AND (tags IS NULL OR tags = '' OR tags = '[]')",
+        (_encode_tags(tags), id_),
+    )
+    await db.commit()
+    return await get(db, id_)
+
+
 async def list_names(db: aiosqlite.Connection, ids: list[int]) -> dict[int, str | None]:
     if not ids:
         return {}
