@@ -1017,37 +1017,42 @@ SeriesOverrideLookup = Callable[[str], SeriesMetadata | None]
 ChapterDateLookup = Callable[[str, str], str | None]
 
 
-def _rewrite_cbz_metadata(
+_REGEN_SKIP_NONE = "no_comicinfo"
+_REGEN_SKIP_BAD = "bad_comicinfo"
+
+
+def _read_regen_chapter(
     cbz: Path,
-    overrides: SeriesMetadata | None,
-    chapter_date_for: ChapterDateLookup | None = None,
-) -> ChapterRecord | None:
-    """Rewrite a CBZ's ComicInfo.xml in place, returning the resulting chapter.
+    overrides_for: SeriesOverrideLookup | None,
+    chapter_date_for: ChapterDateLookup | None,
+) -> tuple[ChapterRecord, SeriesMetadata | None] | str:
+    """Read a CBZ's ComicInfo.xml and build the regen ChapterRecord.
 
-    Returns None when the archive lacks a readable ComicInfo.xml (the caller
-    treats this as `skipped`). The rewrite is atomic — we build a sibling
-    `.part` archive and rename it over the original on success.
-
-    When `chapter_date_for(series, chapter)` returns a non-empty ISO date,
-    the existing Year/Month/Day in the ComicInfo.xml is replaced by it —
-    used by regen to backfill chapter release dates rediscovered from the
-    upstream extractor.
+    Pure read — never touches the archive on disk. Returns either
+    `(ChapterRecord, overrides)` on success or one of the `_REGEN_SKIP_*`
+    sentinels when the archive's ComicInfo can't be loaded. The returned
+    record has overrides + `chapter_date_for` already merged in so the
+    caller can hand it straight to `derive_series_metadata` (for the
+    series.json) and `_rewrite_regen_cbz` (for the on-disk update) without
+    re-parsing.
     """
     try:
         with zipfile.ZipFile(cbz) as zf:
             xml_bytes = zf.read("ComicInfo.xml")
             page_names = [n for n in zf.namelist() if n != "ComicInfo.xml"]
     except OSError, zipfile.BadZipFile, KeyError:
-        return None
+        return _REGEN_SKIP_NONE
     try:
         root = ET.fromstring(xml_bytes)
     except ET.ParseError:
-        return None
+        return _REGEN_SKIP_BAD
     ch = _chapter_from_comicinfo(cbz, root)
     # Author normalisation: strip enclosing brackets/quotes from any
     # extractor-supplied value before we re-emit it.
     ch.author = strip_enclosing_brackets(ch.author)
     ch.artist = strip_enclosing_brackets(ch.artist)
+    series_name = root.findtext("Series") or cbz.parent.name
+    overrides = overrides_for(series_name) if overrides_for else None
     if overrides is not None:
         if overrides.description and not ch.description:
             ch.description = overrides.description
@@ -1060,6 +1065,20 @@ def _rewrite_cbz_metadata(
         if fresh_date:
             ch.date = fresh_date
     ch.pages = [Path(name) for name in page_names]
+    return ch, overrides
+
+
+def _rewrite_regen_cbz(
+    cbz: Path,
+    ch: ChapterRecord,
+    overrides: SeriesMetadata | None,
+) -> None:
+    """Rewrite the ComicInfo.xml inside `cbz` using the prepared ChapterRecord.
+
+    Atomic: a sibling `.part` archive is built and renamed over the original
+    on success. The page bytes are copied verbatim from the source archive;
+    only ComicInfo.xml is replaced.
+    """
     reading_direction = overrides.reading_direction if overrides else None
     tags = overrides.tags if overrides else None
     new_xml = build_comicinfo_xml(ch, reading_direction=reading_direction, tags=tags)
@@ -1077,7 +1096,6 @@ def _rewrite_cbz_metadata(
             with src.open(name) as fh:
                 dst.writestr(name, fh.read())
     part.replace(cbz)
-    return ch
 
 
 class RegenProgressSink(Protocol):
@@ -1103,81 +1121,73 @@ def regenerate_series_metadata(
     basis — the maintenance worker plumbs this in from the targets table.
     `chapter_date_for(series_name, chapter)`, when supplied, lets the regen
     backfill chapter release dates rediscovered from the upstream extractor.
+
+    The traversal runs in two phases. Phase 1 reads every CBZ's ComicInfo.xml
+    so the chapter list per series is known up front; nothing is written to
+    disk yet. Phase 2 walks the discovered series; for each one the fresh
+    series.json is written FIRST, and only then are the per-chapter CBZs
+    rewritten. Importers that mtime-watch series.json (Komga in particular)
+    therefore see the series-level update before per-chapter ComicInfo
+    changes start to ripple in.
     """
     cbz_paths = _iter_filtered_cbzs(output_roots, exclude_dirs)
     if progress is not None:
         progress.total(len(cbz_paths))
     archives_updated = 0
+    series_json_written = 0
     skipped = 0
     failed = 0
-    series_to_chapters: dict[Path, list[ChapterRecord]] = {}
-    series_to_overrides: dict[Path, SeriesMetadata | None] = {}
+    # series_dir -> list of (cbz_path, ChapterRecord, overrides). Built in
+    # phase 1, drained in phase 2.
+    series_to_entries: dict[Path, list[tuple[Path, ChapterRecord, SeriesMetadata | None]]] = {}
 
+    def _cancelled_partial() -> dict[str, int]:
+        return {
+            "series": len(series_to_entries),
+            "archives_updated": archives_updated,
+            "series_json_written": series_json_written,
+            "skipped": skipped,
+            "failed": failed,
+        }
+
+    # Phase 1: read every CBZ, building per-series chapter lists. No disk
+    # writes happen here — successful reads stay silent on the progress sink
+    # so the matching "updated:" step from phase 2 counts the archive exactly
+    # once. Skip/fail reads emit their step immediately since they're done.
     for cbz in cbz_paths:
         if should_cancel is not None and should_cancel():
-            raise MaintenanceCancelled(
-                {
-                    "series": len(series_to_chapters),
-                    "archives_updated": archives_updated,
-                    "series_json_written": 0,
-                    "skipped": skipped,
-                    "failed": failed,
-                }
-            )
-        # First read to learn the series name so the override lookup is keyed
-        # by what the archive actually claims, not by its parent dir. Missing
-        # or unreadable ComicInfo.xml is reported as a skip; other I/O errors
-        # bubble up to the failure path below.
+            raise MaintenanceCancelled(_cancelled_partial())
         try:
-            with zipfile.ZipFile(cbz) as zf:
-                xml_bytes = zf.read("ComicInfo.xml")
-        except OSError, zipfile.BadZipFile, KeyError:
-            skipped += 1
-            if progress is not None:
-                progress.step(f"skip (no ComicInfo): {_relativize(cbz, output_roots)}")
-            continue
-        try:
-            root = ET.fromstring(xml_bytes)
-        except ET.ParseError:
-            skipped += 1
-            if progress is not None:
-                progress.step(f"skip (bad ComicInfo): {_relativize(cbz, output_roots)}")
-            continue
-        try:
-            series_name = root.findtext("Series") or cbz.parent.name
-            overrides = overrides_for(series_name) if overrides_for else None
-            ch = _rewrite_cbz_metadata(cbz, overrides, chapter_date_for)
-            if ch is None:
-                skipped += 1
-                if progress is not None:
-                    progress.step(f"skip (no ComicInfo): {_relativize(cbz, output_roots)}")
-                continue
-            archives_updated += 1
-            series_to_chapters.setdefault(cbz.parent, []).append(ch)
-            series_to_overrides[cbz.parent] = overrides
-            if progress is not None:
-                progress.step(f"updated: {_relativize(cbz, output_roots)}")
+            outcome = _read_regen_chapter(cbz, overrides_for, chapter_date_for)
         except Exception as exc:
             failed += 1
-            logger.exception("regen failed for %s", cbz)
+            logger.exception("regen read failed for %s", cbz)
             if progress is not None:
                 progress.step(f"failed: {_relativize(cbz, output_roots)}: {exc!r}")
+            continue
+        if isinstance(outcome, str):
+            skipped += 1
+            if progress is not None:
+                label = "no ComicInfo" if outcome == _REGEN_SKIP_NONE else "bad ComicInfo"
+                progress.step(f"skip ({label}): {_relativize(cbz, output_roots)}")
+            continue
+        ch, overrides = outcome
+        series_to_entries.setdefault(cbz.parent, []).append((cbz, ch, overrides))
 
-    series_json_written = 0
-    for series_dir, chapters in series_to_chapters.items():
+    # Phase 2: per series, write series.json first then rewrite the CBZs.
+    # A series.json failure does not abort the chapter rewrites — leaving the
+    # per-chapter ComicInfo.xml stale on a series.json hiccup would be worse
+    # than partial success.
+    for series_dir, entries in series_to_entries.items():
         if should_cancel is not None and should_cancel():
-            raise MaintenanceCancelled(
-                {
-                    "series": len(series_to_chapters),
-                    "archives_updated": archives_updated,
-                    "series_json_written": series_json_written,
-                    "skipped": skipped,
-                    "failed": failed,
-                }
-            )
-        overrides = series_to_overrides.get(series_dir)
+            raise MaintenanceCancelled(_cancelled_partial())
+        chapters = [ch for _, ch, _ in entries]
+        # All entries under one series_dir share the same overrides (the
+        # lookup is keyed by series name, and a directory holds exactly one
+        # series), so the first entry's overrides represent the series.
+        series_overrides = entries[0][2]
         try:
-            meta = derive_series_metadata(chapters, overrides)
+            meta = derive_series_metadata(chapters, series_overrides)
             write_series_json(series_dir, meta, total_issues=len(chapters))
             series_json_written += 1
             if progress is not None:
@@ -1190,8 +1200,22 @@ def regenerate_series_metadata(
                     f"failed series.json: {_relativize(series_dir, output_roots)}: {exc!r}"
                 )
 
+        for cbz, ch, overrides in entries:
+            if should_cancel is not None and should_cancel():
+                raise MaintenanceCancelled(_cancelled_partial())
+            try:
+                _rewrite_regen_cbz(cbz, ch, overrides)
+                archives_updated += 1
+                if progress is not None:
+                    progress.step(f"updated: {_relativize(cbz, output_roots)}")
+            except Exception as exc:
+                failed += 1
+                logger.exception("regen failed for %s", cbz)
+                if progress is not None:
+                    progress.step(f"failed: {_relativize(cbz, output_roots)}: {exc!r}")
+
     return RegenMetadataResult(
-        series=len(series_to_chapters),
+        series=len(series_to_entries),
         archives_updated=archives_updated,
         series_json_written=series_json_written,
         skipped=skipped,

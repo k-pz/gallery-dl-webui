@@ -753,6 +753,59 @@ def test_regenerate_series_metadata_keeps_existing_date_when_lookup_returns_none
     assert root.findtext("Day") == "15"
 
 
+class _RecordingProgressSink:
+    """Capture every `total` / `step` call so the regen order can be asserted."""
+
+    def __init__(self) -> None:
+        self.total_calls: list[int] = []
+        self.steps: list[str] = []
+
+    def total(self, n: int) -> None:
+        self.total_calls.append(n)
+
+    def step(self, line: str) -> None:
+        self.steps.append(line)
+
+
+def test_regenerate_series_metadata_writes_series_json_before_chapters(
+    tmp_path: Path,
+) -> None:
+    """The regen flow must emit each series.json before any of that series'
+    CBZ archives are rewritten. Downstream importers (Komga) that mtime-watch
+    the series.json rely on this ordering: the series-level update lands first
+    so per-chapter ComicInfo.xml changes are imported against fresh series
+    metadata."""
+    series_a = tmp_path / "Series A"
+    series_b = tmp_path / "Series B"
+    _write_cbz_with_comicinfo_full(series_a / "Series A - c001.cbz", "Series A", "1")
+    _write_cbz_with_comicinfo_full(series_a / "Series A - c002.cbz", "Series A", "2")
+    _write_cbz_with_comicinfo_full(series_b / "Series B - c001.cbz", "Series B", "1")
+
+    sink = _RecordingProgressSink()
+    result = regenerate_series_metadata([tmp_path], overrides_for=lambda _: None, progress=sink)
+    assert result.series == 2
+    assert result.archives_updated == 3
+    assert result.series_json_written == 2
+
+    # For each series, the series.json step must precede every "updated:"
+    # step for that series' archives.
+    def _index(needle: str) -> int:
+        for i, line in enumerate(sink.steps):
+            if needle in line:
+                return i
+        raise AssertionError(f"step not recorded: {needle!r} in {sink.steps!r}")
+
+    series_a_json = _index("series.json: Series A")
+    series_a_c1 = _index("updated: Series A/Series A - c001.cbz")
+    series_a_c2 = _index("updated: Series A/Series A - c002.cbz")
+    assert series_a_json < series_a_c1
+    assert series_a_json < series_a_c2
+
+    series_b_json = _index("series.json: Series B")
+    series_b_c1 = _index("updated: Series B/Series B - c001.cbz")
+    assert series_b_json < series_b_c1
+
+
 # ---------------------------------------------------------------------------
 # Series status normalisation + propagation
 # ---------------------------------------------------------------------------

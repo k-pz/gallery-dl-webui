@@ -216,6 +216,28 @@ spellings — mangadex's `ongoing`, kaliscan's `Publishing`, manganelo's
 string, which omits the `status` key from the on-disk JSON rather than
 emitting noise Komga would ignore.
 
+### Maintenance regen (`regenerate_series_metadata`)
+
+The maintenance worker's regen job re-applies the same `derive_series_metadata`
++ ComicInfo plumbing to every existing CBZ on disk. It runs in two phases so
+the per-series `series.json` lands **before** that series' per-chapter
+ComicInfo.xml rewrites:
+
+1. **Discovery** — walk each output root, read every CBZ's ComicInfo.xml,
+   apply overrides + `chapter_date_for` lookup, and group the resulting
+   `ChapterRecord`s by series directory. Nothing on disk changes yet.
+2. **Per-series write** — for each discovered series directory:
+   1. Build the `SeriesMetadata` from the chapter list + overrides and write
+      `<series_dir>/series.json` atomically.
+   2. Rewrite every CBZ in the directory (atomic `.part` rename, page bytes
+      copied verbatim, only `ComicInfo.xml` replaced).
+
+Komga's library scanner mtime-watches `series.json` — landing the series
+file first means each `ComicInfo.xml` change that follows is imported against
+fresh series-level metadata rather than the stale prior version. A failure
+to write `series.json` for one series does not abort the chapter rewrites
+under it: stale per-chapter metadata is worse than a partial success.
+
 ## Progress accounting
 
 `downloads/progress.py` + `downloads/live_progress.py`
