@@ -104,6 +104,17 @@ async def cancel_pending(db: aiosqlite.Connection, id_: int) -> bool:
     return (cursor.rowcount or 0) > 0
 
 
+async def mark_interrupted_on_boot(db: aiosqlite.Connection) -> int:
+    cursor = await db.execute(
+        "UPDATE maintenance_jobs SET status = 'failed', finished_at = ?, "
+        "error = COALESCE(error, 'interrupted: backend restarted') "
+        "WHERE status = 'running'",
+        (now_iso(),),
+    )
+    await db.commit()
+    return cursor.rowcount or 0
+
+
 async def list_jobs(db: aiosqlite.Connection, limit: int = 50) -> list[MaintenanceJob]:
     async with db.execute(
         "SELECT * FROM maintenance_jobs ORDER BY id DESC LIMIT ?",
