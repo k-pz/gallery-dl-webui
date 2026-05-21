@@ -3,8 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { listDownloadsOptions } from "../api/@tanstack/react-query.gen";
 import type { DownloadOut } from "../api/types.gen";
+import { useEta } from "../hooks/useEta";
+import { downloadEtaDimension, formatEta } from "../lib/eta";
 import { REFETCH_LIST_MS } from "../lib/polling";
-import { isRunning, isScheduled, jobStep, statusTone } from "../lib/status";
+import { isRunning, isScheduled, isTerminal, jobStep, statusTone } from "../lib/status";
 import { Pill } from "./Pill";
 
 function progressLabel(item: DownloadOut): string {
@@ -85,6 +87,14 @@ function RunningRow({
 }) {
   const step = jobStep(item.status, item.postprocess_status, false);
   const displayName = item.name ?? item.url;
+  const dim = downloadEtaDimension(item);
+  const eta = useEta({
+    resetKey: `dl:${item.id}:${dim.phaseKey}`,
+    startedAt: item.started_at,
+    done: dim.done,
+    total: dim.total,
+    active: !isTerminal(item.status),
+  });
   return (
     <Box
       className="app-row"
@@ -119,6 +129,17 @@ function RunningRow({
           >
             {displayName}
           </Text>
+          {eta.kind === "eta" && (
+            <Text
+              size="xs"
+              c="dimmed"
+              ff="monospace"
+              style={{ whiteSpace: "nowrap" }}
+              title="Estimated time remaining"
+            >
+              ~{formatEta(eta.remainingMs)}
+            </Text>
+          )}
           <Text size="xs" c="dimmed" ff="monospace" style={{ whiteSpace: "nowrap" }}>
             {progressLabel(item)}
           </Text>

@@ -2,6 +2,8 @@ import { Box, Group, Progress, ScrollArea, Stack, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { getDownloadProgressOptions } from "../api/@tanstack/react-query.gen";
 import type { ChapterProgress } from "../api/types.gen";
+import { useEta } from "../hooks/useEta";
+import { formatEta } from "../lib/eta";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
 import { chapterStageLabel, isTerminal, type Status, statusTone } from "../lib/status";
 import { Pill } from "./Pill";
@@ -15,7 +17,15 @@ function chapterStage(ch: ChapterProgress): ChapterStage {
   return "downloading";
 }
 
-export function ProgressCard({ jobId, status }: { jobId: number; status: Status }) {
+export function ProgressCard({
+  jobId,
+  status,
+  startedAt,
+}: {
+  jobId: number;
+  status: Status;
+  startedAt: string | null | undefined;
+}) {
   const terminal = isTerminal(status);
   const { data, isLoading } = useQuery({
     ...getDownloadProgressOptions({ path: { download_id: jobId } }),
@@ -23,6 +33,23 @@ export function ProgressCard({ jobId, status }: { jobId: number; status: Status 
       const s = q.state.data?.status;
       return s && isTerminal(s) ? false : REFETCH_ACTIVE_MS;
     },
+  });
+
+  const totalChapters = data?.chapters.length ?? 0;
+  const settledChapters =
+    data?.chapters.filter((ch) => chapterStage(ch) !== "downloading").length ?? 0;
+  const manifestReady = totalChapters > 0;
+  // While packing, the download bar is full but the job hasn't fully wrapped.
+  // We pause the ETA — the chapter-level bar is saturated, so any rolling
+  // rate would just be noise.
+  const packing = manifestReady && !terminal && settledChapters >= totalChapters;
+
+  const eta = useEta({
+    resetKey: `prog:${jobId}`,
+    startedAt,
+    done: settledChapters,
+    total: manifestReady ? totalChapters : null,
+    active: manifestReady && !terminal && !packing,
   });
 
   if (isLoading || !data) {
@@ -57,17 +84,21 @@ export function ProgressCard({ jobId, status }: { jobId: number; status: Status 
     );
   }
 
-  const totalChapters = data.chapters.length;
-  const settledChapters = data.chapters.filter((ch) => chapterStage(ch) !== "downloading").length;
   const pct = totalChapters > 0 ? (settledChapters / totalChapters) * 100 : 0;
-  const manifestReady = totalChapters > 0;
+
+  let rightLabel: string;
+  if (!manifestReady) rightLabel = "preparing…";
+  else if (packing) rightLabel = `packing… · ${settledChapters} / ${totalChapters}`;
+  else if (eta.kind === "eta") {
+    rightLabel = `~${formatEta(eta.remainingMs)} · ${settledChapters} / ${totalChapters} chapters`;
+  } else rightLabel = `${settledChapters} / ${totalChapters} chapters`;
 
   return (
     <Stack gap="sm">
       <Group justify="space-between" align="baseline">
         <span className="app-section-kicker">progress</span>
         <Text size="sm" c="dimmed" ff="monospace">
-          {manifestReady ? `${settledChapters} / ${totalChapters} chapters` : "preparing…"}
+          {rightLabel}
         </Text>
       </Group>
       <Progress value={pct} size="md" radius="sm" striped={!terminal} animated={!terminal} />

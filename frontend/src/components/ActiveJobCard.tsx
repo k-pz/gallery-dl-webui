@@ -243,7 +243,7 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
             <Text size="sm">{actionError}</Text>
           </Box>
         )}
-        <ProgressCard jobId={jobId} status={job.status} />
+        <ProgressCard jobId={jobId} status={job.status} startedAt={job.started_at} />
       </Stack>
     </Card>
   );

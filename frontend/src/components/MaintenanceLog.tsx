@@ -1,6 +1,8 @@
 import { Badge, Box, Group, Progress, ScrollArea, Stack, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { getMaintenanceJobProgressOptions } from "../api/@tanstack/react-query.gen";
+import { useEta } from "../hooks/useEta";
+import { formatEta } from "../lib/eta";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
 
 const TERMINAL_STATUSES = new Set(["completed", "failed"]);
@@ -13,13 +15,28 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: "orange",
 };
 
-export function MaintenanceLog({ jobId }: { jobId: number }) {
+export function MaintenanceLog({
+  jobId,
+  startedAt,
+}: {
+  jobId: number;
+  startedAt: string | null | undefined;
+}) {
   const { data, isLoading } = useQuery({
     ...getMaintenanceJobProgressOptions({ path: { job_id: jobId } }),
     refetchInterval: (q) => {
       const status = q.state.data?.status;
       return status && TERMINAL_STATUSES.has(status) ? false : REFETCH_ACTIVE_MS;
     },
+  });
+
+  const terminal = data ? TERMINAL_STATUSES.has(data.status) : false;
+  const eta = useEta({
+    resetKey: `maint:${jobId}`,
+    startedAt,
+    done: data?.done ?? 0,
+    total: data && data.total > 0 ? data.total : null,
+    active: !!data && !terminal,
   });
 
   if (isLoading || !data) {
@@ -31,8 +48,11 @@ export function MaintenanceLog({ jobId }: { jobId: number }) {
   }
 
   const pct = data.total > 0 ? Math.min(100, (data.done / data.total) * 100) : 0;
-  const terminal = TERMINAL_STATUSES.has(data.status);
-  const counter = data.total > 0 ? `${data.done} / ${data.total}` : "preparing…";
+  let counter: string;
+  if (data.total <= 0) counter = "preparing…";
+  else if (eta.kind === "eta")
+    counter = `~${formatEta(eta.remainingMs)} · ${data.done} / ${data.total}`;
+  else counter = `${data.done} / ${data.total}`;
 
   return (
     <Stack gap="sm">
