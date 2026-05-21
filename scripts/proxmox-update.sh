@@ -12,13 +12,18 @@
 #
 # Overridable env vars (defaults match proxmox-install.sh):
 #   CTID, REPO_URL, REPO_REF, LOCAL_SRC, APP_USER, APP_DIR, DATA_DIR,
-#   EXTRA_RW_PATHS
+#   EXTRA_RW_PATHS, HOST_SSH_KEY
 #
 # If EXTRA_RW_PATHS is set (colon-separated), the systemd ReadWritePaths
 # drop-in is (re)written so the service can write to those paths — e.g.
 # a NAS bind-mount:
 #   EXTRA_RW_PATHS=/mnt/nas/manga bash scripts/proxmox-update.sh
 # If EXTRA_RW_PATHS is left unset, any existing drop-in is preserved.
+#
+# HOST_SSH_KEY: path to a private SSH key on the Proxmox host to install
+# into the CT (so the in-CT `update` command can pull over SSH using the
+# host's identity). Auto-detected from /root/.ssh/id_{ed25519,rsa,ecdsa};
+# set HOST_SSH_KEY="" to skip pushing a key on this run.
 
 set -euo pipefail
 
@@ -38,6 +43,10 @@ SERVICE="${SERVICE:-gallery-dl-webui.service}"
 # Colon-separated list of additional paths the service should be allowed to
 # write to. Leave unset to preserve whatever drop-in is already in place.
 EXTRA_RW_PATHS="${EXTRA_RW_PATHS:-}"
+
+# Host SSH key: __AUTO__ → detect; "" → skip; <path> → use that file.
+# Consumed by install_host_ssh_key (see _proxmox-lib.sh).
+HOST_SSH_KEY="${HOST_SSH_KEY-__AUTO__}"
 
 # ---- Helpers --------------------------------------------------------------
 
@@ -61,6 +70,14 @@ in_ct test -d "$APP_DIR" \
 
 in_ct test -x /usr/local/bin/mise \
     || die "/usr/local/bin/mise not found in CT $CTID — was this CT created by proxmox-install.sh?"
+
+# ---- Refresh host SSH key in CT -------------------------------------------
+#
+# Re-push the host's SSH key into the CT's /root/.ssh/ on every update so the
+# in-CT `update` command keeps working after key rotation. No-op if
+# HOST_SSH_KEY="" or no host key is found.
+
+install_host_ssh_key
 
 # ---- Source on host -------------------------------------------------------
 
