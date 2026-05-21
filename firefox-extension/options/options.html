@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>gallery-dl-webui — Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>gallery-dl-webui — Settings</h1>
+
+      <form id="options-form">
+        <label>
+          <span>Backend URL</span>
+          <input
+            type="url"
+            id="backend-url"
+            name="backend-url"
+            placeholder="http://nas.local:8000"
+            autocomplete="off"
+            required
+          />
+          <small class="hint">
+            The base URL where your gallery-dl-webui backend is reachable. No trailing slash.
+          </small>
+        </label>
+
+        <div class="actions">
+          <button type="button" id="test">Test connection</button>
+          <button type="submit" id="save">Save</button>
+        </div>
+
+        <div id="status" class="status hidden"></div>
+      </form>
+
+      <section class="note">
+        <h2>Backend setup</h2>
+        <p>
+          The backend must allow this extension's origin (CORS). Set one of the following
+          environment variables when starting the backend:
+        </p>
+        <ul>
+          <li>
+            <code>WEBUI_CORS_ORIGIN_REGEX=moz-extension://.*</code>
+            <small>(easiest — accepts any Firefox extension install)</small>
+          </li>
+          <li>
+            <code>WEBUI_CORS_ORIGINS=&lt;your extension origin&gt;</code>
+            <small>(strict — uses the origin shown below)</small>
+          </li>
+        </ul>
+        <p>
+          Your extension origin is: <code id="self-origin"></code>
+        </p>
+      </section>
+    </main>
+    <script src="options.js" type="module"></script>
+  </body>
+</html>

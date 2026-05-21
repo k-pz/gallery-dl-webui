@@ -44,12 +44,13 @@ def create_app(
     gallery_factory: GalleryFactory = Gallery,
     serve_frontend: bool = True,
 ) -> FastAPI:
+    settings = settings_factory()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         level = configure_logging()
         logger.info("logging configured at level %s", logging.getLevelName(level))
 
-        settings = settings_factory()
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         settings.downloads_dir.mkdir(parents=True, exist_ok=True)
 
@@ -122,6 +123,21 @@ def create_app(
     app.include_router(realtime_router, prefix="/api")
     app.include_router(logs_router, prefix="/api")
 
+    cors_origins = list(settings.cors_origins)
+    # In dev mode the Vite proxy origin needs CORS; in prod the SPA is
+    # same-origin and only env-configured origins (e.g. a browser extension)
+    # need it.
+    if not (serve_frontend and FRONTEND_DIST.is_dir()):
+        cors_origins.append("http://localhost:5173")
+    if cors_origins or settings.cors_origin_regex:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_origin_regex=settings.cors_origin_regex,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
     if serve_frontend and FRONTEND_DIST.is_dir():
         app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
@@ -131,13 +147,6 @@ def create_app(
             if full_path and candidate.is_file():
                 return FileResponse(candidate)
             return FileResponse(FRONTEND_DIST / "index.html")
-    else:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["http://localhost:5173"],
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
 
     return app
 

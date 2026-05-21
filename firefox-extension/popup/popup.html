@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Add to manga library</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main id="root">
+      <header>
+        <h1>Add to library</h1>
+        <a id="open-options" href="#" title="Settings">⚙</a>
+      </header>
+
+      <div id="loading" class="status">Loading…</div>
+
+      <div id="setup-needed" class="status hidden">
+        <p>Backend URL is not configured.</p>
+        <button type="button" id="open-options-cta">Open settings</button>
+      </div>
+
+      <div id="backend-error" class="status hidden">
+        <p id="backend-error-msg"></p>
+        <button type="button" id="retry">Retry</button>
+      </div>
+
+      <form id="add-form" class="hidden">
+        <label>
+          <span>Gallery URL</span>
+          <input
+            type="url"
+            id="url"
+            name="url"
+            placeholder="https://mangadex.org/title/…"
+            required
+          />
+        </label>
+
+        <label>
+          <span>Output directory</span>
+          <input
+            type="text"
+            id="output-dir"
+            name="output-dir"
+            list="output-dir-options"
+            placeholder="Set a root in Config first"
+          />
+          <datalist id="output-dir-options"></datalist>
+          <small id="output-dir-hint" class="hint"></small>
+        </label>
+
+        <label>
+          <span>Tags</span>
+          <input
+            type="text"
+            id="tags"
+            name="tags"
+            placeholder="comma-separated, e.g. action, romance"
+          />
+        </label>
+
+        <label>
+          <span>Reading direction</span>
+          <select id="reading-direction" name="reading-direction">
+            <option value="ltr">Left to right</option>
+            <option value="rtl">Right to left</option>
+            <option value="vertical">Vertical</option>
+            <option value="webtoon">Webtoon</option>
+          </select>
+        </label>
+
+        <label class="checkbox-row">
+          <input type="checkbox" id="watched" name="watched" checked />
+          <span>Watch for new chapters</span>
+        </label>
+
+        <div id="form-error" class="error hidden"></div>
+
+        <div class="actions">
+          <button type="submit" id="submit">Add</button>
+        </div>
+      </form>
+
+      <div id="success" class="status hidden">
+        <p>✓ Added to the library.</p>
+        <p id="success-name" class="muted"></p>
+        <div class="actions">
+          <a id="view-link" href="#" target="_blank" rel="noopener">Open library</a>
+          <button type="button" id="add-another">Add another</button>
+        </div>
+      </div>
+    </main>
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

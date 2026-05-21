@@ -47,6 +47,7 @@ frontend/               ← Vite + React app
     components/         ← per-component files
     lib/                ← status/polling/error helpers
     api/                ← generated, do not edit
+firefox-extension/      ← Firefox MV3 extension: "Add to library" from any tab
 docs/                   ← long-form docs (also published as the wiki)
 data/                   ← local dev only; archive.db, jobs.db, downloads/
 ```
@@ -93,11 +94,13 @@ with the `:backend` / `:frontend` suffix (e.g. `mise run test:backend`).
 
 ## Configuration
 
-| Env var          | Default       | Notes                                  |
-|------------------|---------------|----------------------------------------|
-| `WEBUI_DATA_DIR` | `./data`      | Where `jobs.db`, `archive.db`, and `downloads/` live |
-| `WEBUI_HOST`     | `0.0.0.0`     | Bind host for `python -m backend`      |
-| `WEBUI_PORT`     | `8000`        | Bind port for `python -m backend`      |
+| Env var                    | Default       | Notes                                  |
+|----------------------------|---------------|----------------------------------------|
+| `WEBUI_DATA_DIR`           | `./data`      | Where `jobs.db`, `archive.db`, and `downloads/` live |
+| `WEBUI_HOST`               | `0.0.0.0`     | Bind host for `python -m backend`      |
+| `WEBUI_PORT`               | `8000`        | Bind port for `python -m backend`      |
+| `WEBUI_CORS_ORIGINS`       | _(empty)_     | Comma-separated extra CORS origins (e.g. for the [Firefox extension](firefox-extension/)) |
+| `WEBUI_CORS_ORIGIN_REGEX`  | _(empty)_     | Regex for CORS origins, e.g. `moz-extension://.*` |
 
 ### CBZ postprocessing (Komga)
 

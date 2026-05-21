@@ -19,6 +19,8 @@ class Settings:
     data_dir: Path
     host: str = "0.0.0.0"
     port: int = 8000
+    cors_origins: tuple[str, ...] = ()
+    cors_origin_regex: str | None = None
 
     @property
     def downloads_dir(self) -> Path:
@@ -33,11 +35,20 @@ class Settings:
         return self.data_dir / "jobs.db"
 
 
+def _parse_origins(raw: str | None) -> tuple[str, ...]:
+    if not raw:
+        return ()
+    return tuple(o.strip() for o in raw.split(",") if o.strip())
+
+
 def load_settings() -> Settings:
     raw = os.environ.get("WEBUI_DATA_DIR")
     data_dir = Path(raw).resolve() if raw else DEFAULT_DATA_DIR.resolve()
+    regex = os.environ.get("WEBUI_CORS_ORIGIN_REGEX")
     return Settings(
         data_dir=data_dir,
         host=os.environ.get("WEBUI_HOST", "0.0.0.0"),
         port=int(os.environ.get("WEBUI_PORT", "8000")),
+        cors_origins=_parse_origins(os.environ.get("WEBUI_CORS_ORIGINS")),
+        cors_origin_regex=regex if regex else None,
     )
