@@ -206,12 +206,80 @@ jobs:
         # Playwright needs on a fresh runner.
         run: pnpm exec playwright install --with-deps chromium
 
+      - name: Start backend (e2e ASGI app)
+        # Boot the backend ourselves instead of relying on Playwright's
+        # webServer feature so the subprocess output is in the GHA log
+        # (Playwright captures it and only surfaces it on a timeout, which
+        # the PR check page strips). The webServer config is still there for
+        # local dev — reuseExistingServer=true lets Playwright pick this up.
+        working-directory: backend
+        run: |
+          rm -rf ./data-e2e
+          mkdir -p logs
+          PYTHONPATH=. WEBUI_DATA_DIR=./data-e2e WEBUI_PORT=8765 \
+            nohup uv run uvicorn tests.e2e_server:app \
+              --host 127.0.0.1 --port 8765 --log-level info \
+              > logs/backend.log 2>&1 &
+          echo "backend pid: $!"
+
+      - name: Start frontend (vite dev server)
+        env:
+          VITE_API_PORT: "8765"
+        run: |
+          mkdir -p logs
+          nohup pnpm vite --port 5174 --strictPort > logs/frontend.log 2>&1 &
+          echo "frontend pid: $!"
+
+      - name: Wait for servers
+        run: |
+          set -e
+          echo "::group::backend /api/health"
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8765/api/health >/dev/null; then
+              echo "backend up after ${i}s"
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "::error::backend never became healthy"
+              echo "---- backend.log ----"
+              cat ../backend/logs/backend.log || true
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "::endgroup::"
+          echo "::group::frontend /"
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:5174/ >/dev/null; then
+              echo "frontend up after ${i}s"
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "::error::frontend never came up"
+              echo "---- frontend.log ----"
+              cat logs/frontend.log || true
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "::endgroup::"
+
       - name: Run Playwright tests
         # `list` keeps every test on its own line in the GHA log so failures
         # are readable from the PR check page; `github` emits annotations
         # against the failing source lines; `html` is what gets uploaded as
         # the report artifact.
         run: pnpm exec playwright test --reporter=list,github,html
+
+      - name: Dump server logs
+        if: always()
+        run: |
+          echo "::group::backend.log"
+          cat ../backend/logs/backend.log || echo "(no backend log)"
+          echo "::endgroup::"
+          echo "::group::frontend.log"
+          cat logs/frontend.log || echo "(no frontend log)"
+          echo "::endgroup::"
 
       - name: Upload Playwright report
         # Run unconditionally so we can inspect the report even when tests
@@ -224,5 +292,7 @@ jobs:
           path: |
             frontend/playwright-report/
             frontend/test-results/
+            frontend/logs/
+            backend/logs/
           if-no-files-found: warn
           retention-days: 14
