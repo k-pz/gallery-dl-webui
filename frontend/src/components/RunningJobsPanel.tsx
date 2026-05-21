@@ -100,12 +100,13 @@ function RunningRow({
       }}
     >
       <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-        <Group gap="xs" wrap="nowrap" align="center">
+        <Group className="app-row-line" gap="xs" wrap="nowrap" align="center">
           <Pill tone={statusTone(item.status)}>{step.label}</Pill>
           <Text size="xs" c="dimmed" ff="monospace">
             #{item.id}
           </Text>
           <Text
+            className="app-row-name"
             size="sm"
             fw={selected ? 600 : 500}
             style={{

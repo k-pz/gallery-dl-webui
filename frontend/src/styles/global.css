@@ -211,7 +211,10 @@ a {
   }
 }
 
-/* List row — pulls the heading + URL + meta together with a hover affordance. */
+/* List row — pulls the heading + URL + meta together with a hover affordance.
+   `container-type: inline-size` lets the inner layout respond to the row's
+   own width via @container — the master-detail left column squeezes rows to
+   ~300px, where the single-line variant truncates the name to "I...". */
 .app-row {
   display: flex;
   gap: var(--mantine-spacing-sm);
@@ -219,6 +222,7 @@ a {
   padding: 0.85rem 0.9rem;
   border-radius: var(--mantine-radius-md);
   border: 1px solid transparent;
+  container-type: inline-size;
   transition:
     background-color 0.15s ease,
     border-color 0.15s ease;
@@ -232,6 +236,28 @@ a {
 }
 .app-row + .app-row {
   margin-top: 0.15rem;
+}
+
+/* Narrow-row layout: when the row container is < ~360px wide (the jobs-grid
+   left column), allow the meta strip to wrap and reserve a min-width for the
+   name so it slides onto its own full line instead of ellipsing to "I…".
+   `order: 99` pushes the name behind the short meta chips when it wraps.
+   The `!important` flag is required to beat Mantine's inline `--group-wrap`
+   variable that the `wrap="nowrap"` prop sets on the Group element. */
+@container (max-width: 360px) {
+  .app-row-line {
+    flex-wrap: wrap !important;
+  }
+  .app-row-name {
+    min-width: 8rem;
+    order: 99;
+  }
+  .app-row-url {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    word-break: break-all;
+  }
 }
 
 /* Status pill in row lists. Borderless, low-saturation; reads as a label
