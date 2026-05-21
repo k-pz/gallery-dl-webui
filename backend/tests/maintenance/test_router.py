@@ -560,3 +560,110 @@ def test_regenerate_metadata_ignores_archives_outside_designated_output_dirs(
 
     assert (designated / "Series" / "series.json").is_file()
     assert not (unrelated_dir / "series.json").exists()
+
+
+def test_push_komga_status_missing_params_is_rejected(client: TestClient) -> None:
+    resp = client.post("/api/maintenance/jobs", json={"kind": "push_komga_series_status"})
+    assert resp.status_code == 400
+    assert "params" in resp.json()["detail"]
+
+
+def test_push_komga_status_blank_field_is_rejected(client: TestClient) -> None:
+    resp = client.post(
+        "/api/maintenance/jobs",
+        json={
+            "kind": "push_komga_series_status",
+            "params": {"base_url": "http://k", "username": "u", "password": ""},
+        },
+    )
+    assert resp.status_code == 400
+    assert "password" in resp.json()["detail"]
+
+
+def test_push_komga_status_bad_base_url_is_rejected(client: TestClient) -> None:
+    resp = client.post(
+        "/api/maintenance/jobs",
+        json={
+            "kind": "push_komga_series_status",
+            "params": {"base_url": "ftp://nope", "username": "u", "password": "p"},
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_push_komga_status_end_to_end(
+    client: TestClient, tmp_path: Path, gallery_config, monkeypatch
+) -> None:
+    """Schedule the job and watch it push a target's status to a fake Komga.
+
+    We swap `httpx.AsyncClient` for one backed by `MockTransport` so the worker
+    talks to an in-process fake. The schedule request still carries real-looking
+    credentials so the validation path runs.
+    """
+    import httpx
+
+    # Stage a target with a series_status set.
+    cfg_resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(tmp_path / "media"),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "default_watch_period": "1d",
+        },
+    )
+    assert cfg_resp.status_code == 200, cfg_resp.json()
+    gallery_config.series_name_for["https://example/x"] = "Series"
+    gallery_config.manifest_for["https://example/x"] = []
+    sub = client.post("/api/downloads", json={"url": "https://example/x"})
+    assert sub.status_code == 200
+    for _ in range(40):
+        targets = client.get("/api/targets").json()
+        if targets and targets[0]["name"] == "Series":
+            break
+        time.sleep(0.05)
+    target_id = client.get("/api/targets").json()[0]["id"]
+    client.patch(f"/api/targets/{target_id}", json={"series_status": "Hiatus"})
+
+    patches: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v1/series":
+            assert request.url.params.get("search") == "Series"
+            return httpx.Response(200, json={"content": [{"id": "k-series-id", "name": "Series"}]})
+        if request.method == "PATCH":
+            import json
+
+            patches.append((request.url.path, json.loads(request.content)["status"]))
+            return httpx.Response(204)
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    original_client = httpx.AsyncClient
+
+    def patched_client(*args, **kwargs):
+        kwargs["transport"] = transport
+        return original_client(*args, **kwargs)
+
+    # The Komga helper constructs `httpx.AsyncClient(...)` lazily, so patching
+    # the class on the httpx module before scheduling the job is enough.
+    monkeypatch.setattr(httpx, "AsyncClient", patched_client)
+
+    created = client.post(
+        "/api/maintenance/jobs",
+        json={
+            "kind": "push_komga_series_status",
+            "params": {
+                "base_url": "http://komga.local",
+                "username": "user",
+                "password": "pw",
+            },
+        },
+    )
+    assert created.status_code == 200, created.json()
+    job_id = created.json()["id"]
+
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "completed", done
+    assert done["result"]["updated"] == 1
+    assert patches == [("/api/v1/series/k-series-id/metadata", "HIATUS")]
