@@ -15,7 +15,17 @@ from backend.maintenance.schemas import (
 
 router = APIRouter(tags=["maintenance"])
 
-SUPPORTED_KINDS = {"rename_chapters", "regenerate_series_metadata", "rebuild_library"}
+SUPPORTED_KINDS = {
+    "rename_chapters",
+    "regenerate_series_metadata",
+    "rebuild_library",
+    "push_komga_series_status",
+}
+
+# Kinds whose schedule request must carry credentials in `params`. We stash
+# those params in worker memory before creating the DB row so the SQLite
+# table never sees them.
+KINDS_REQUIRING_PARAMS = {"push_komga_series_status"}
 
 
 def _to_out(job) -> MaintenanceJobOut:
@@ -54,7 +64,21 @@ async def schedule_maintenance_job(
 ) -> MaintenanceJobOut:
     if body.kind not in SUPPORTED_KINDS:
         raise HTTPException(status_code=400, detail=f"unsupported maintenance kind: {body.kind}")
+    if body.kind in KINDS_REQUIRING_PARAMS:
+        # Fail fast before persisting a pending row that the worker would
+        # immediately mark failed for the same reason.
+        from backend.maintenance.komga import validate_credentials
+
+        try:
+            validate_credentials(body.params)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     created = await service.create_pending(db, body.kind)
+    if body.kind in KINDS_REQUIRING_PARAMS:
+        # Stash *after* the row exists so the worker can never claim a job
+        # whose params we forgot to register. The params dict lives only in
+        # the worker's process memory and is dropped on terminal transition.
+        request.app.state.maintenance_worker.stash_params(created.id, body.params or {})
     request.app.state.maintenance_worker.notify()
     bus.publish(maintenance_event("created", id=created.id))
     return _to_out(created)
@@ -76,6 +100,8 @@ async def cancel_maintenance_job(
     # gets a soft signal that the worker checks at the top of each iteration.
     if job.status == "pending":
         await service.cancel_pending(db, job_id)
+        # Drop any stashed credentials for a job that will never run.
+        request.app.state.maintenance_worker.drop_params(job_id)
     else:
         request.app.state.maintenance_worker.request_cancel(job_id)
     refreshed = await service.get_job(db, job_id)

@@ -1,0 +1,226 @@
+"""Komga REST API client used by the `push_komga_series_status` maintenance kind.
+
+Kept deliberately narrow: we only need to (a) authenticate against a Komga
+instance with username + password, (b) search series by name, and (c) PATCH
+the series metadata `status` field. Everything else is out of scope.
+
+Credentials reach this module via the maintenance worker, which stashes them
+in memory keyed by job id at schedule time. They are never persisted to the
+SQLite app_config / job tables — process restart drops them on the floor.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any
+
+import httpx
+
+# Local series_status labels (defined in downloads.postprocess.SERIES_STATUSES)
+# mapped to Komga's REST enum. Komga's series metadata endpoint accepts only
+# the four uppercase labels below; anything else is rejected with a 400.
+LOCAL_TO_KOMGA_STATUS: dict[str, str] = {
+    "Ongoing": "ONGOING",
+    "Ended": "ENDED",
+    "Hiatus": "HIATUS",
+    "Abandoned": "ABANDONED",
+}
+
+
+@dataclass(frozen=True)
+class KomgaCredentials:
+    base_url: str
+    username: str
+    password: str
+
+
+@dataclass(frozen=True)
+class TargetForPush:
+    """A subset of `targets.Target` flattened for the Komga push handler.
+
+    The handler only needs the human-facing name (for search) and the local
+    series_status label (for the status enum mapping); decoupling here keeps
+    the unit test for the push function free of DB fixtures.
+    """
+
+    name: str
+    series_status: str
+
+
+@dataclass
+class KomgaPushResult:
+    updated: int = 0
+    skipped_no_status: int = 0
+    skipped_unknown_status: int = 0
+    skipped_no_match: int = 0
+    skipped_multi_match: int = 0
+    failed: int = 0
+    total: int = 0
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "updated": self.updated,
+            "skipped_no_status": self.skipped_no_status,
+            "skipped_unknown_status": self.skipped_unknown_status,
+            "skipped_no_match": self.skipped_no_match,
+            "skipped_multi_match": self.skipped_multi_match,
+            "failed": self.failed,
+            "total": self.total,
+        }
+
+
+ProgressLine = Callable[[str], None]
+ShouldCancel = Callable[[], bool]
+
+
+def validate_credentials(params: dict[str, Any] | None) -> KomgaCredentials:
+    """Coerce the loosely-typed `params` payload into a `KomgaCredentials`.
+
+    Raises `ValueError` (caught by the worker → marks the job failed) with a
+    user-visible message when a required field is missing or blank. Strips
+    trailing slashes from the base URL so per-request paths can be joined
+    verbatim.
+    """
+    if not params:
+        raise ValueError("push_komga_series_status requires params (base_url, username, password)")
+    missing: list[str] = []
+    values: dict[str, str] = {}
+    for key in ("base_url", "username", "password"):
+        raw = params.get(key)
+        if not isinstance(raw, str) or not raw.strip():
+            missing.append(key)
+        else:
+            values[key] = raw.strip() if key != "password" else raw
+    if missing:
+        raise ValueError(f"push_komga_series_status missing params: {', '.join(missing)}")
+    base_url = values["base_url"].rstrip("/")
+    if not (base_url.startswith("http://") or base_url.startswith("https://")):
+        raise ValueError("push_komga_series_status base_url must start with http:// or https://")
+    return KomgaCredentials(
+        base_url=base_url,
+        username=values["username"],
+        password=values["password"],
+    )
+
+
+async def push_series_statuses(
+    creds: KomgaCredentials,
+    targets: list[TargetForPush],
+    *,
+    on_total: Callable[[int], None] | None = None,
+    on_step: ProgressLine | None = None,
+    should_cancel: ShouldCancel | None = None,
+    client_factory: Callable[[], httpx.AsyncClient] | None = None,
+    on_cancel: Callable[[KomgaPushResult], Awaitable[None] | None] | None = None,
+) -> KomgaPushResult:
+    """Push each target's local series_status into the matching Komga series.
+
+    Matching rule: case-insensitive exact match on the series name. Zero or
+    multiple matches → log + skip (per the agreed UX), tracked as separate
+    counters in the returned result.
+
+    `client_factory` exists so tests can inject an `httpx.MockTransport`
+    without monkey-patching. `should_cancel` is polled before each per-series
+    HTTP round-trip; on a True read the function calls `on_cancel` (so the
+    caller can raise `MaintenanceCancelled` with the partial result) and
+    returns the partial result.
+    """
+    result = KomgaPushResult(total=len(targets))
+    if on_total is not None:
+        on_total(len(targets))
+
+    def emit(line: str) -> None:
+        if on_step is not None:
+            on_step(line)
+
+    def cancelled() -> bool:
+        return bool(should_cancel and should_cancel())
+
+    auth = httpx.BasicAuth(creds.username, creds.password)
+
+    def _default_factory() -> httpx.AsyncClient:
+        return httpx.AsyncClient(base_url=creds.base_url, auth=auth, timeout=30.0)
+
+    factory = client_factory or _default_factory
+
+    async with factory() as http:
+        for target in targets:
+            if cancelled():
+                if on_cancel is not None:
+                    maybe_coro = on_cancel(result)
+                    if maybe_coro is not None:
+                        await maybe_coro
+                return result
+
+            if not target.series_status:
+                result.skipped_no_status += 1
+                emit(f"skip (no local status): {target.name}")
+                continue
+
+            komga_status = LOCAL_TO_KOMGA_STATUS.get(target.series_status)
+            if komga_status is None:
+                result.skipped_unknown_status += 1
+                emit(f"skip (unknown status {target.series_status!r}): {target.name}")
+                continue
+
+            try:
+                resp = await http.get(
+                    "/api/v1/series",
+                    params={"search": target.name, "size": 50},
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                result.failed += 1
+                emit(f"search failed for {target.name!r}: {exc}")
+                continue
+
+            try:
+                payload = resp.json()
+            except ValueError as exc:
+                result.failed += 1
+                emit(f"search returned non-JSON for {target.name!r}: {exc}")
+                continue
+
+            content = payload.get("content") if isinstance(payload, dict) else None
+            if not isinstance(content, list):
+                content = []
+            wanted = target.name.strip().lower()
+            exact = [
+                s
+                for s in content
+                if isinstance(s, dict)
+                and isinstance(s.get("name"), str)
+                and s["name"].strip().lower() == wanted
+            ]
+
+            if len(exact) == 0:
+                result.skipped_no_match += 1
+                emit(f"skip (no Komga match): {target.name}")
+                continue
+            if len(exact) > 1:
+                result.skipped_multi_match += 1
+                emit(f"skip ({len(exact)} Komga matches): {target.name}")
+                continue
+
+            series_id = exact[0].get("id")
+            if not isinstance(series_id, str) or not series_id:
+                result.failed += 1
+                emit(f"Komga match missing id for {target.name!r}")
+                continue
+
+            try:
+                patch_resp = await http.patch(
+                    f"/api/v1/series/{series_id}/metadata",
+                    json={"status": komga_status},
+                )
+                patch_resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                result.failed += 1
+                emit(f"update failed for {target.name!r}: {exc}")
+                continue
+
+            result.updated += 1
+            emit(f"updated: {target.name} → {komga_status}")
+
+    return result
