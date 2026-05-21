@@ -1,3 +1,9 @@
+## v1.3.0 (2026-05-21)
+
+### Feat
+
+- **extension**: add Firefox MV3 extension to add the current tab to the library
+
 ## v1.2.0 (2026-05-21)
 
 ### Feat
