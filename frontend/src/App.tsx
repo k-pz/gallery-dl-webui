@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { listDownloadsOptions } from "./api/@tanstack/react-query.gen";
 import { ActiveJobCard } from "./components/ActiveJobCard";
+import { AppVersion } from "./components/AppVersion";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { CountBadge } from "./components/CountBadge";
 import { HealthBadge } from "./components/HealthBadge";
@@ -99,7 +100,9 @@ export default function App() {
               {tab === "logs" ? <LogsPanel /> : null}
             </Tabs.Panel>
           </Tabs>
-          <div className="app-footnote">gallery-dl · webui</div>
+          <div className="app-footnote">
+            gallery-dl · webui · <AppVersion />
+          </div>
         </Stack>
       </Container>
       <MobileBottomNav active={tab} jobsBadge={running} onChange={(k) => setTab(k)} />

@@ -791,6 +791,10 @@ a {
   padding: 1.5rem 0 0.5rem;
 }
 
+.app-version {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Dark mode: soften Mantine's Switch/SegmentedControl so they blend with cards. */
 [data-mantine-color-scheme="dark"] .mantine-Switch-track {
   background-color: color-mix(in srgb, var(--app-text) 8%, transparent);

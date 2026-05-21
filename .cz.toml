@@ -1,0 +1,23 @@
+# Commitizen configuration — single source of truth for the app version.
+#
+# `mise run release` (or the release GH workflow) runs `cz bump`, which:
+#   1. Reads conventional commits since the last tag.
+#   2. Computes the next semver.
+#   3. Rewrites the `version` line in every file listed in `version_files`.
+#   4. Updates CHANGELOG.md and creates a `v$version` tag.
+#
+# Keep the file list in sync with anywhere a version literal lives.
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "1.0.0"
+tag_format = "v$version"
+update_changelog_on_bump = true
+changelog_incremental = true
+major_version_zero = false
+version_scheme = "semver"
+version_files = [
+    "backend/pyproject.toml:^version",
+    "backend/src/backend/__init__.py:^__version__",
+    "frontend/package.json:^  \"version\"",
+]

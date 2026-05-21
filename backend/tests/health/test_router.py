@@ -1,7 +1,9 @@
 from fastapi.testclient import TestClient
 
+from backend import __version__
+
 
 def test_health_returns_ok(client: TestClient) -> None:
     resp = client.get("/api/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    assert resp.json() == {"status": "ok", "version": __version__}
