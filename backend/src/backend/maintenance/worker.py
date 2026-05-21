@@ -358,14 +358,10 @@ class MaintenanceWorker:
                 continue
             if meta.series_status:
                 async with self._db_lock:
-                    await targets_service.set_series_status(
-                        self._db, target.id, meta.series_status
-                    )
+                    await targets_service.set_series_status(self._db, target.id, meta.series_status)
             if meta.series_tags:
                 async with self._db_lock:
-                    await targets_service.set_series_tags(
-                        self._db, target.id, meta.series_tags
-                    )
+                    await targets_service.set_series_tags(self._db, target.id, meta.series_tags)
             if meta.chapter_dates:
                 # Index by sanitised series name so the regen lookup can
                 # match against the ComicInfo.xml `Series` field — same

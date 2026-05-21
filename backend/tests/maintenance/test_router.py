@@ -335,9 +335,7 @@ def test_regenerate_does_not_overwrite_user_set_series_status_or_tags(
     )
     gallery_config.manifest_for["https://example/x"] = []
     gallery_config.series_name_for["https://example/x"] = "Series"
-    client.post(
-        "/api/downloads", json={"url": "https://example/x", "output_dir": str(output_dir)}
-    )
+    client.post("/api/downloads", json={"url": "https://example/x", "output_dir": str(output_dir)})
     for _ in range(40):
         targets = client.get("/api/targets").json()
         if targets and targets[0]["name"] == "Series":

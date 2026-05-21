@@ -238,9 +238,7 @@ class Worker:
                 )
         if job.target_id is not None and manifest.series_tags:
             async with self._db_lock:
-                await targets_service.set_series_tags(
-                    self._db, job.target_id, manifest.series_tags
-                )
+                await targets_service.set_series_tags(self._db, job.target_id, manifest.series_tags)
         return manifest.paths
 
     async def _execute_download(

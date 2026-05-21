@@ -219,8 +219,7 @@ async def set_series_tags(db: aiosqlite.Connection, id_: int, tags: list[str]) -
     # `tags = '[]'` is the JSON sentinel for "user cleared all tags", but for
     # auto-fill purposes that and `NULL` mean the same thing — no value yet.
     await db.execute(
-        "UPDATE targets SET tags = ? WHERE id = ? "
-        "AND (tags IS NULL OR tags = '' OR tags = '[]')",
+        "UPDATE targets SET tags = ? WHERE id = ? AND (tags IS NULL OR tags = '' OR tags = '[]')",
         (_encode_tags(tags), id_),
     )
     await db.commit()
