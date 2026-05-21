@@ -108,6 +108,10 @@ async def create_download(
     download = await service.insert_pending(
         db, url, category, output_dir=output_dir_str, target_id=target.id
     )
+    # Submitting counts as a poll: without this, a freshly-watched target keeps
+    # `last_polled_at = NULL` and the poller's next tick re-queues it the moment
+    # this download finishes (poller.is_due treats NULL as "always due").
+    await targets_service.mark_polled(db, target.id)
     worker.notify()
     bus.publish(downloads_event("created", id=download.id))
     bus.publish(Event(topic="targets", type="updated", data={"id": target.id}))

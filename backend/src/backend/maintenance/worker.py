@@ -472,6 +472,10 @@ class MaintenanceWorker:
                     output_dir=target.output_dir,
                     target_id=target.id,
                 )
+                # Same rationale as create_download: queuing here counts as a
+                # poll so the periodic poller doesn't re-queue the moment the
+                # rebuild's download finishes.
+                await targets_service.mark_polled(self._db, target.id)
             enqueued += 1
             self._live.increment_done(job_id)
             self._live.record(job_id, f"enqueued: {target.url}")
