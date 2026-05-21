@@ -45,7 +45,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Sync with tip of origin/main
+        # The trigger SHA can lag tip-of-main if another push raced ahead
+        # between trigger and workflow start. Fetch + fast-forward before
+        # bumping so the new commit applies on top of everything, and the
+        # final push has nothing to reject.
+        run: |
+          git fetch origin main --tags
+          git pull --ff-only origin main
+
       - name: Bump version + push
+        id: bump
         run: |
           set -u
           # `cz bump` rewrites version files, updates CHANGELOG.md, commits as
@@ -55,21 +65,50 @@ jobs:
           rc=$?
           set -e
           if [ "$rc" -eq 0 ]; then
+            VERSION=$(uv tool run --from commitizen cz version --project)
             # cz can't rewrite the workspace package's version inside uv.lock
             # (the line isn't unique), so refresh the lock and fold any
             # resulting diff into the bump commit + tag.
             (cd backend && uv lock)
             if ! git diff --quiet backend/uv.lock; then
-              VERSION=$(uv tool run --from commitizen cz version --project)
               git add backend/uv.lock
               git commit --amend --no-edit
-              git tag -f "v${VERSION}"
+              # `-fa` (annotated, force) — `git tag -f` alone would create a
+              # lightweight tag, which `git push --follow-tags` silently
+              # skips, leaving origin with the bump commit but no tag.
+              git tag -fa "v${VERSION}" -m "bump: v${VERSION}"
             fi
             git push --follow-tags
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "bumped=true" >> "$GITHUB_OUTPUT"
           elif [ "$rc" -eq 21 ] || [ "$rc" -eq 3 ]; then
             # 21 = NoCommitsFoundError (nothing since last tag)
             #  3 = NoCommitsIncrement (commits exist but none bump-worthy)
             echo "No bump-worthy commits since last tag — nothing to release."
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
           else
             exit "$rc"
           fi
+
+      - name: Create GitHub Release
+        if: steps.bump.outputs.bumped == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          # Carve the just-inserted CHANGELOG section out for the release
+          # body. Sections start with "## vX.Y.Z (YYYY-MM-DD)"; capture
+          # everything until the next "## " heading.
+          notes=$(awk -v v="v${VERSION}" '
+            /^## / {
+              if (in_section) exit
+              if ($2 == v) { in_section = 1; next }
+            }
+            in_section
+          ' CHANGELOG.md)
+          if [ -z "$notes" ]; then
+            notes="Release v${VERSION}"
+          fi
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --notes "$notes"
