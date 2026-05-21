@@ -1,3 +1,9 @@
+## v1.2.0 (2026-05-21)
+
+### Feat
+
+- **maintenance**: add Komga series status push job
+
 ## v1.1.3 (2026-05-21)
 
 ### Fix
