@@ -168,6 +168,18 @@ if ! in_ct grep -qF "$DESIRED_EXEC" "$UNIT_PATH"; then
     in_ct systemctl daemon-reload
 fi
 
+# ---- Ensure service user can read its own journal (one-time) --------------
+#
+# The in-app Live Log Tail shells out to `journalctl -u ${SERVICE}` as the
+# service user. journald grants non-root reads to members of the
+# `systemd-journal` group (or `adm` on hosts that use the older ACL).
+# `usermod -aG` is idempotent — re-running on already-fixed CTs is a no-op.
+# The service restart below picks up the new supplementary group.
+
+in_ct_sh "getent group systemd-journal >/dev/null \
+    && usermod -aG systemd-journal '${APP_USER}' \
+    || usermod -aG adm '${APP_USER}' || true"
+
 # ---- Restart --------------------------------------------------------------
 #
 # `systemctl restart` blocks until both stop and start complete (default 90s
