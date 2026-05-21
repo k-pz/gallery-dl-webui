@@ -156,10 +156,15 @@ Quick install (development / unsigned):
    **Backend URL** (e.g. `http://localhost:8000`). The **Test connection**
    button hits `/api/health`.
 
-Temporary add-ons are uninstalled on browser restart — see
-[`firefox-extension/README.md`](firefox-extension/README.md) for permanent
-install options (signing via AMO or Developer Edition / Nightly / ESR with
-`xpinstall.signatures.required=false`).
+Temporary add-ons are uninstalled on browser restart. For a permanent
+install, [`firefox-extension/README.md`](firefox-extension/README.md) has
+step-by-step instructions for both paths:
+
+- **Option A** — self-distribute a signed `.xpi` via
+  [addons.mozilla.org](https://addons.mozilla.org) (private listing). Works
+  in every Firefox channel.
+- **Option B** — disable `xpinstall.signatures.required` in Firefox
+  Developer Edition or Nightly and install an unsigned `.xpi` directly.
 
 ## Deployment
 

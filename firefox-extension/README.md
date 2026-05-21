@@ -35,10 +35,89 @@ No build step — these are plain HTML/CSS/JS files loaded directly by Firefox.
    (e.g. `http://localhost:8000`) and **Save**. The **Test connection**
    button hits `/api/health`.
 
-A temporary add-on is uninstalled when Firefox restarts. To install
-permanently you need to either sign it via
-[addons.mozilla.org](https://addons.mozilla.org), or use Firefox Developer
-Edition / Nightly / ESR with `xpinstall.signatures.required=false`.
+A temporary add-on is uninstalled when Firefox restarts. The next two
+sections walk through the two ways to install it permanently.
+
+## Permanent install — option A: self-distribute a signed `.xpi` (recommended)
+
+Works in every Firefox channel (Release, ESR, mobile). Mozilla signs the
+build for you but doesn't list it publicly. You'll need a (free)
+[addons.mozilla.org](https://addons.mozilla.org) account.
+
+1. **Package the source.** From the repo root:
+   ```sh
+   cd firefox-extension
+   zip -r ../gallery-dl-webui-extension.zip . -x '*.DS_Store'
+   ```
+   You should get a single `gallery-dl-webui-extension.zip` whose root
+   contains `manifest.json` directly (not nested in a folder).
+
+2. **Open the Developer Hub.** Sign in at
+   <https://addons.mozilla.org/developers/> and click
+   **Submit a New Add-on**.
+
+3. **Pick "On your own".** When asked _"How to distribute this version?"_,
+   choose **On your own**. This makes the listing private — only you get
+   the download link.
+
+4. **Upload the `.zip`.** Mozilla's automated validator runs (same checks
+   as `web-ext lint`, which already passes here). Approve the
+   source-code-and-license prompts.
+
+5. **Wait for signing.** Usually a minute or two for a "Listed: No"
+   submission. When it's done, the version page exposes a **Download**
+   button for the signed `.xpi`.
+
+6. **Install in Firefox.** Drag the signed `.xpi` onto a Firefox window
+   (or `about:addons` → gear → _Install Add-on From File…_). Confirm the
+   permission prompt.
+
+7. **Updates.** Repeat with the version bumped in `manifest.json`. To
+   automate the upload/sign/download cycle, use
+   [`web-ext sign`](https://extensionworkshop.com/documentation/develop/web-ext-command-reference/#web-ext-sign)
+   with [AMO API credentials](https://addons.mozilla.org/developers/addon/api/key/):
+   ```sh
+   cd firefox-extension
+   npx web-ext sign \
+     --api-key="$AMO_JWT_ISSUER" \
+     --api-secret="$AMO_JWT_SECRET" \
+     --channel=unlisted
+   ```
+   The signed `.xpi` lands in `web-ext-artifacts/`.
+
+## Permanent install — option B: disable signature enforcement (Dev Edition / Nightly)
+
+No AMO involvement, but **only works on Firefox Developer Edition, Nightly,
+or an Unbranded build** — Release and ESR ignore the preference.
+
+1. **Install Firefox Developer Edition.** Download from
+   <https://www.mozilla.org/firefox/developer/>. Run it alongside your
+   regular Firefox (it uses a separate profile).
+
+2. **Disable signature enforcement.** Open `about:config`, accept the
+   warning, then set:
+   ```
+   xpinstall.signatures.required  →  false
+   ```
+
+3. **Build the `.xpi`.** From the repo root:
+   ```sh
+   cd firefox-extension
+   zip -r ../gallery-dl-webui-extension.xpi . -x '*.DS_Store'
+   ```
+   (`.xpi` is just a renamed `.zip`.)
+
+4. **Install the `.xpi`.** Open `about:addons` → gear icon (top right) →
+   _Install Add-on From File…_ → pick `gallery-dl-webui-extension.xpi` →
+   confirm.
+
+5. **Verify.** The extension stays installed across restarts. Open the
+   options page (`about:addons` → the extension → _Preferences_) and set
+   your backend URL.
+
+To update, bump the `version` in `manifest.json`, rebuild the `.xpi`, and
+re-install via the same flow (Firefox replaces the existing copy because
+`browser_specific_settings.gecko.id` matches).
 
 ## Backend CORS
 
