@@ -137,6 +137,30 @@ toggling the delete-raw setting and resubmitting the same URL will not re-pack
 a chapter — `gallery-dl` will short-circuit. To force a re-pack, wipe the
 matching archive row first.
 
+## Firefox extension
+
+[`firefox-extension/`](firefox-extension/) ships a small Firefox MV3 extension
+that adds the page you're currently looking at to the library in one click.
+The toolbar popup mirrors the **Add a gallery** form (URL pre-filled, output
+dir + tags + reading direction + watch toggle).
+
+Quick install (development / unsigned):
+
+1. Make sure the backend allows the extension's CORS origin. Set
+   `WEBUI_CORS_ORIGIN_REGEX='moz-extension://.*'` (easiest), or
+   `WEBUI_CORS_ORIGINS=<exact moz-extension://… origin>` for a strict allow-list.
+2. In Firefox, open `about:debugging#/runtime/this-firefox` →
+   **Load Temporary Add-on…** and pick
+   [`firefox-extension/manifest.json`](firefox-extension/manifest.json).
+3. Click the new toolbar icon, then the gear (⚙) in the popup, and set the
+   **Backend URL** (e.g. `http://localhost:8000`). The **Test connection**
+   button hits `/api/health`.
+
+Temporary add-ons are uninstalled on browser restart — see
+[`firefox-extension/README.md`](firefox-extension/README.md) for permanent
+install options (signing via AMO or Developer Edition / Nightly / ESR with
+`xpinstall.signatures.required=false`).
+
 ## Deployment
 
 Production runs on an unprivileged Debian LXC on Proxmox with a `systemd` unit
