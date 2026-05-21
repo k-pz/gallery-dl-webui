@@ -91,6 +91,7 @@ a {
   margin: 0;
   padding: 0;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .app-brand-tag {
@@ -102,6 +103,29 @@ a {
   padding-left: 0.45rem;
   border-left: 1px solid var(--app-border);
   margin-left: 0.1rem;
+  white-space: nowrap;
+}
+
+/* Tighten the header on phones — the "archive" tag is editorial filler that
+   eats width without informing, and the wordmark wraps to two lines once
+   the health badge is alongside it. Hide the tag, shrink the word a touch. */
+@media (max-width: 540px) {
+  .app-shell-header-inner {
+    padding: 0.7rem 0;
+    gap: 0.5rem;
+  }
+  .app-brand {
+    gap: 0.4rem;
+    min-width: 0;
+  }
+  .app-brand-word {
+    font-size: 1.05rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .app-brand-tag {
+    display: none;
+  }
 }
 
 /* Tab bar — a single hairline above the panel, no boxy backgrounds. */
@@ -173,6 +197,16 @@ a {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--app-text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+@media (max-width: 540px) {
+  .app-health {
+    padding: 0.25rem 0.55rem;
+    font-size: 0.65rem;
+    letter-spacing: 0.06em;
+    gap: 0.35rem;
+  }
 }
 
 .app-health-dot {
@@ -238,19 +272,22 @@ a {
   margin-top: 0.15rem;
 }
 
-/* Narrow-row layout: when the row container is < ~360px wide (the jobs-grid
-   left column), allow the meta strip to wrap and reserve a min-width for the
-   name so it slides onto its own full line instead of ellipsing to "I…".
+/* Narrow-row layout: when the row container is < ~480px wide (master/detail
+   left column on desktop, full-row on phones), allow the meta strip to wrap
+   and reserve a min-width for the name so it slides onto its own full line
+   instead of ellipsing to "I…". The earlier 360px threshold missed phones
+   entirely — at 430px viewport an .app-row sits around 380–400px wide.
    `order: 99` pushes the name behind the short meta chips when it wraps.
    The `!important` flag is required to beat Mantine's inline `--group-wrap`
    variable that the `wrap="nowrap"` prop sets on the Group element. */
-@container (max-width: 360px) {
+@container (max-width: 480px) {
   .app-row-line {
     flex-wrap: wrap !important;
   }
   .app-row-name {
     min-width: 8rem;
     order: 99;
+    flex-basis: 100% !important;
   }
   .app-row-url {
     white-space: normal !important;
@@ -577,6 +614,85 @@ a {
   margin: 0 -8px;
   transition: background-color 0.15s ease;
 }
+
+/* Library row inner layout. On desktop pills sit before the name on a single
+   line; meta and tags wrap below. On phones (≤540px) the name owns its own
+   line and everything else stacks under it so nothing is ellipsised down to
+   "I…". `order` keeps the pills-first reading order on desktop while
+   letting the name come first in DOM (so screen readers hit it first). */
+.lib-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.lib-row-name {
+  order: 2;
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lib-row-pills {
+  order: 1;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.lib-row-meta {
+  order: 3;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.lib-row-tags {
+  order: 4;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.lib-row-actions {
+  flex-shrink: 0;
+}
+
+/* Phones: let the row head wrap so the action column slides under the name
+   when there isn't room for both side-by-side, and put the name on its own
+   line above the pills. */
+@media (max-width: 540px) {
+  .lib-row-head {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    padding: 12px 10px;
+  }
+  .lib-row-main {
+    flex-basis: 100%;
+    gap: 6px;
+  }
+  .lib-row-name {
+    order: 1;
+    flex: 1 1 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+  }
+  .lib-row-pills {
+    order: 2;
+    flex-basis: 100%;
+  }
+  .lib-row-actions {
+    margin-left: auto;
+  }
+  .lib-row-meta {
+    font-size: 11.5px;
+    flex-basis: 100%;
+  }
+  .lib-row-tags {
+    flex-basis: 100%;
+  }
+}
 .lib-row-head:hover {
   background: var(--app-surface-muted);
 }
@@ -650,7 +766,10 @@ a {
   border-color: color-mix(in srgb, var(--tone-error) 30%, var(--app-border));
 }
 
-/* Mobile bottom nav. Hidden by default; revealed under 768px. */
+/* Mobile bottom nav. Hidden by default; revealed under 768px.
+   Column count matches NAV_ITEMS length in MobileBottomNav.tsx — if items
+   are added/removed there, bump this too or the last item wraps onto a
+   second row (see prior 4-vs-5 mismatch). */
 .mob-nav {
   position: fixed;
   bottom: 0;
@@ -662,8 +781,8 @@ a {
   -webkit-backdrop-filter: saturate(140%) blur(12px);
   border-top: 1px solid var(--app-border-subtle);
   display: none;
-  grid-template-columns: repeat(4, 1fr);
-  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 12px));
+  grid-template-columns: repeat(5, 1fr);
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 12px));
 }
 @media (max-width: 768px) {
   .mob-nav {
@@ -741,6 +860,27 @@ a {
   /* Leave room for the floating bottom nav. */
   .app-shell-body {
     padding-bottom: calc(72px + env(safe-area-inset-bottom, 12px));
+  }
+}
+
+/* Phones: reclaim horizontal space. By default Container + Card + row each
+   add ~16px sides → ~100px of chrome eats into a 430px viewport before any
+   content shows. Trim the Container gutter, shrink Card padding, and let
+   the lib-row hug closer to the card edge. The Card padding override targets
+   the internal `.app-surface` class our theme stamps on Card root, since
+   Card sets `padding` from the `padding` prop as an inline `--card-padding`
+   variable and CSS-variable overrides on the same element lose to inline. */
+@media (max-width: 540px) {
+  .app-shell-body {
+    padding-top: var(--mantine-spacing-md);
+    padding-left: var(--mantine-spacing-sm);
+    padding-right: var(--mantine-spacing-sm);
+  }
+  .app-surface.mantine-Card-root {
+    padding: 14px;
+  }
+  .lib-row-head {
+    margin: 0 -4px;
   }
 }
 
