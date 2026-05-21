@@ -358,57 +358,56 @@ function TargetRow({
         onClick={onToggle}
         onKeyDown={handleHeadKey}
       >
-        <Group gap="sm" wrap="nowrap" align="center" style={{ flex: 1, minWidth: 0 }}>
-          <Pill tone={tone}>{jobStatusLabel(status)}</Pill>
-          {target.series_status && (
-            <Pill tone={seriesStatusTone(target.series_status)}>{target.series_status}</Pill>
-          )}
-          <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
-            <Text
-              size="sm"
-              fw={500}
-              ff="monospace"
-              style={{
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-              title={displayName}
-            >
-              {displayName}
-            </Text>
-            <Group gap={12} wrap="wrap" align="baseline">
-              <Text size="xs" c="dimmed" ff="monospace" style={{ letterSpacing: "0.04em" }}>
-                {target.extractor ?? "—"} · {target.download_count}
-                {target.download_count === 1 ? " run" : " runs"} ·{" "}
-                {formatRel(target.last_finished_at) ?? "—"}
-              </Text>
-              {target.watched && (
-                <Group gap={4} wrap="nowrap" style={{ color: "var(--app-accent)" }}>
-                  <IconEye size={11} />
-                  <Text size="xs" component="span" style={{ color: "inherit" }}>
-                    watched
-                  </Text>
-                </Group>
-              )}
-              {target.tags.length > 0 && (
-                <Group gap={4} wrap="wrap">
-                  {target.tags.slice(0, 3).map((t) => (
-                    <span key={t} className="code-chip" style={{ background: "transparent" }}>
-                      {t}
-                    </span>
-                  ))}
-                  {target.tags.length > 3 && (
-                    <Text size="xs" c="dimmed">
-                      +{target.tags.length - 3}
-                    </Text>
-                  )}
-                </Group>
+        <div className="lib-row-main">
+          <Text className="lib-row-name" size="sm" fw={500} ff="monospace" title={displayName}>
+            {displayName}
+          </Text>
+          <div className="lib-row-pills">
+            <Pill tone={tone}>{jobStatusLabel(status)}</Pill>
+            {target.series_status && (
+              <Pill tone={seriesStatusTone(target.series_status)}>{target.series_status}</Pill>
+            )}
+            {target.watched && (
+              <Group gap={4} wrap="nowrap" style={{ color: "var(--app-accent)" }}>
+                <IconEye size={11} />
+                <Text size="xs" component="span" style={{ color: "inherit" }}>
+                  watched
+                </Text>
+              </Group>
+            )}
+          </div>
+          <Text
+            size="xs"
+            c="dimmed"
+            ff="monospace"
+            className="lib-row-meta"
+            style={{ letterSpacing: "0.04em" }}
+          >
+            {target.extractor ?? "—"} · {target.download_count}
+            {target.download_count === 1 ? " run" : " runs"} ·{" "}
+            {formatRel(target.last_finished_at) ?? "—"}
+          </Text>
+          {target.tags.length > 0 && (
+            <Group gap={4} wrap="wrap" className="lib-row-tags">
+              {target.tags.slice(0, 3).map((t) => (
+                <span key={t} className="code-chip" style={{ background: "transparent" }}>
+                  {t}
+                </span>
+              ))}
+              {target.tags.length > 3 && (
+                <Text size="xs" c="dimmed">
+                  +{target.tags.length - 3}
+                </Text>
               )}
             </Group>
-          </Stack>
-        </Group>
-        <Group gap={2} wrap="nowrap" onClick={(e) => e.stopPropagation()}>
+          )}
+        </div>
+        <Group
+          className="lib-row-actions"
+          gap={2}
+          wrap="nowrap"
+          onClick={(e) => e.stopPropagation()}
+        >
           {target.last_download_id !== null && onOpenJob && (
             <Anchor
               size="xs"
