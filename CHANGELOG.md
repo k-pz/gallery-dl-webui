@@ -1,3 +1,14 @@
+## v1.1.0 (2026-05-21)
+
+### Feat
+
+- **ui**: add favicon mirroring the header brand mark
+- **logs**: pause auto-scroll when reading older entries
+
+### Fix
+
+- **ci**: sync main, push annotated bump tag, publish GitHub release
+
 ## v1.0.1 (2026-05-21)
 
 ### Fix
