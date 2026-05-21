@@ -1,13 +1,14 @@
 import type { ReactNode } from "react";
-import { IconActivity, IconLibrary, IconSliders, IconWrench } from "./Icons";
+import { IconActivity, IconFileText, IconLibrary, IconSliders, IconWrench } from "./Icons";
 
-type NavKey = "library" | "jobs" | "config" | "maintenance";
+type NavKey = "library" | "jobs" | "config" | "maintenance" | "logs";
 
 const NAV_ITEMS: { key: NavKey; label: string; icon: ReactNode }[] = [
   { key: "library", label: "Library", icon: <IconLibrary size={20} /> },
   { key: "jobs", label: "Jobs", icon: <IconActivity size={20} /> },
   { key: "config", label: "Config", icon: <IconSliders size={20} /> },
   { key: "maintenance", label: "Maintain", icon: <IconWrench size={20} /> },
+  { key: "logs", label: "Logs", icon: <IconFileText size={20} /> },
 ];
 
 /**
