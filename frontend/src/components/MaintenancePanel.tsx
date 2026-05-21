@@ -242,7 +242,10 @@ export function MaintenancePanel() {
           {selectedJobId !== null && jobList.length > 0 && (
             <>
               <Divider />
-              <MaintenanceLog jobId={selectedJobId} />
+              <MaintenanceLog
+                jobId={selectedJobId}
+                startedAt={jobList.find((j) => j.id === selectedJobId)?.started_at}
+              />
             </>
           )}
         </Stack>
