@@ -220,21 +220,27 @@ class _ProgressDownloadJob(DownloadJob):
 
 
 class _MetadataSimulationJob(SimulationJob):
-    """Sim job that captures kwdict-level metadata then bails out per chapter.
+    """Sim job that captures kwdict-level metadata without descending into chapters.
 
-    The chapter-level kwdict surfaced via `handle_directory` already carries
-    the manga + chapter + date + tags + status fields we need; the subsequent
-    `Message.Url` yields force the extractor to fetch the chapter's page list
-    (e.g. mangadex's `athome_server`), which we don't need for metadata
-    rediscovery. Raising `StopExtraction` after the Directory yield abandons
-    the current extractor's generator without advancing it past that point —
-    the parent (manga-level) extractor catches the exception and continues to
-    the next chapter Queue message.
+    Most manga-level extractors already pack per-chapter `manga` / `chapter` /
+    `date` / `status` / `tags` into the kwdict carried by every
+    `Message.Queue` they yield — weebcentral, for example, builds these out
+    of its single `/series/{id}/full-chapter-list` fetch. When that's the
+    case `handle_queue` banks the data and returns without spawning a child
+    chapter extractor, skipping the two HTTP requests per chapter (chapter
+    page + images list) and the rate-limit sleep between them.
 
-    For HTML-driven extractors that fetch the chapter page *before* yielding
-    Directory (most kaliscan/manganelo-style sites), no network is saved —
-    but no extra cost is paid either. API-driven extractors (mangadex) save
-    one page-list fetch per chapter.
+    Extractors that only surface dates on the chapter page itself fall
+    through to the default `handle_queue`, which spawns a child job whose
+    `handle_directory` then captures what's there and raises
+    `StopExtraction`. `GalleryExtractor.items` calls `images()` before
+    yielding Directory, so the fallback path still pays the chapter-page +
+    images fetch — it's strictly an improvement for queue-rich extractors
+    and a no-op cost-wise for the rest.
+
+    For top-level chapter URLs (no parent manga extractor to queue from),
+    `handle_directory` is reached directly and the StopExtraction trick
+    keeps us from advancing into Url yields.
     """
 
     _series_box: list[str | None]
@@ -252,9 +258,35 @@ class _MetadataSimulationJob(SimulationJob):
             self._tags_box = [None]
             self._dates_box = [{}]
 
+    def handle_queue(self, url: str, kwdict: dict[str, Any]) -> None:
+        if self._capture(kwdict):
+            return
+        # Queue-level kwdict lacked one of manga/chapter/date — descend so
+        # the child's handle_directory can try to capture from the chapter
+        # page instead.
+        super().handle_queue(url, kwdict)
+
     def handle_directory(self, kwdict: dict[str, Any]) -> None:
-        # Capture in-place (these mirror _ManifestSimulationJob.handle_directory
-        # except we don't need to populate pathfmt — we won't yield any URLs).
+        self._capture(kwdict)
+        # Reached for top-level chapter URLs and for the fallback descent
+        # above. Either way, abandon items() before any Url yields so we
+        # don't enumerate (or fetch) pages.
+        raise StopExtraction()
+
+    def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
+        # Unreachable in normal flow (handle_directory raises before any URLs
+        # arrive). Guard anyway: some extractors yield Url without a prior
+        # Directory (e.g. follow links), and we never want a metadata pass to
+        # touch the filesystem.
+        return
+
+    def _capture(self, kwdict: dict[str, Any]) -> bool:
+        """Bank series-level + per-chapter fields from a kwdict.
+
+        Returns True only when manga + chapter + date were all present —
+        the signal that this chapter's full info is already in hand and the
+        caller can skip descending into a child extractor.
+        """
         if self._series_box[0] is None:
             for key in ("manga", "series", "title"):
                 value = kwdict.get(key)
@@ -287,17 +319,8 @@ class _MetadataSimulationJob(SimulationJob):
         date = date_iso(kwdict.get("date"))
         if manga and chapter and date:
             self._dates_box[0].setdefault((manga, chapter), date)
-        # Skip the rest of this extractor's items() generator — the chapter
-        # data we needed is now banked. The parent (manga-level) extractor's
-        # for-loop over Queue messages keeps going past the caught exception.
-        raise StopExtraction()
-
-    def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
-        # Unreachable in normal flow (handle_directory raises before any URLs
-        # arrive). Guard anyway: some extractors yield Url without a prior
-        # Directory (e.g. follow links), and we never want a metadata pass to
-        # touch the filesystem.
-        return
+            return True
+        return False
 
 
 class Gallery:
