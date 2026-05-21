@@ -10,7 +10,8 @@
  * - text filter (case-insensitive substring)
  * - level threshold (only entries at or above the chosen level are shown)
  * - pause / resume + clear
- * - auto-scroll to bottom unless the user has scrolled up
+ * - "Follow latest" toggle that auto-disables when the user scrolls up and
+ *   re-enables when they scroll back to the bottom (or tick it manually).
  */
 
 import {
@@ -21,6 +22,7 @@ import {
   NumberInput,
   Select,
   Stack,
+  Switch,
   Text,
   TextInput,
 } from "@mantine/core";
@@ -45,6 +47,9 @@ const MAX_LINES = 50_000;
 // history. A wide-open follow on a chatty backend can otherwise grow
 // unbounded.
 const MEMORY_CAP = 5_000;
+// How close to the bottom (in px) counts as "at the bottom" for the
+// auto-follow logic. Anything under this snaps + re-engages follow.
+const FOLLOW_THRESHOLD_PX = 32;
 
 // Journal priorities: 0 emerg .. 7 debug. The threshold is "show this and
 // everything more severe", so a smaller priority is more severe. UI labels
@@ -93,7 +98,9 @@ export function LogsPanel() {
   pausedRef.current = paused;
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const stickRef = useRef(true);
+  const [following, setFollowing] = useState(true);
+  const followingRef = useRef(following);
+  followingRef.current = following;
 
   // Reconnect every time the requested history depth changes; the backend
   // doesn't expose a way to change `-n` mid-stream.
@@ -160,14 +167,14 @@ export function LogsPanel() {
     });
   }, [entries, threshold, filterLower]);
 
-  // Auto-scroll: snap to bottom on new entries unless the user scrolled up.
+  // Auto-scroll: snap to bottom on new entries while follow is on.
   // The dep on `visible.length` is what schedules the effect; the body
   // doesn't reference it directly, so we tell biome that's intentional.
   // biome-ignore lint/correctness/useExhaustiveDependencies: visible.length is a re-render trigger
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    if (stickRef.current) {
+    if (followingRef.current) {
       el.scrollTop = el.scrollHeight;
     }
   }, [visible.length]);
@@ -176,7 +183,16 @@ export function LogsPanel() {
     const el = scrollRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    stickRef.current = distanceFromBottom < 24;
+    const atBottom = distanceFromBottom < FOLLOW_THRESHOLD_PX;
+    setFollowing((prev) => (prev === atBottom ? prev : atBottom));
+  };
+
+  const toggleFollowing = (next: boolean) => {
+    setFollowing(next);
+    if (next) {
+      const el = scrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    }
   };
 
   const applyLines = () => {
@@ -257,6 +273,13 @@ export function LogsPanel() {
           <Text size="sm" c="dimmed" ff="monospace">
             {visible.length} / {entries.length}
           </Text>
+          <Switch
+            size="sm"
+            label="Follow latest"
+            checked={following}
+            onChange={(e) => toggleFollowing(e.currentTarget.checked)}
+            title="Auto-scroll to the newest entry. Turns off when you scroll up; turns on again when you scroll back to the bottom."
+          />
           <Button
             variant="default"
             size="xs"
@@ -302,6 +325,7 @@ export function LogsPanel() {
       <Box
         ref={scrollRef}
         onScroll={onScroll}
+        data-testid="logs-scroll"
         style={{
           border: "1px solid var(--app-border-subtle)",
           borderRadius: "var(--mantine-radius-md)",
