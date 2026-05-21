@@ -19,6 +19,7 @@ from backend.downloads.worker import Worker
 from backend.events import EventBus
 from backend.health.router import router as health_router
 from backend.library.router import router as library_router
+from backend.maintenance import service as maintenance_service
 from backend.maintenance.live_progress import MaintenanceLiveProgress
 from backend.maintenance.router import router as maintenance_router
 from backend.maintenance.worker import MaintenanceWorker
@@ -61,6 +62,13 @@ def create_app(
         interrupted = await downloads_service.mark_interrupted_on_boot(db)
         if interrupted:
             logger.warning("marked %d in-flight job(s) as failed on boot", interrupted)
+
+        interrupted_maint = await maintenance_service.mark_interrupted_on_boot(db)
+        if interrupted_maint:
+            logger.warning(
+                "marked %d in-flight maintenance job(s) as failed on boot",
+                interrupted_maint,
+            )
 
         live_progress = LiveProgress()
         worker = Worker(db, gallery, live_progress, event_bus=event_bus, db_lock=db_lock)
