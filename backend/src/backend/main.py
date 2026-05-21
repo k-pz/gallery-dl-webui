@@ -71,6 +71,7 @@ def create_app(
             maintenance_live,
             settings=settings,
             downloads_worker=worker,
+            gallery=gallery,
             event_bus=event_bus,
             db_lock=db_lock,
         )

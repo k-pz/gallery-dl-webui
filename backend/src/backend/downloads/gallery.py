@@ -1,11 +1,12 @@
 import logging
 import os
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from gallery_dl import config, extractor, output
+from gallery_dl.exception import StopExtraction
 from gallery_dl.job import DownloadJob, SimulationJob
 
 from backend.config import Settings
@@ -13,6 +14,7 @@ from backend.downloads.postprocess import (
     FileRecord,
     chapter_with_minor,
     coerce_record_from_kwdict,
+    date_iso,
     normalize_series_status,
     normalize_tags,
 )
@@ -21,6 +23,25 @@ from backend.downloads.postprocess import (
 # the chapter is already represented as a CBZ in the postprocess output dir,
 # i.e. the worker should not re-download or include it in the manifest.
 SkipChapterFn = Callable[[str, str], bool]
+
+
+@dataclass
+class MetadataResult:
+    """What a metadata-only sim pass discovers about a series.
+
+    `series_name`, `series_status`, and `series_tags` mirror the same fields
+    on `Manifest` (sourced from the same kwdict). `chapter_dates` maps
+    `(manga_name, chapter_string)` to an ISO `YYYY-MM-DD` date when the
+    extractor surfaced one — extractors that derive chapter dates from the
+    chapter page itself (kaliscan et al.) won't populate this until the
+    chapter has been visited; mangadex-style API extractors fill it from the
+    series-level chapter list.
+    """
+
+    series_name: str | None = None
+    series_status: str | None = None
+    series_tags: list[str] | None = None
+    chapter_dates: dict[tuple[str, str], str] = field(default_factory=dict)
 
 
 @dataclass
@@ -198,6 +219,87 @@ class _ProgressDownloadJob(DownloadJob):
         self._on_file_complete(rel)
 
 
+class _MetadataSimulationJob(SimulationJob):
+    """Sim job that captures kwdict-level metadata then bails out per chapter.
+
+    The chapter-level kwdict surfaced via `handle_directory` already carries
+    the manga + chapter + date + tags + status fields we need; the subsequent
+    `Message.Url` yields force the extractor to fetch the chapter's page list
+    (e.g. mangadex's `athome_server`), which we don't need for metadata
+    rediscovery. Raising `StopExtraction` after the Directory yield abandons
+    the current extractor's generator without advancing it past that point —
+    the parent (manga-level) extractor catches the exception and continues to
+    the next chapter Queue message.
+
+    For HTML-driven extractors that fetch the chapter page *before* yielding
+    Directory (most kaliscan/manganelo-style sites), no network is saved —
+    but no extra cost is paid either. API-driven extractors (mangadex) save
+    one page-list fetch per chapter.
+    """
+
+    _series_box: list[str | None]
+    _status_box: list[str | None]
+    _tags_box: list[list[str] | None]
+    _dates_box: list[dict[tuple[str, str], str]]
+
+    def __init__(self, url: Any, parent: SimulationJob | None = None) -> None:
+        super().__init__(url, parent)
+        if not _inherit_shared_state(
+            self, parent, "_series_box", "_status_box", "_tags_box", "_dates_box"
+        ):
+            self._series_box = [None]
+            self._status_box = [None]
+            self._tags_box = [None]
+            self._dates_box = [{}]
+
+    def handle_directory(self, kwdict: dict[str, Any]) -> None:
+        # Capture in-place (these mirror _ManifestSimulationJob.handle_directory
+        # except we don't need to populate pathfmt — we won't yield any URLs).
+        if self._series_box[0] is None:
+            for key in ("manga", "series", "title"):
+                value = kwdict.get(key)
+                if isinstance(value, str) and value.strip():
+                    self._series_box[0] = value.strip()
+                    break
+        if self._status_box[0] is None:
+            for key in ("status", "publication_status"):
+                value = kwdict.get(key)
+                if isinstance(value, str) and value.strip():
+                    normalised = normalize_series_status(value)
+                    if normalised:
+                        self._status_box[0] = normalised
+                    break
+        if self._tags_box[0] is None:
+            for key in ("tags", "genres", "genre"):
+                raw = kwdict.get(key)
+                if isinstance(raw, list):
+                    candidates = [v for v in raw if isinstance(v, str)]
+                elif isinstance(raw, str) and raw.strip():
+                    candidates = [raw]
+                else:
+                    continue
+                cleaned = normalize_tags(candidates)
+                if cleaned:
+                    self._tags_box[0] = cleaned
+                    break
+        manga = str(kwdict.get("manga") or "").strip()
+        chapter = chapter_with_minor(kwdict)
+        date = date_iso(kwdict.get("date"))
+        if manga and chapter and date:
+            self._dates_box[0].setdefault((manga, chapter), date)
+        # Skip the rest of this extractor's items() generator — the chapter
+        # data we needed is now banked. The parent (manga-level) extractor's
+        # for-loop over Queue messages keeps going past the caught exception.
+        raise StopExtraction()
+
+    def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
+        # Unreachable in normal flow (handle_directory raises before any URLs
+        # arrive). Guard anyway: some extractors yield Url without a prior
+        # Directory (e.g. follow links), and we never want a metadata pass to
+        # touch the filesystem.
+        return
+
+
 class Gallery:
     """Thin wrapper around gallery-dl, scoped to one Settings instance.
 
@@ -256,6 +358,24 @@ class Gallery:
             series_name=job._series_box[0],
             series_status=job._status_box[0],
             series_tags=job._tags_box[0],
+        )
+
+    def extract_metadata(self, url: str) -> MetadataResult:
+        """Run a metadata-only sim: capture per-chapter and series-level
+        kwdict fields without enumerating page URLs.
+
+        Used by the regen maintenance job to rediscover series status, tags,
+        and chapter release dates against the upstream extractor — the
+        normal `extract_manifest` would also work but spends time fetching
+        page lists for chapters we already have on disk.
+        """
+        job = _MetadataSimulationJob(url)
+        job.run()
+        return MetadataResult(
+            series_name=job._series_box[0],
+            series_status=job._status_box[0],
+            series_tags=job._tags_box[0],
+            chapter_dates=dict(job._dates_box[0]),
         )
 
     def run_download(

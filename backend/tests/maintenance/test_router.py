@@ -230,6 +230,139 @@ def test_regenerate_series_metadata_picks_up_target_series_status(
     assert payload["metadata"]["status"] == "Hiatus"
 
 
+def _read_comicinfo(cbz: Path) -> dict[str, str]:
+    """Return the ComicInfo.xml fields written into `cbz` as a plain dict."""
+    import xml.etree.ElementTree as ET
+
+    with zipfile.ZipFile(cbz) as zf:
+        root = ET.fromstring(zf.read("ComicInfo.xml"))
+    return {el.tag: el.text or "" for el in root}
+
+
+def test_regenerate_rediscovers_series_metadata_via_gallery(
+    client: TestClient, tmp_path: Path, gallery_config
+) -> None:
+    """Regen runs a metadata-only sim against each target's URL and applies
+    rediscovered status/tags/chapter-dates to series.json + ComicInfo.xml."""
+    import json
+    from datetime import datetime
+
+    root = tmp_path / "media"
+    output_dir = root / "Manga"
+    series_dir = output_dir / "Series"
+    _write_cbz(series_dir / "Series - c001.cbz", "Series", "1")
+
+    cfg_resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "default_watch_period": "1d",
+            "chapter_naming_template": "{{ series }} - c{{ chapter_number }}",
+        },
+    )
+    assert cfg_resp.status_code == 200, cfg_resp.json()
+
+    # Initial download surfaces neither status nor tags from the sim, so the
+    # target row starts with both blank — leaving room for the regen-time
+    # rediscovery to fill them.
+    gallery_config.manifest_for["https://example/x"] = []
+    gallery_config.series_name_for["https://example/x"] = "Series"
+    sub = client.post(
+        "/api/downloads", json={"url": "https://example/x", "output_dir": str(output_dir)}
+    )
+    assert sub.status_code == 200, sub.json()
+    for _ in range(40):
+        targets = client.get("/api/targets").json()
+        if targets and targets[0]["name"] == "Series":
+            break
+        time.sleep(0.05)
+    target_id = client.get("/api/targets").json()[0]["id"]
+
+    # Now upstream "discovers" status + tags + a chapter date. The regen pass
+    # should pick all three up via extract_metadata.
+    gallery_config.series_status_for["https://example/x"] = "Hiatus"
+    gallery_config.series_tags_for["https://example/x"] = ["Action", "Drama"]
+    gallery_config.chapter_dates_for["https://example/x"] = {
+        ("Series", "1"): "2025-03-14",
+    }
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "regenerate_series_metadata"})
+    job_id = created.json()["id"]
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "completed", done
+
+    payload = json.loads((series_dir / "series.json").read_text())
+    assert payload["metadata"]["status"] == "Hiatus"
+    assert payload["metadata"]["tags"] == ["Action", "Drama"]
+
+    target = client.get(f"/api/targets/{target_id}").json()
+    assert target["series_status"] == "Hiatus"
+    assert target["tags"] == ["Action", "Drama"]
+
+    ci = _read_comicinfo(series_dir / "Series - c001.cbz")
+    assert ci["Year"] == "2025"
+    assert ci["Month"] == "3"
+    assert ci["Day"] == "14"
+    assert ci["Tags"] == "Action, Drama"
+    # Sanity: the date we wrote at CBZ-creation time was blank; the regen
+    # backfilled it from the rediscovery pass.
+    assert datetime(2025, 3, 14).strftime("%Y") == ci["Year"]
+
+
+def test_regenerate_does_not_overwrite_user_set_series_status_or_tags(
+    client: TestClient, tmp_path: Path, gallery_config
+) -> None:
+    """User-set status/tags survive a rediscovery pass that surfaces different
+    values (fill-only contract still applies during regen)."""
+    import json
+
+    root = tmp_path / "media"
+    output_dir = root / "Manga"
+    series_dir = output_dir / "Series"
+    _write_cbz(series_dir / "Series - c001.cbz", "Series", "1")
+
+    client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "default_watch_period": "1d",
+            "chapter_naming_template": "{{ series }} - c{{ chapter_number }}",
+        },
+    )
+    gallery_config.manifest_for["https://example/x"] = []
+    gallery_config.series_name_for["https://example/x"] = "Series"
+    client.post(
+        "/api/downloads", json={"url": "https://example/x", "output_dir": str(output_dir)}
+    )
+    for _ in range(40):
+        targets = client.get("/api/targets").json()
+        if targets and targets[0]["name"] == "Series":
+            break
+        time.sleep(0.05)
+    target_id = client.get("/api/targets").json()[0]["id"]
+    # User pins both fields manually.
+    client.patch(
+        f"/api/targets/{target_id}",
+        json={"series_status": "Ended", "tags": ["Romance"]},
+    )
+
+    # Rediscovery would otherwise want to write a different status + tags.
+    gallery_config.series_status_for["https://example/x"] = "Ongoing"
+    gallery_config.series_tags_for["https://example/x"] = ["Action"]
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "regenerate_series_metadata"})
+    done = _wait_for_completion(client, created.json()["id"])
+    assert done["status"] == "completed", done
+
+    payload = json.loads((series_dir / "series.json").read_text())
+    assert payload["metadata"]["status"] == "Ended"
+    assert payload["metadata"]["tags"] == ["Romance"]
+
+
 def test_unsupported_maintenance_kind_is_rejected(client: TestClient) -> None:
     resp = client.post("/api/maintenance/jobs", json={"kind": "nonexistent"})
     assert resp.status_code == 400
