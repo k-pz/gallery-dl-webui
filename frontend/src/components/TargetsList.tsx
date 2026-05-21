@@ -29,6 +29,7 @@ import { makeNeedleMatcher } from "../lib/listFilters";
 import { usePagination } from "../lib/pagination";
 import { REFETCH_LIST_MS } from "../lib/polling";
 import { READING_DIRECTION_OPTIONS } from "../lib/readingDirection";
+import { SERIES_STATUS_OPTIONS, seriesStatusTone } from "../lib/seriesStatus";
 import { isActive, jobStatusLabel, statusTone } from "../lib/status";
 import { formatRel } from "../lib/time";
 import { EmptyState } from "./EmptyState";
@@ -359,6 +360,9 @@ function TargetRow({
       >
         <Group gap="sm" wrap="nowrap" align="center" style={{ flex: 1, minWidth: 0 }}>
           <Pill tone={tone}>{jobStatusLabel(status)}</Pill>
+          {target.series_status && (
+            <Pill tone={seriesStatusTone(target.series_status)}>{target.series_status}</Pill>
+          )}
           <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
             <Text
               size="sm"
@@ -527,6 +531,21 @@ function TargetRow({
               }
               disabled={update.isPending}
               w={180}
+              comboboxProps={{ withinPortal: true }}
+              allowDeselect={false}
+            />
+            <Select
+              label="Series status"
+              value={target.series_status ?? ""}
+              data={[{ value: "", label: "Unknown" }, ...SERIES_STATUS_OPTIONS]}
+              onChange={(v) =>
+                update.mutate({
+                  path: { target_id: target.id },
+                  body: { series_status: v ?? "" },
+                })
+              }
+              disabled={update.isPending}
+              w={160}
               comboboxProps={{ withinPortal: true }}
               allowDeselect={false}
             />

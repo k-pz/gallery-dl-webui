@@ -10,7 +10,7 @@ from backend.app_config.exceptions import PostprocessRootNotConfigured
 from backend.dependencies import DbDep, EventBusDep
 from backend.downloads import service as downloads_service
 from backend.downloads.dependencies import WorkerDep
-from backend.downloads.postprocess import normalize_tags
+from backend.downloads.postprocess import SERIES_STATUSES, normalize_tags
 from backend.events import downloads_event, targets_event
 from backend.output_dirs.utils import coerce_optional, validate_under_root
 from backend.targets import service
@@ -54,6 +54,7 @@ async def update_target(
     new_output_dir: str | None | Unset = UNSET
     new_tags: list[str] | None | Unset = UNSET
     new_direction: str | None | Unset = UNSET
+    new_series_status: str | None | Unset = UNSET
 
     if body.watch_period is not None:
         cleaned = body.watch_period.strip()
@@ -97,6 +98,21 @@ async def update_target(
         else:
             new_direction = cleaned_dir
 
+    if body.series_status is not None:
+        cleaned_status = body.series_status.strip()
+        if cleaned_status == "":
+            new_series_status = None
+        elif cleaned_status not in SERIES_STATUSES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"invalid series_status: {body.series_status!r}; "
+                    f"expected one of {sorted(SERIES_STATUSES)}"
+                ),
+            )
+        else:
+            new_series_status = cleaned_status
+
     await service.update(
         db,
         target.id,
@@ -105,6 +121,7 @@ async def update_target(
         output_dir=new_output_dir,
         tags=new_tags,
         reading_direction=new_direction,
+        series_status=new_series_status,
     )
 
     if body.watched is True and not target.watched:

@@ -40,9 +40,12 @@ while not stop:
    page URL; on first call per `(manga, chapter)` it answers from disk
    (`chapter_already_packed(output_dir, manga, chapter)`), then memoises.
 2. **Simulation pass** (`asyncio.to_thread(gallery.extract_manifest, ...)`).
-   Returns `Manifest(paths, series_name)`. The manifest is saved to
-   `download_files` (and `files_expected` / `chapters_total` are set).
-   `series_name` updates the target's `name`.
+   Returns `Manifest(paths, series_name, series_status)`. The manifest is
+   saved to `download_files` (and `files_expected` / `chapters_total` are
+   set). `series_name` updates the target's `name`; `series_status` (when the
+   extractor surfaced one) is normalised to a Komga label and written to
+   `targets.series_status` — never overwriting a user-set value, so the
+   manual PATCH in the UI always wins.
 3. If cancel was requested between extract and the real run, mark cancelled
    and return.
 4. **Real download** (`asyncio.to_thread(gallery.run_download, ...)`):
@@ -101,7 +104,12 @@ coroutine otherwise blocks another's `commit()` mid-transaction.
   paths are missing their per-chapter directory prefix and progress
   accounting can't match files to chapters. It also opportunistically
   captures the first `manga` / `series` / `title` value seen in any
-  kwdict — that becomes `Manifest.series_name`.
+  kwdict — that becomes `Manifest.series_name` — and the first kwdict
+  `status` / `publication_status` that maps to a Komga label
+  (`normalize_series_status`), which becomes `Manifest.series_status`. Both
+  are observed once per run: the sim pass is the earliest point where
+  series-level metadata is exposed, so the worker can persist them before
+  any pages are written.
 - `_ManifestSimulationJob.handle_url` records `(full_path, manga, chapter)`
   for every would-be file. Used both to build the manifest and to apply the
   `skip_chapter` predicate so manifest entries belonging to already-packed
@@ -170,6 +178,8 @@ Packing flow per chapter (`_pack_chapter_sync`):
    serving JPEG bytes), so the path captured at record time can be stale.
 3. Build `ComicInfo.xml` (`Series`, `Title`, `Number`, `Volume`, `Writer`,
    `Penciller`, `LanguageISO`, `Year/Month/Day`, `PageCount`, `Manga=Yes`).
+   Series-level publication status is **not** part of the ComicInfo schema;
+   it lives in the per-series `series.json` instead (see below).
 4. Write `<target>.cbz.part`, then `.replace(target)` for atomicity.
 5. If `delete_raw_after_pack` (from `app_config`, default `True`): guard
    that `ch.dir` is under `downloads_dir`, then `shutil.rmtree(ch.dir)`.
@@ -177,6 +187,31 @@ Packing flow per chapter (`_pack_chapter_sync`):
 `run(...)` aggregates `PostResult(total, succeeded, failed, error_summary)`.
 On any per-chapter exception the rest of the chapters still try; the
 summary stitches the first 5 failure messages with `; (+N more)`.
+
+### Series metadata (series.json)
+
+Each pack pass writes (or refreshes) `<series_dir>/series.json` in the
+Mylar-style format Komga imports natively. The payload is built by
+`build_series_json_bytes(meta, total_issues)` from a `SeriesMetadata` derived
+in three layers:
+
+1. **Extractor-derived** — `derive_series_metadata` folds the first non-empty
+   value seen across the chapter records (description, author, artist,
+   language, year, publication status).
+2. **Target overrides** — `Worker._series_metadata_overrides` reads the
+   target's `tags`, `reading_direction`, and `series_status`; these win over
+   the chapter-level values.
+3. **Sim-pass auto-detect** — when the extractor exposed a
+   Komga-recognised `status` string, `Worker._extract_manifest` already
+   persisted it to `targets.series_status` (only when blank, never
+   overwriting a user PATCH), so on the next pack it shows up in step 2.
+
+Status normalisation (`normalize_series_status`) collapses provider
+spellings — mangadex's `ongoing`, kaliscan's `Publishing`, manganelo's
+`Completed`, etc. — to the four labels Komga reads verbatim: `Ongoing`,
+`Ended`, `Hiatus`, `Abandoned`. Anything outside that set drops to an empty
+string, which omits the `status` key from the on-disk JSON rather than
+emitting noise Komga would ignore.
 
 ## Progress accounting
 

@@ -22,6 +22,7 @@ class TargetOut(BaseModel):
     download_count: int
     tags: list[str]
     reading_direction: str | None
+    series_status: str | None
 
     @classmethod
     def from_summary(cls, s: TargetSummary) -> TargetOut:
@@ -42,6 +43,7 @@ class TargetOut(BaseModel):
             download_count=s.download_count,
             tags=list(s.target.tags),
             reading_direction=s.target.reading_direction,
+            series_status=s.target.series_status,
         )
 
 
@@ -52,3 +54,5 @@ class TargetUpdate(BaseModel):
     output_dir: str | None = None
     tags: list[str] | None = None
     reading_direction: str | None = None
+    # Empty string clears; otherwise one of postprocess.SERIES_STATUSES.
+    series_status: str | None = None

@@ -55,7 +55,8 @@ Tables:
 ```
 targets
   id, url (UNIQUE), name, extractor, output_dir,
-  watched (0/1), watch_period, last_polled_at, created_at
+  watched (0/1), watch_period, last_polled_at, created_at,
+  tags (JSON), reading_direction, series_status
 
 downloads
   id, url, extractor, status, created_at, started_at, finished_at,
@@ -184,11 +185,16 @@ time.
 - `service.list_all` / `get_summary` — uses a `LEFT JOIN ... LIMIT 1`
   subquery to attach the most-recent download's id/status/finished_at to
   each target, plus a `COUNT(*)` over downloads.
-- `service.update(id, *, watched, watch_period, output_dir)` — sentinel-typed
-  optional updates so `None` can mean "leave it" or "clear it" depending on
-  field (see `Unset` in `models.py`).
+- `service.update(id, *, watched, watch_period, output_dir, tags,
+  reading_direction, series_status)` — sentinel-typed optional updates so
+  `None` can mean "leave it" or "clear it" depending on field (see `Unset`
+  in `models.py`).
 - `service.set_name(id, name)` — captured by the worker from the simulation
   pass and again, more authoritatively, from the real download.
+- `service.set_series_status(id, status)` — fill-only: writes the
+  auto-detected publication status from the sim pass when (and only when)
+  the existing row value is blank. A user PATCH always wins because of
+  that guard, so re-polling never overwrites a manual override.
 
 Routes:
 
@@ -246,6 +252,9 @@ series:
     watch:
       enabled: true
       period: 1d
+    tags: [Action, Romance]
+    reading_direction: rtl
+    series_status: Ongoing
 ```
 
 Import is best-effort: every series is processed independently; any single

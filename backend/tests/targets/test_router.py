@@ -222,3 +222,66 @@ def test_patch_target_rejects_invalid_reading_direction(
     target_id = client.get("/api/targets").json()[0]["id"]
     resp = client.patch(f"/api/targets/{target_id}", json={"reading_direction": "horizontal"})
     assert resp.status_code == 400
+
+
+def test_patch_target_sets_and_clears_series_status(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    gallery_config.manifest_for["https://example/x"] = []
+    created = client.post("/api/downloads", json={"url": "https://example/x"}).json()
+    _wait_terminal(client, created["id"])
+    target_id = client.get("/api/targets").json()[0]["id"]
+
+    resp = client.patch(f"/api/targets/{target_id}", json={"series_status": "Hiatus"})
+    assert resp.status_code == 200, resp.json()
+    assert resp.json()["series_status"] == "Hiatus"
+
+    cleared = client.patch(f"/api/targets/{target_id}", json={"series_status": ""})
+    assert cleared.status_code == 200
+    assert cleared.json()["series_status"] is None
+
+
+def test_patch_target_rejects_invalid_series_status(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    gallery_config.manifest_for["https://example/x"] = []
+    created = client.post("/api/downloads", json={"url": "https://example/x"}).json()
+    _wait_terminal(client, created["id"])
+    target_id = client.get("/api/targets").json()[0]["id"]
+    resp = client.patch(f"/api/targets/{target_id}", json={"series_status": "Publishing"})
+    assert resp.status_code == 400
+
+
+def test_manifest_series_status_auto_populates_target(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    """A normalised status from the sim pass should land on the target row."""
+    gallery_config.manifest_for["https://example/auto"] = []
+    gallery_config.series_status_for["https://example/auto"] = "Ended"
+
+    created = client.post("/api/downloads", json={"url": "https://example/auto"}).json()
+    _wait_terminal(client, created["id"])
+
+    target = client.get("/api/targets").json()[0]
+    assert target["series_status"] == "Ended"
+
+
+def test_manifest_series_status_does_not_overwrite_user_override(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    """User PATCH wins: a subsequent poll surfacing a different status must not
+    clobber what the user set."""
+    gallery_config.manifest_for["https://example/u"] = []
+    gallery_config.series_status_for["https://example/u"] = "Ongoing"
+
+    created = client.post("/api/downloads", json={"url": "https://example/u"}).json()
+    _wait_terminal(client, created["id"])
+    target_id = client.get("/api/targets").json()[0]["id"]
+    assert client.get(f"/api/targets/{target_id}").json()["series_status"] == "Ongoing"
+
+    client.patch(f"/api/targets/{target_id}", json={"series_status": "Hiatus"})
+    # Re-poll. The sim pass still says "Ongoing", but the user said "Hiatus".
+    client.post(f"/api/targets/{target_id}/poll")
+    _wait_terminal(client, client.get("/api/targets").json()[0]["last_download_id"])
+
+    assert client.get(f"/api/targets/{target_id}").json()["series_status"] == "Hiatus"

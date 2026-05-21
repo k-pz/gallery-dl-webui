@@ -160,6 +160,47 @@ def test_library_roundtrips_tags_and_reading_direction(client: TestClient) -> No
     assert other["reading_direction"] == "vertical"
 
 
+def test_library_roundtrips_series_status(client: TestClient) -> None:
+    client.post("/api/downloads", json={"url": "https://example/status-series"})
+    target_id = client.get("/api/targets").json()[0]["id"]
+    client.patch(f"/api/targets/{target_id}", json={"series_status": "Hiatus"})
+
+    exported = yaml.safe_load(client.get("/api/library/export").text)
+    entry = next(e for e in exported["series"] if e["url"] == "https://example/status-series")
+    assert entry["series_status"] == "Hiatus"
+
+    body = yaml.safe_dump(
+        {
+            "version": 1,
+            "series": [{"url": "https://example/fresh", "series_status": "Ended"}],
+        }
+    )
+    resp = client.post(
+        "/api/library/import", content=body, headers={"content-type": "application/yaml"}
+    )
+    assert resp.status_code == 200, resp.text
+    fresh = next(
+        t for t in client.get("/api/targets").json() if t["url"] == "https://example/fresh"
+    )
+    assert fresh["series_status"] == "Ended"
+
+
+def test_library_import_rejects_invalid_series_status(client: TestClient) -> None:
+    body = yaml.safe_dump(
+        {
+            "version": 1,
+            "series": [{"url": "https://example/bad", "series_status": "Publishing"}],
+        }
+    )
+    resp = client.post(
+        "/api/library/import", content=body, headers={"content-type": "application/yaml"}
+    )
+    assert resp.status_code == 200, resp.text
+    result = resp.json()
+    assert result["imported"] == 0
+    assert any("series_status" in err for err in result["errors"])
+
+
 def test_import_library_validates_output_dir_under_root(client: TestClient, tmp_path: Path) -> None:
     root = tmp_path / "media"
     root.mkdir()

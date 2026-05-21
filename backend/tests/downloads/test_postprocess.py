@@ -8,6 +8,7 @@ import pytest
 
 from backend.downloads.postprocess import (
     SERIES_JSON_NAME,
+    SERIES_STATUSES,
     FileRecord,
     SeriesMetadata,
     build_comicinfo_xml,
@@ -18,6 +19,7 @@ from backend.downloads.postprocess import (
     collect_chapters,
     derive_series_metadata,
     normalize_reading_direction,
+    normalize_series_status,
     normalize_tags,
     regenerate_series_metadata,
     run,
@@ -704,3 +706,133 @@ def test_regenerate_series_metadata_skips_archives_without_comicinfo(tmp_path: P
     result = regenerate_series_metadata([tmp_path], overrides_for=lambda _: None)
     assert result.skipped == 1
     assert result.archives_updated == 0
+
+
+# ---------------------------------------------------------------------------
+# Series status normalisation + propagation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # Already canonical — pass through verbatim.
+        ("Ongoing", "Ongoing"),
+        ("Ended", "Ended"),
+        ("Hiatus", "Hiatus"),
+        ("Abandoned", "Abandoned"),
+        # mangadex / kaliscan / manganelo style lowercase or Title-case strings.
+        ("ongoing", "Ongoing"),
+        ("publishing", "Ongoing"),
+        ("serializing", "Ongoing"),
+        ("completed", "Ended"),
+        ("COMPLETED", "Ended"),
+        ("finished", "Ended"),
+        ("hiatus", "Hiatus"),
+        ("on_hiatus", "Hiatus"),
+        ("on-hiatus", "Hiatus"),
+        ("On Hold", "Hiatus"),
+        ("cancelled", "Abandoned"),
+        ("canceled", "Abandoned"),
+        ("discontinued", "Abandoned"),
+        ("dropped", "Abandoned"),
+        # Garbage in → empty out (caller treats empty as "leave field unset").
+        ("Unknown", ""),
+        ("???", ""),
+        ("", ""),
+        (None, ""),
+    ],
+)
+def test_normalize_series_status(raw: str | None, expected: str) -> None:
+    assert normalize_series_status(raw) == expected
+
+
+def test_series_statuses_constant_matches_known_set() -> None:
+    # Guard so the frontend's hardcoded option list stays in sync.
+    assert set(SERIES_STATUSES) == {"Ongoing", "Ended", "Hiatus", "Abandoned"}
+
+
+def test_coerce_record_from_kwdict_normalises_status(tmp_path: Path) -> None:
+    p = tmp_path / "001.jpg"
+    p.write_bytes(b"x")
+    rec = coerce_record_from_kwdict(
+        {"category": "mangadex", "manga": "S", "chapter": "1", "status": "ongoing"}, p
+    )
+    assert rec.status == "Ongoing"
+
+
+def test_coerce_record_from_kwdict_falls_back_to_publication_status(tmp_path: Path) -> None:
+    p = tmp_path / "001.jpg"
+    p.write_bytes(b"x")
+    rec = coerce_record_from_kwdict(
+        {"category": "fake", "manga": "S", "chapter": "1", "publication_status": "Completed"}, p
+    )
+    assert rec.status == "Ended"
+
+
+def test_coerce_record_from_kwdict_drops_unrecognised_status(tmp_path: Path) -> None:
+    p = tmp_path / "001.jpg"
+    p.write_bytes(b"x")
+    rec = coerce_record_from_kwdict(
+        {"category": "fake", "manga": "S", "chapter": "1", "status": "weird"}, p
+    )
+    assert rec.status == ""
+
+
+def test_collect_chapters_carries_status_from_first_record() -> None:
+    rec_a = FileRecord("c", "S", "1", "", "", "", "", "", Path("/x/c1/001.jpg"), status="Ongoing")
+    rec_b = FileRecord("c", "S", "1", "", "", "", "", "", Path("/x/c1/002.jpg"))
+    chapters = collect_chapters([rec_a, rec_b])
+    assert len(chapters) == 1
+    assert chapters[0].status == "Ongoing"
+
+
+def test_derive_series_metadata_pulls_status_from_chapters() -> None:
+    rec = FileRecord("c", "S", "1", "", "", "", "", "", Path("/x/a.jpg"), status="Ongoing")
+    meta = derive_series_metadata(collect_chapters([rec]))
+    assert meta.status == "Ongoing"
+
+
+def test_derive_series_metadata_override_status_wins_over_chapter() -> None:
+    rec = FileRecord("c", "S", "1", "", "", "", "", "", Path("/x/a.jpg"), status="Ongoing")
+    meta = derive_series_metadata(
+        collect_chapters([rec]), SeriesMetadata(status="Ended", tags=[], reading_direction="ltr")
+    )
+    assert meta.status == "Ended"
+
+
+def test_derive_series_metadata_blank_override_keeps_chapter_status() -> None:
+    """An empty override is the "no per-target preference" case — fall back to what
+    the extractor told us rather than blanking it out."""
+    rec = FileRecord("c", "S", "1", "", "", "", "", "", Path("/x/a.jpg"), status="Hiatus")
+    meta = derive_series_metadata(
+        collect_chapters([rec]), SeriesMetadata(status="", tags=[], reading_direction="ltr")
+    )
+    assert meta.status == "Hiatus"
+
+
+def test_build_series_json_bytes_emits_status() -> None:
+    meta = SeriesMetadata(name="S", status="Hiatus", tags=[], reading_direction="ltr")
+    payload = json.loads(build_series_json_bytes(meta).decode())
+    assert payload["metadata"]["status"] == "Hiatus"
+
+
+def test_build_series_json_bytes_omits_blank_status() -> None:
+    meta = SeriesMetadata(name="S", status="", tags=[], reading_direction="ltr")
+    payload = json.loads(build_series_json_bytes(meta).decode())
+    assert "status" not in payload["metadata"]
+
+
+async def test_run_writes_status_to_series_json(tmp_path: Path) -> None:
+    downloads_dir = tmp_path / "downloads"
+    output_dir = tmp_path / "out"
+    rec_dir = downloads_dir / "fake" / "S" / "c1"
+    rec_dir.mkdir(parents=True)
+    (rec_dir / "001.jpg").write_bytes(b"\xff\xd8\xff")
+    records = [
+        FileRecord("fake", "S", "1", "", "", "", "", "", rec_dir / "001.jpg", status="Hiatus"),
+    ]
+    result = await run(records, output_dir, downloads_dir, delete_raw=False)
+    assert result.succeeded == 1
+    payload = json.loads((output_dir / "S" / SERIES_JSON_NAME).read_text())
+    assert payload["metadata"]["status"] == "Hiatus"
