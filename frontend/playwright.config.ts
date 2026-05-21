@@ -26,7 +26,10 @@ export default defineConfig({
       command: `cd ${BACKEND_DIR} && rm -rf ./data-e2e && PYTHONPATH=. WEBUI_DATA_DIR=./data-e2e WEBUI_PORT=${BACKEND_PORT} uv run uvicorn tests.e2e_server:app --host 127.0.0.1 --port ${BACKEND_PORT} --log-level warning`,
       url: `http://127.0.0.1:${BACKEND_PORT}/api/health`,
       reuseExistingServer: !process.env.CI,
-      timeout: 30_000,
+      // CI runners cold-start the backend venv + import a large FastAPI app
+      // for the first time, which routinely takes longer than the local
+      // dev-loop budget. Local devs already have warm caches.
+      timeout: process.env.CI ? 120_000 : 30_000,
     },
     {
       name: "frontend",
@@ -36,7 +39,8 @@ export default defineConfig({
         VITE_API_PORT: String(BACKEND_PORT),
       },
       reuseExistingServer: !process.env.CI,
-      timeout: 30_000,
+      // See backend webServer above — CI cold-start budget.
+      timeout: process.env.CI ? 120_000 : 30_000,
     },
   ],
 });
