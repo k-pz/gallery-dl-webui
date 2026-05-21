@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .bg { fill: #c89134; }
+    .fg { fill: #f7f2e8; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #d3a64a; }
+      .fg { fill: #16130d; }
+    }
+  </style>
+  <rect class="bg" width="32" height="32" rx="7" ry="7"/>
+  <text class="fg" x="16" y="23.5" text-anchor="middle"
+        font-family="Fraunces, 'IBM Plex Serif', Georgia, 'Times New Roman', serif"
+        font-weight="600" font-size="22"
+        font-feature-settings="'ss01' 1"
+        style="font-feature-settings: 'ss01' 1">g</text>
+</svg>
