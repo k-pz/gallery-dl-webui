@@ -206,63 +206,57 @@ jobs:
         # Playwright needs on a fresh runner.
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Start backend (e2e ASGI app)
-        # Boot the backend ourselves instead of relying on Playwright's
-        # webServer feature so the subprocess output is in the GHA log
-        # (Playwright captures it and only surfaces it on a timeout, which
-        # the PR check page strips). The webServer config is still there for
-        # local dev — reuseExistingServer=true lets Playwright pick this up.
-        working-directory: backend
-        run: |
-          rm -rf ./data-e2e
-          mkdir -p logs
-          PYTHONPATH=. WEBUI_DATA_DIR=./data-e2e WEBUI_PORT=8765 \
-            nohup uv run uvicorn tests.e2e_server:app \
-              --host 127.0.0.1 --port 8765 --log-level info \
-              > logs/backend.log 2>&1 &
-          echo "backend pid: $!"
-
-      - name: Start frontend (vite dev server)
+      - name: Start servers + wait for health
+        # Boot the backend + frontend ourselves instead of relying on
+        # Playwright's webServer feature so the subprocess output is in the
+        # GHA log (Playwright captures it and only surfaces it on a timeout,
+        # which the PR check page strips). All in one step so the started
+        # processes survive long enough for the polling loop — `setsid`
+        # detaches them into their own session and `</dev/null` drops the
+        # step shell's stdin so they don't get SIGHUP'd when the step's
+        # next sibling shell starts. The webServer config is still there
+        # for local dev — reuseExistingServer=true lets Playwright pick
+        # these up rather than racing a second start on the same port.
         env:
           VITE_API_PORT: "8765"
         run: |
-          mkdir -p logs
-          nohup pnpm vite --port 5174 --strictPort > logs/frontend.log 2>&1 &
+          set -e
+          mkdir -p logs ../backend/logs
+          rm -rf ../backend/data-e2e
+
+          (
+            cd ../backend
+            PYTHONPATH=. WEBUI_DATA_DIR=./data-e2e WEBUI_PORT=8765 \
+              setsid uv run uvicorn tests.e2e_server:app \
+                --host 127.0.0.1 --port 8765 --log-level info \
+                </dev/null >logs/backend.log 2>&1 &
+            echo "backend pid: $!"
+          )
+
+          setsid pnpm exec vite --port 5174 --strictPort \
+            </dev/null >logs/frontend.log 2>&1 &
           echo "frontend pid: $!"
 
-      - name: Wait for servers
-        run: |
-          set -e
-          echo "::group::backend /api/health"
-          for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:8765/api/health >/dev/null; then
-              echo "backend up after ${i}s"
-              break
-            fi
-            if [ "$i" -eq 60 ]; then
-              echo "::error::backend never became healthy"
-              echo "---- backend.log ----"
-              cat ../backend/logs/backend.log || true
-              exit 1
-            fi
-            sleep 1
-          done
-          echo "::endgroup::"
-          echo "::group::frontend /"
-          for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:5174/ >/dev/null; then
-              echo "frontend up after ${i}s"
-              break
-            fi
-            if [ "$i" -eq 60 ]; then
-              echo "::error::frontend never came up"
-              echo "---- frontend.log ----"
-              cat logs/frontend.log || true
-              exit 1
-            fi
-            sleep 1
-          done
-          echo "::endgroup::"
+          wait_for() {
+            local name="$1" url="$2" log="$3"
+            echo "::group::wait $name ($url)"
+            for i in $(seq 1 90); do
+              if curl -sf "$url" >/dev/null; then
+                echo "$name up after ${i}s"
+                echo "::endgroup::"
+                return 0
+              fi
+              sleep 1
+            done
+            echo "::endgroup::"
+            echo "::error::$name never came up"
+            echo "---- $log ----"
+            cat "$log" || echo "(no log produced)"
+            return 1
+          }
+
+          wait_for backend  http://127.0.0.1:8765/api/health  ../backend/logs/backend.log
+          wait_for frontend http://127.0.0.1:5174/            logs/frontend.log
 
       - name: Run Playwright tests
         # `list` keeps every test on its own line in the GHA log so failures
