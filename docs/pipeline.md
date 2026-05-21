@@ -40,12 +40,14 @@ while not stop:
    page URL; on first call per `(manga, chapter)` it answers from disk
    (`chapter_already_packed(output_dir, manga, chapter)`), then memoises.
 2. **Simulation pass** (`asyncio.to_thread(gallery.extract_manifest, ...)`).
-   Returns `Manifest(paths, series_name, series_status)`. The manifest is
-   saved to `download_files` (and `files_expected` / `chapters_total` are
-   set). `series_name` updates the target's `name`; `series_status` (when the
-   extractor surfaced one) is normalised to a Komga label and written to
-   `targets.series_status` — never overwriting a user-set value, so the
-   manual PATCH in the UI always wins.
+   Returns `Manifest(paths, series_name, series_status, series_tags)`. The
+   manifest is saved to `download_files` (and `files_expected` /
+   `chapters_total` are set). `series_name` updates the target's `name`;
+   `series_status` (when the extractor surfaced one) is normalised to a
+   Komga label and written to `targets.series_status`; `series_tags`
+   (when the extractor surfaced tags/genres) is written to `targets.tags`.
+   Both metadata writes are fill-only — they never overwrite a user-set
+   value, so the manual PATCH in the UI always wins.
 3. If cancel was requested between extract and the real run, mark cancelled
    and return.
 4. **Real download** (`asyncio.to_thread(gallery.run_download, ...)`):
@@ -104,12 +106,13 @@ coroutine otherwise blocks another's `commit()` mid-transaction.
   paths are missing their per-chapter directory prefix and progress
   accounting can't match files to chapters. It also opportunistically
   captures the first `manga` / `series` / `title` value seen in any
-  kwdict — that becomes `Manifest.series_name` — and the first kwdict
+  kwdict — that becomes `Manifest.series_name` — the first kwdict
   `status` / `publication_status` that maps to a Komga label
-  (`normalize_series_status`), which becomes `Manifest.series_status`. Both
-  are observed once per run: the sim pass is the earliest point where
-  series-level metadata is exposed, so the worker can persist them before
-  any pages are written.
+  (`normalize_series_status`), which becomes `Manifest.series_status`,
+  and the first kwdict `tags` / `genres` / `genre` list, which becomes
+  `Manifest.series_tags`. All three are observed once per run: the sim
+  pass is the earliest point where series-level metadata is exposed, so
+  the worker can persist them before any pages are written.
 - `_ManifestSimulationJob.handle_url` records `(full_path, manga, chapter)`
   for every would-be file. Used both to build the manifest and to apply the
   `skip_chapter` predicate so manifest entries belonging to already-packed

@@ -39,8 +39,9 @@ The load-bearing choices in the codebase, and the reasoning behind them.
   `app_config` so the UI can change them at runtime without a service
   restart.
 - **Auto-detected metadata never overwrites a user override.** Series
-  publication status is read from the sim-pass kwdict and persisted only
-  when the target's `series_status` is still blank; the manual PATCH wins
-  forever after. The alternative — letting every re-poll re-clobber the
-  field with the extractor's latest guess — would silently undo the user's
-  correction. Same shape generalises to any future auto-then-override field.
+  publication status and tags/genres are read from the sim-pass kwdict and
+  persisted only when the target's value is still blank (NULL, empty
+  string, or `'[]'` for tags); the manual PATCH wins forever after. The
+  alternative — letting every re-poll re-clobber the field with the
+  extractor's latest guess — would silently undo the user's correction.
+  Same shape generalises to any future auto-then-override field.
