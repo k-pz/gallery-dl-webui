@@ -28,6 +28,8 @@ def series_to_dict(target: Target) -> dict[str, Any]:
         out["tags"] = list(target.tags)
     if target.reading_direction:
         out["reading_direction"] = target.reading_direction
+    if target.series_status:
+        out["series_status"] = target.series_status
     return out
 
 

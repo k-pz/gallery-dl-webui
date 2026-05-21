@@ -182,6 +182,54 @@ def test_schedule_regenerate_series_metadata_job(client: TestClient, tmp_path: P
     assert (series_dir / "series.json").is_file()
 
 
+def test_regenerate_series_metadata_picks_up_target_series_status(
+    client: TestClient, tmp_path: Path, gallery_config
+) -> None:
+    """A series_status on the target row should land in the regen'd series.json
+    via `_build_series_overrides` (which keys by sanitised target name)."""
+    import json
+
+    root = tmp_path / "media"
+    output_dir = root / "Manga"
+    series_dir = output_dir / "Series"
+    _write_cbz(series_dir / "Series - c001.cbz", "Series", "1")
+
+    cfg_resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "default_watch_period": "1d",
+            "chapter_naming_template": "{{ series }} - c{{ chapter_number }}",
+        },
+    )
+    assert cfg_resp.status_code == 200, cfg_resp.json()
+    # Force the sim pass to claim "Series" as the name so the regen override
+    # key (sanitize(target.name)) matches the on-disk directory.
+    gallery_config.manifest_for["https://example/x"] = []
+    gallery_config.series_name_for["https://example/x"] = "Series"
+    sub = client.post(
+        "/api/downloads", json={"url": "https://example/x", "output_dir": str(output_dir)}
+    )
+    assert sub.status_code == 200, sub.json()
+    for _ in range(40):
+        targets = client.get("/api/targets").json()
+        if targets and targets[0]["name"] == "Series":
+            break
+        time.sleep(0.05)
+    target_id = client.get("/api/targets").json()[0]["id"]
+    client.patch(f"/api/targets/{target_id}", json={"series_status": "Hiatus"})
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "regenerate_series_metadata"})
+    job_id = created.json()["id"]
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "completed", done
+
+    payload = json.loads((series_dir / "series.json").read_text())
+    assert payload["metadata"]["status"] == "Hiatus"
+
+
 def test_unsupported_maintenance_kind_is_rejected(client: TestClient) -> None:
     resp = client.post("/api/maintenance/jobs", json={"kind": "nonexistent"})
     assert resp.status_code == 400

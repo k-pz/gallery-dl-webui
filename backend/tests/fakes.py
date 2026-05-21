@@ -28,6 +28,9 @@ class FakeGalleryConfig:
         # Optional per-URL series name surfaced by extract_manifest, mirroring
         # the metadata gallery-dl's simulation job exposes via kwdict.
         self.series_name_for: dict[str, str | None] = {}
+        # Optional per-URL series publication status (already normalised to a
+        # Komga label) surfaced by extract_manifest.
+        self.series_status_for: dict[str, str | None] = {}
         self.default_extractor: str | None = "fake"
         self.write_files: bool = True
 
@@ -74,6 +77,7 @@ class FakeGallery:
         return Manifest(
             paths=paths,
             series_name=self._config.series_name_for.get(url),
+            series_status=self._config.series_status_for.get(url),
         )
 
     def run_download(

@@ -109,6 +109,7 @@ async def upsert(
         created_at=created_at,
         tags=list(tags) if tags is not None else [],
         reading_direction=reading_direction,
+        series_status=None,
     )
 
 
@@ -147,6 +148,7 @@ async def update(
     output_dir: str | None | Unset = UNSET,
     tags: list[str] | None | Unset = UNSET,
     reading_direction: str | None | Unset = UNSET,
+    series_status: str | None | Unset = UNSET,
 ) -> Target | None:
     updates: list[str] = []
     params: list[object] = []
@@ -165,6 +167,9 @@ async def update(
     if not isinstance(reading_direction, Unset):
         updates.append("reading_direction = ?")
         params.append(reading_direction)
+    if not isinstance(series_status, Unset):
+        updates.append("series_status = ?")
+        params.append(series_status)
     if not updates:
         return await get(db, id_)
     params.append(id_)
@@ -179,6 +184,25 @@ async def set_name(db: aiosqlite.Connection, id_: int, name: str) -> Target | No
     if not cleaned:
         return await get(db, id_)
     await db.execute("UPDATE targets SET name = ? WHERE id = ?", (cleaned, id_))
+    await db.commit()
+    return await get(db, id_)
+
+
+async def set_series_status(db: aiosqlite.Connection, id_: int, status: str) -> Target | None:
+    """Persist a freshly auto-detected publication status (no-op when empty).
+
+    Called by the download worker after the manifest simulation pass surfaces a
+    normalised status from gallery-dl. We never overwrite an existing value
+    here — the user's explicit PATCH always wins; auto-detect only fills the
+    initial blank or refines a previously-blank target.
+    """
+    if not status:
+        return await get(db, id_)
+    await db.execute(
+        "UPDATE targets SET series_status = ? WHERE id = ? "
+        "AND (series_status IS NULL OR series_status = '')",
+        (status, id_),
+    )
     await db.commit()
     return await get(db, id_)
 

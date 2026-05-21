@@ -19,6 +19,7 @@ class Target:
     created_at: str
     tags: list[str] = field(default_factory=list)
     reading_direction: str | None = None
+    series_status: str | None = None
 
 
 @dataclass
@@ -63,6 +64,7 @@ def row_to_target(row: aiosqlite.Row) -> Target:
         created_at=row["created_at"],
         tags=_tags_from_row(row["tags"]),
         reading_direction=row["reading_direction"],
+        series_status=row["series_status"],
     )
 
 

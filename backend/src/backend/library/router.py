@@ -25,7 +25,7 @@ from fastapi.responses import PlainTextResponse
 from backend.app_config import service as app_config_service
 from backend.app_config.constants import READING_DIRECTIONS
 from backend.dependencies import DbDep
-from backend.downloads.postprocess import normalize_tags
+from backend.downloads.postprocess import SERIES_STATUSES, normalize_tags
 from backend.library import service
 from backend.library.constants import SCHEMA_VERSION
 from backend.library.schemas import LibraryImportResult
@@ -135,6 +135,15 @@ async def import_library(request: Request, db: DbDep, poller: PollerDep) -> Libr
                 )
                 continue
             reading_direction = cleaned
+        series_status_raw = service.coerce_str(item.get("series_status"))
+        series_status: str | None = None
+        if series_status_raw is not None:
+            if series_status_raw not in SERIES_STATUSES:
+                errors.append(
+                    f"series[{idx}] ({url}): invalid series_status: {series_status_raw!r}"
+                )
+                continue
+            series_status = series_status_raw
 
         existing = await targets_service.get_by_url(db, url)
         target = await targets_service.upsert(db, url, extractor, output_dir)
@@ -152,6 +161,7 @@ async def import_library(request: Request, db: DbDep, poller: PollerDep) -> Libr
             output_dir=output_dir,
             tags=tags,
             reading_direction=reading_direction,
+            series_status=series_status,
         )
         if watched:
             notified = True

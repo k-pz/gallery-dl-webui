@@ -436,6 +436,10 @@ export type TargetOut = {
      * Reading Direction
      */
     reading_direction: string | null;
+    /**
+     * Series Status
+     */
+    series_status: string | null;
 };
 
 /**
@@ -462,6 +466,10 @@ export type TargetUpdate = {
      * Reading Direction
      */
     reading_direction?: string | null;
+    /**
+     * Series Status
+     */
+    series_status?: string | null;
 };
 
 /**
