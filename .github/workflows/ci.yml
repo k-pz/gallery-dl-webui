@@ -90,7 +90,10 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        # Version comes from frontend/package.json "packageManager".
+        with:
+          # The "packageManager" field lives in frontend/package.json, not at
+          # the repo root where the action looks by default.
+          package_json_file: frontend/package.json
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -175,6 +178,8 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
 
       - name: Setup Node
         uses: actions/setup-node@v5
