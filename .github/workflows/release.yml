@@ -1,0 +1,75 @@
+name: release
+
+# On every push to main, run `cz bump` against the conventional-commit log
+# since the last v$version tag. If any commits warrant a bump, commitizen
+# rewrites the `version` line in the files listed in .cz.toml, updates
+# CHANGELOG.md, creates a new `bump:` commit, tags it `v$version`, and we
+# push both back to main.
+#
+# If no bump-worthy commits exist (or HEAD is already a bump commit), cz
+# exits with code 21 (NoCommitsFoundError) and we treat that as a no-op.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Serialize bumps so two pushes can't race to tag the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    # Skip the run that the bump itself just pushed, otherwise we'd loop.
+    if: "!startsWith(github.event.head_commit.message, 'bump:')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          # cz reads the full history to find the previous tag.
+          fetch-depth: 0
+          # Default GITHUB_TOKEN can push to main as long as branch protection
+          # doesn't require PR review for the actions bot. If that's ever
+          # enabled, swap to a PAT stored as RELEASE_TOKEN.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version + push
+        run: |
+          set -u
+          # `cz bump` rewrites version files, updates CHANGELOG.md, commits as
+          # "bump: …", and creates a v$version tag. --yes skips the prompt.
+          set +e
+          uv tool run --from commitizen cz bump --yes --changelog
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            # cz can't rewrite the workspace package's version inside uv.lock
+            # (the line isn't unique), so refresh the lock and fold any
+            # resulting diff into the bump commit + tag.
+            (cd backend && uv lock)
+            if ! git diff --quiet backend/uv.lock; then
+              VERSION=$(uv tool run --from commitizen cz version --project)
+              git add backend/uv.lock
+              git commit --amend --no-edit
+              git tag -f "v${VERSION}"
+            fi
+            git push --follow-tags
+          elif [ "$rc" -eq 21 ] || [ "$rc" -eq 3 ]; then
+            # 21 = NoCommitsFoundError (nothing since last tag)
+            #  3 = NoCommitsIncrement (commits exist but none bump-worthy)
+            echo "No bump-worthy commits since last tag — nothing to release."
+          else
+            exit "$rc"
+          fi
