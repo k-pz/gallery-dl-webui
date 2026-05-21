@@ -235,7 +235,14 @@ def _author_name(value: Any) -> str:
     return strip_enclosing_brackets(raw)
 
 
-def _date_iso(value: Any) -> str:
+def date_iso(value: Any) -> str:
+    """Coerce a gallery-dl `date` kwdict value to a YYYY-MM-DD string.
+
+    Extractors variously expose the chapter publication timestamp as a
+    `datetime` (parsed via gallery-dl's helpers) or as a pre-formatted string.
+    Anything else round-trips through `str(value)` — same fallback as the
+    rest of the kwdict-coercion helpers.
+    """
     if isinstance(value, datetime):
         return value.strftime("%Y-%m-%d")
     return _str(value)
@@ -277,7 +284,7 @@ def coerce_record_from_kwdict(kwdict: dict[str, Any], full_path: Path) -> FileRe
         volume=_str(kwdict.get("volume")),
         lang=_str(kwdict.get("lang")),
         author=_author_name(kwdict.get("author")),
-        date=_date_iso(kwdict.get("date")),
+        date=date_iso(kwdict.get("date")),
         path=full_path,
         description=description,
         artist=_author_name(kwdict.get("artist")),
@@ -1004,16 +1011,27 @@ class RegenMetadataResult:
 # resolves this from the targets table (matching by sanitized name).
 SeriesOverrideLookup = Callable[[str], SeriesMetadata | None]
 
+# Optional per-chapter date override. Called as `fn(series_name, chapter)` and
+# returns an ISO `YYYY-MM-DD` string when a fresh date was rediscovered from
+# the upstream extractor, or `None` to leave the existing ComicInfo date alone.
+ChapterDateLookup = Callable[[str, str], str | None]
+
 
 def _rewrite_cbz_metadata(
     cbz: Path,
     overrides: SeriesMetadata | None,
+    chapter_date_for: ChapterDateLookup | None = None,
 ) -> ChapterRecord | None:
     """Rewrite a CBZ's ComicInfo.xml in place, returning the resulting chapter.
 
     Returns None when the archive lacks a readable ComicInfo.xml (the caller
     treats this as `skipped`). The rewrite is atomic — we build a sibling
     `.part` archive and rename it over the original on success.
+
+    When `chapter_date_for(series, chapter)` returns a non-empty ISO date,
+    the existing Year/Month/Day in the ComicInfo.xml is replaced by it —
+    used by regen to backfill chapter release dates rediscovered from the
+    upstream extractor.
     """
     try:
         with zipfile.ZipFile(cbz) as zf:
@@ -1037,6 +1055,10 @@ def _rewrite_cbz_metadata(
             ch.author = overrides.author
         if overrides.artist and not ch.artist:
             ch.artist = overrides.artist
+    if chapter_date_for is not None and ch.manga and ch.chapter:
+        fresh_date = chapter_date_for(ch.manga, ch.chapter)
+        if fresh_date:
+            ch.date = fresh_date
     ch.pages = [Path(name) for name in page_names]
     reading_direction = overrides.reading_direction if overrides else None
     tags = overrides.tags if overrides else None
@@ -1069,6 +1091,7 @@ def regenerate_series_metadata(
     progress: RegenProgressSink | None = None,
     should_cancel: Callable[[], bool] | None = None,
     exclude_dirs: list[str] | None = None,
+    chapter_date_for: ChapterDateLookup | None = None,
 ) -> RegenMetadataResult:
     """Walk each of `output_roots`, rewrite ComicInfo.xml + series.json for
     every series found within.
@@ -1078,6 +1101,8 @@ def regenerate_series_metadata(
     then drop a fresh series.json next to them. `overrides_for(series_name)`
     supplies user-set tags / reading direction / description on a per-series
     basis — the maintenance worker plumbs this in from the targets table.
+    `chapter_date_for(series_name, chapter)`, when supplied, lets the regen
+    backfill chapter release dates rediscovered from the upstream extractor.
     """
     cbz_paths = _iter_filtered_cbzs(output_roots, exclude_dirs)
     if progress is not None:
@@ -1121,7 +1146,7 @@ def regenerate_series_metadata(
         try:
             series_name = root.findtext("Series") or cbz.parent.name
             overrides = overrides_for(series_name) if overrides_for else None
-            ch = _rewrite_cbz_metadata(cbz, overrides)
+            ch = _rewrite_cbz_metadata(cbz, overrides, chapter_date_for)
             if ch is None:
                 skipped += 1
                 if progress is not None:

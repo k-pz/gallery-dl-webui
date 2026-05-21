@@ -31,6 +31,7 @@ from backend.targets import service as targets_service
 
 if TYPE_CHECKING:
     from backend.config import Settings
+    from backend.downloads.gallery import Gallery
     from backend.downloads.worker import Worker
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,7 @@ class MaintenanceWorker:
         *,
         settings: Settings | None = None,
         downloads_worker: Worker | None = None,
+        gallery: Gallery | None = None,
         event_bus: EventBus | None = None,
         db_lock: asyncio.Lock | None = None,
     ) -> None:
@@ -156,8 +158,12 @@ class MaintenanceWorker:
         # Optional because the rebuild kind is the only one that needs to
         # touch disk + the downloads queue; the rename/regen kinds work with
         # just the db. Tests can therefore still construct the worker bare.
+        # `gallery` is consulted by the regen kind to rediscover series
+        # status / tags / chapter dates from upstream; without it, regen
+        # falls back to whatever's already on the target row.
         self._settings = settings
         self._downloads_worker = downloads_worker
+        self._gallery = gallery
         self._bus = event_bus
         self._loop: asyncio.AbstractEventLoop | None = None
         self._db_lock = db_lock or asyncio.Lock()
@@ -285,11 +291,22 @@ class MaintenanceWorker:
         default_direction = cfg.get("default_reading_direction")
         if not isinstance(default_direction, str) or default_direction not in READING_DIRECTIONS:
             default_direction = DEFAULT_READING_DIRECTION
-        overrides_by_series = await self._build_series_overrides(default_direction)
         sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
+
+        # Rediscovery pass first: hit each target's URL with a metadata-only
+        # sim so series_status / tags get filled (fill-only) and chapter
+        # dates are surfaced for the regen below. Without a Gallery wired in
+        # we skip this and fall back to whatever's already on the targets.
+        chapter_dates_by_series = await self._rediscover_series_metadata(job_id, sink)
+
+        overrides_by_series = await self._build_series_overrides(default_direction)
 
         def lookup(series_name: str) -> SeriesMetadata | None:
             return overrides_by_series.get(sanitize(series_name).lower())
+
+        def date_for(series_name: str, chapter: str) -> str | None:
+            key = sanitize(series_name).lower()
+            return chapter_dates_by_series.get(key, {}).get(chapter)
 
         exclude_dirs = _exclude_dirs(cfg)
         async with self._db_lock:
@@ -301,8 +318,63 @@ class MaintenanceWorker:
             sink,
             self._should_cancel,
             exclude_dirs,
+            date_for if chapter_dates_by_series else None,
         )
         return asdict(result)
+
+    async def _rediscover_series_metadata(
+        self, job_id: int, sink: _JobProgressSink
+    ) -> dict[str, dict[str, str]]:
+        """Run a metadata-only sim per target. Returns chapter-date lookup keyed
+        by sanitised series name -> chapter -> ISO date.
+
+        Side effects: each target gets its `series_status` / `tags` columns
+        filled (fill-only via `set_series_*`), so subsequent regens (and the
+        `_build_series_overrides` call below this one) see the refreshed data.
+        Best-effort: errors on individual targets are logged and the
+        rediscovery continues with the next target.
+        """
+        if self._gallery is None:
+            return {}
+        async with self._db_lock:
+            targets = await targets_service.list_all(self._db)
+        out: dict[str, dict[str, str]] = {}
+        if not targets:
+            return out
+        sink.step(f"rediscovering metadata for {len(targets)} target(s)…")
+        for summary in targets:
+            if self._should_cancel():
+                # Rediscovery is best-effort; cancellation aborts the loop and
+                # the regen still runs on whatever was rediscovered so far.
+                break
+            target = summary.target
+            if not target.url:
+                continue
+            try:
+                meta = await asyncio.to_thread(self._gallery.extract_metadata, target.url)
+            except Exception as exc:
+                logger.exception("rediscover failed for target %s", target.url)
+                sink.step(f"rediscover failed: {target.url}: {exc!r}")
+                continue
+            if meta.series_status:
+                async with self._db_lock:
+                    await targets_service.set_series_status(
+                        self._db, target.id, meta.series_status
+                    )
+            if meta.series_tags:
+                async with self._db_lock:
+                    await targets_service.set_series_tags(
+                        self._db, target.id, meta.series_tags
+                    )
+            if meta.chapter_dates:
+                # Index by sanitised series name so the regen lookup can
+                # match against the ComicInfo.xml `Series` field — same
+                # pattern `_build_series_overrides` uses.
+                for (manga, chapter), date in meta.chapter_dates.items():
+                    key = sanitize(manga).lower()
+                    out.setdefault(key, {})[chapter] = date
+            sink.step(f"rediscovered: {target.url}")
+        return out
 
     async def _run_rebuild_library(self, job_id: int) -> dict[str, int]:
         """Wipe downloads + output dirs, then re-enqueue every target as fresh.

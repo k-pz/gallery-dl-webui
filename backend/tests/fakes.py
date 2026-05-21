@@ -6,7 +6,7 @@ from pathlib import Path
 from gallery_dl.exception import StopExtraction
 
 from backend.config import Settings
-from backend.downloads.gallery import Manifest, SkipChapterFn
+from backend.downloads.gallery import Manifest, MetadataResult, SkipChapterFn
 from backend.downloads.postprocess import FileRecord
 
 
@@ -33,6 +33,10 @@ class FakeGalleryConfig:
         self.series_status_for: dict[str, str | None] = {}
         # Optional per-URL series tags/genres surfaced by extract_manifest.
         self.series_tags_for: dict[str, list[str] | None] = {}
+        # Optional per-URL chapter-date map surfaced by the metadata-only
+        # sim pass (extract_metadata). Keys are (manga, chapter) tuples,
+        # values are ISO YYYY-MM-DD strings.
+        self.chapter_dates_for: dict[str, dict[tuple[str, str], str]] = {}
         self.default_extractor: str | None = "fake"
         self.write_files: bool = True
 
@@ -50,6 +54,7 @@ class FakeGallery:
         self._config = config or FakeGalleryConfig()
         self.extract_calls: list[str] = []
         self.download_calls: list[str] = []
+        self.metadata_calls: list[str] = []
 
     @property
     def config(self) -> FakeGalleryConfig:
@@ -81,6 +86,15 @@ class FakeGallery:
             series_name=self._config.series_name_for.get(url),
             series_status=self._config.series_status_for.get(url),
             series_tags=self._config.series_tags_for.get(url),
+        )
+
+    def extract_metadata(self, url: str) -> MetadataResult:
+        self.metadata_calls.append(url)
+        return MetadataResult(
+            series_name=self._config.series_name_for.get(url),
+            series_status=self._config.series_status_for.get(url),
+            series_tags=self._config.series_tags_for.get(url),
+            chapter_dates=dict(self._config.chapter_dates_for.get(url, {})),
         )
 
     def run_download(

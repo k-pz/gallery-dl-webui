@@ -708,6 +708,51 @@ def test_regenerate_series_metadata_skips_archives_without_comicinfo(tmp_path: P
     assert result.archives_updated == 0
 
 
+def test_regenerate_series_metadata_applies_chapter_date_lookup(tmp_path: Path) -> None:
+    """A non-None return from `chapter_date_for(series, chapter)` overwrites
+    the existing Year/Month/Day on the regenerated ComicInfo.xml."""
+    series_dir = tmp_path / "Series A"
+    # `_write_cbz_with_comicinfo_full` writes a CBZ with date 2024-01-15.
+    _write_cbz_with_comicinfo_full(series_dir / "Series A - c001.cbz", "Series A", "1")
+
+    def dates(series: str, chapter: str) -> str | None:
+        if series == "Series A" and chapter == "1":
+            return "2025-07-21"
+        return None
+
+    result = regenerate_series_metadata(
+        [tmp_path], overrides_for=lambda _: None, chapter_date_for=dates
+    )
+    assert result.archives_updated == 1
+
+    with zipfile.ZipFile(series_dir / "Series A - c001.cbz") as zf:
+        root = ET.fromstring(zf.read("ComicInfo.xml"))
+    assert root.findtext("Year") == "2025"
+    assert root.findtext("Month") == "7"
+    assert root.findtext("Day") == "21"
+
+
+def test_regenerate_series_metadata_keeps_existing_date_when_lookup_returns_none(
+    tmp_path: Path,
+) -> None:
+    """A None return from the lookup leaves the existing date alone (so dates
+    already captured at download time aren't blanked by a missing rediscovery)."""
+    series_dir = tmp_path / "Series A"
+    # The helper bakes date 2024-01-15 into the on-disk ComicInfo.xml.
+    _write_cbz_with_comicinfo_full(series_dir / "Series A - c001.cbz", "Series A", "1")
+
+    result = regenerate_series_metadata(
+        [tmp_path], overrides_for=lambda _: None, chapter_date_for=lambda _s, _c: None
+    )
+    assert result.archives_updated == 1
+
+    with zipfile.ZipFile(series_dir / "Series A - c001.cbz") as zf:
+        root = ET.fromstring(zf.read("ComicInfo.xml"))
+    assert root.findtext("Year") == "2024"
+    assert root.findtext("Month") == "1"
+    assert root.findtext("Day") == "15"
+
+
 # ---------------------------------------------------------------------------
 # Series status normalisation + propagation
 # ---------------------------------------------------------------------------
