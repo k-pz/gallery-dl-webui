@@ -772,7 +772,11 @@ a {
    second row (see prior 4-vs-5 mismatch). */
 .mob-nav {
   position: fixed;
-  bottom: 0;
+  /* Pull the nav past the layout-viewport bottom and compensate with padding
+     so the icons stay put. Firefox iOS exposes a band of page content below
+     a `bottom: 0` element when its URL pill collapses; this extension keeps
+     the nav background covering that band. */
+  bottom: -96px;
   left: 0;
   right: 0;
   z-index: 70;
@@ -782,7 +786,8 @@ a {
   border-top: 1px solid var(--app-border-subtle);
   display: none;
   grid-template-columns: repeat(5, 1fr);
-  padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 12px));
+  align-content: start;
+  padding: 6px 4px calc(102px + env(safe-area-inset-bottom, 12px));
 }
 @media (max-width: 768px) {
   .mob-nav {
