@@ -1,3 +1,10 @@
+## v1.4.0 (2026-05-22)
+
+### Feat
+
+- **maintenance**: show upstream-update availability above the Update LXC card
+- **maintenance**: add 'Update LXC' kind that triggers /usr/local/bin/update
+
 ## v1.3.0 (2026-05-21)
 
 ### Feat
