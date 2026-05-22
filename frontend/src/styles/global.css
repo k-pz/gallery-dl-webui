@@ -772,11 +772,13 @@ a {
    second row (see prior 4-vs-5 mismatch). */
 .mob-nav {
   position: fixed;
-  /* Pull the nav past the layout-viewport bottom and compensate with padding
-     so the icons stay put. Firefox iOS exposes a band of page content below
-     a `bottom: 0` element when its URL pill collapses; this extension keeps
-     the nav background covering that band. */
-  bottom: -96px;
+  /* Pull the nav well past the `bottom: 0` anchor so its background covers
+     the band Firefox iOS exposes when the floating URL pill collapses
+     (the WebView keeps painting document content past `bottom: 0`).
+     Padding-bottom compensates so the icons stay at the same visual
+     position, and `align-content: start` keeps the single grid row from
+     stretching across the now-tall content box. */
+  bottom: -240px;
   left: 0;
   right: 0;
   z-index: 70;
@@ -787,11 +789,26 @@ a {
   display: none;
   grid-template-columns: repeat(5, 1fr);
   align-content: start;
-  padding: 6px 4px calc(102px + env(safe-area-inset-bottom, 12px));
+  padding: 6px 4px calc(246px + env(safe-area-inset-bottom, 12px));
 }
 @media (max-width: 768px) {
   .mob-nav {
     display: grid;
+  }
+  /* Belt-and-braces: if the WebView refuses to paint a `position: fixed`
+     element past the layout-viewport bottom, anchor a sibling band via
+     `100dvh` (dynamic viewport) so at least one of the two reaches the
+     exposed area. `z-index: 69` sits directly under the nav (70). */
+  body::after {
+    content: "";
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: calc(100dvh - 4px);
+    height: 240px;
+    background: var(--app-bg-elevated);
+    z-index: 69;
+    pointer-events: none;
   }
 }
 .mob-nav-item {
