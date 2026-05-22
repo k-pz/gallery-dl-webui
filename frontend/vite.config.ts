@@ -14,5 +14,22 @@ export default defineConfig(() => {
         },
       },
     },
+    build: {
+      rolldownOptions: {
+        output: {
+          manualChunks: (id) => {
+            if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) {
+              return "react";
+            }
+            if (id.includes("node_modules/@mantine")) {
+              return "mantine";
+            }
+            if (id.includes("node_modules/@tanstack")) {
+              return "tanstack";
+            }
+          },
+        },
+      },
+    },
   };
 });
