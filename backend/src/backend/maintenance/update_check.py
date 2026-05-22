@@ -172,7 +172,7 @@ async def _fetch_latest_commit(
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.get(url, headers=headers)
-    except (httpx.TimeoutException, httpx.TransportError):
+    except httpx.TimeoutException, httpx.TransportError:
         return None, "network_error"
     if resp.status_code == 404:
         return None, "branch_not_on_remote"
