@@ -233,7 +233,7 @@ jobs:
             echo "backend pid: $!"
           )
 
-          setsid pnpm exec vite --port 5174 --strictPort \
+          setsid pnpm exec vite --host 127.0.0.1 --port 5174 --strictPort \
             </dev/null >logs/frontend.log 2>&1 &
           echo "frontend pid: $!"
 
