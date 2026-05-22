@@ -862,123 +862,223 @@ a {
   }
 }
 
-/* Mobile bottom nav. Hidden by default; revealed under 768px.
-   Column count matches NAV_ITEMS length in MobileBottomNav.tsx — if items
-   are added/removed there, bump this too or the last item wraps onto a
-   second row (see prior 4-vs-5 mismatch). */
-.mob-nav {
-  position: fixed;
-  /* Pull the nav well past the `bottom: 0` anchor so its background covers
-     the band Firefox iOS exposes when the floating URL pill collapses
-     (the WebView keeps painting document content past `bottom: 0`).
-     Padding-bottom compensates so the icons stay at the same visual
-     position, and `align-content: start` keeps the single grid row from
-     stretching across the now-tall content box. */
-  bottom: -240px;
-  left: 0;
-  right: 0;
-  z-index: 70;
-  background: color-mix(in srgb, var(--app-bg-elevated) 95%, transparent);
-  backdrop-filter: saturate(140%) blur(12px);
-  -webkit-backdrop-filter: saturate(140%) blur(12px);
-  border-top: 1px solid var(--app-border-subtle);
+/* Hamburger trigger in the header. Desktop tabs handle nav at >=768px, so
+   the button hides up there. Keeps the 44px touch target on phones. */
+.mob-menu-btn {
   display: none;
-  grid-template-columns: repeat(5, 1fr);
-  align-content: start;
-  padding: 6px 4px calc(246px + env(safe-area-inset-bottom, 12px));
-}
-@media (max-width: 768px) {
-  .mob-nav {
-    display: grid;
-  }
-  /* Belt-and-braces: if the WebView refuses to paint a `position: fixed`
-     element past the layout-viewport bottom, anchor a sibling band via
-     `100dvh` (dynamic viewport) so at least one of the two reaches the
-     exposed area. `z-index: 69` sits directly under the nav (70). */
-  body::after {
-    content: "";
-    position: fixed;
-    left: 0;
-    right: 0;
-    top: calc(100dvh - 4px);
-    height: 240px;
-    background: var(--app-bg-elevated);
-    z-index: 69;
-    pointer-events: none;
-  }
-}
-.mob-nav-item {
-  position: relative;
-  display: inline-flex;
-  flex-direction: column;
+  width: 40px;
+  height: 40px;
   align-items: center;
-  gap: 2px;
-  padding: 8px 0;
+  justify-content: center;
   background: transparent;
-  border: 0;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  color: var(--app-text);
   cursor: pointer;
-  font-family: var(--app-sans, var(--app-serif));
-  font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  color: var(--app-text-faint);
-  border-radius: 8px;
-  min-height: 44px;
+  padding: 0;
+  flex-shrink: 0;
 }
-.mob-nav-item:focus-visible {
+.mob-menu-btn svg {
+  width: 20px;
+  height: 20px;
+}
+.mob-menu-btn:focus-visible {
   outline: none;
   background: var(--app-surface-muted);
 }
-.mob-nav-item[data-active="true"] {
-  color: var(--app-text);
-}
-.mob-nav-item[data-active="true"]::before {
-  content: "";
-  position: absolute;
-  top: 4px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 22px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--app-accent);
-}
-.mob-nav-badge {
-  position: absolute;
-  top: 4px;
-  right: 50%;
-  margin-right: -16px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: var(--tone-active);
-  color: white;
-  font-family: var(--app-mono);
-  font-size: 10px;
-  font-weight: 500;
+
+/* Header right-side cluster — health pill + (mobile-only) menu button. */
+.app-shell-header-meta {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  line-height: 1;
-}
-[data-mantine-color-scheme="dark"] .mob-nav-badge {
-  background: color-mix(in srgb, var(--tone-active) 80%, var(--app-bg));
-  color: var(--app-bg);
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
-/* On mobile the bottom nav owns navigation — the top Tabs.List can hide. */
+/* Slide-in drawer. Inert (display:none on the scrim, off-screen on the
+   panel) while closed so it can't catch clicks behind invisible chrome.
+   The root reveals at <=768px; above that the desktop tabs are used. */
+.mob-drawer-root {
+  display: none;
+}
 @media (max-width: 768px) {
+  .mob-menu-btn {
+    display: inline-flex;
+  }
+  .mob-drawer-root {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    pointer-events: none;
+  }
+  .mob-drawer-root[data-open="true"] {
+    pointer-events: auto;
+  }
+  /* The top Tabs.List hides on phones — drawer owns navigation. */
   .app-tabs .mantine-Tabs-list {
     display: none;
   }
   .app-tabs[data-variant="default"] {
     border-bottom: none;
   }
-  /* Leave room for the floating bottom nav. */
-  .app-shell-body {
-    padding-bottom: calc(72px + env(safe-area-inset-bottom, 12px));
-  }
+}
+
+.mob-drawer-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--app-scrim);
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.mob-drawer-root[data-open="true"] .mob-drawer-scrim {
+  opacity: 1;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.mob-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(78vw, 360px);
+  background: var(--app-bg-elevated);
+  border-left: 1px solid var(--app-border);
+  box-shadow: -20px 0 40px -10px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.22s ease;
+  padding-top: env(safe-area-inset-top, 0);
+  padding-right: env(safe-area-inset-right, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.mob-drawer-root[data-open="true"] .mob-drawer {
+  transform: translateX(0);
+}
+
+.mob-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+.mob-drawer-title {
+  font-family: var(--app-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--app-text-faint);
+}
+.mob-drawer-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--app-border);
+  color: var(--app-text-faint);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.mob-drawer-close:focus-visible {
+  outline: none;
+  background: var(--app-surface-muted);
+  color: var(--app-text);
+}
+
+.mob-drawer-nav {
+  flex: 1;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.mob-drawer-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 14px;
+  border-radius: 10px;
+  font-family: var(--app-sans);
+  font-size: 0.98rem;
+  color: var(--app-text);
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  min-height: 48px;
+}
+.mob-drawer-item:focus-visible {
+  outline: none;
+  background: var(--app-surface-muted);
+}
+.mob-drawer-item[data-active="true"] {
+  background: var(--app-surface-muted);
+}
+.mob-drawer-item[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--app-accent);
+}
+.mob-drawer-item svg {
+  color: var(--app-text-faint);
+  flex-shrink: 0;
+}
+.mob-drawer-item[data-active="true"] svg {
+  color: var(--app-accent);
+}
+.mob-drawer-item-label {
+  flex: 1;
+}
+.mob-drawer-item-badge {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  background: var(--tone-active);
+  color: white;
+  font-family: var(--app-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+[data-mantine-color-scheme="dark"] .mob-drawer-item-badge {
+  background: color-mix(in srgb, var(--tone-active) 80%, var(--app-bg));
+  color: var(--app-bg);
+}
+
+.mob-drawer-foot {
+  padding: 14px 16px;
+  border-top: 1px solid var(--app-border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.mob-drawer-foot-tag {
+  font-family: var(--app-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--app-text-faint);
 }
 
 /* Phones: reclaim horizontal space. By default Container + Card + row each
