@@ -9,7 +9,8 @@ import { CountBadge } from "./components/CountBadge";
 import { HealthBadge } from "./components/HealthBadge";
 import { LogsPanel } from "./components/LogsPanel";
 import { MaintenancePanel } from "./components/MaintenancePanel";
-import { MobileBottomNav } from "./components/MobileBottomNav";
+import { MobileMenuButton } from "./components/MobileMenuButton";
+import { MobileNavDrawer } from "./components/MobileNavDrawer";
 import { RecentList } from "./components/RecentList";
 import { RunningJobsPanel } from "./components/RunningJobsPanel";
 import { SubmitForm } from "./components/SubmitForm";
@@ -24,6 +25,7 @@ export default function App() {
   useEventStream();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [tab, setTab] = useState<string | null>("library");
+  const [navOpen, setNavOpen] = useState(false);
 
   const { data: downloads } = useQuery({
     ...listDownloadsOptions(),
@@ -56,7 +58,10 @@ export default function App() {
                 archive
               </span>
             </div>
-            <HealthBadge />
+            <div className="app-shell-header-meta">
+              <HealthBadge />
+              <MobileMenuButton open={navOpen} onClick={() => setNavOpen((o) => !o)} />
+            </div>
           </div>
         </Container>
       </header>
@@ -105,7 +110,13 @@ export default function App() {
           </div>
         </Stack>
       </Container>
-      <MobileBottomNav active={tab} jobsBadge={running} onChange={(k) => setTab(k)} />
+      <MobileNavDrawer
+        active={tab}
+        open={navOpen}
+        jobsBadge={running}
+        onChange={(k) => setTab(k)}
+        onClose={() => setNavOpen(false)}
+      />
     </Box>
   );
 }
