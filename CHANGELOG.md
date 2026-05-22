@@ -1,3 +1,13 @@
+## v1.5.0 (2026-05-22)
+
+### Feat
+
+- **maintenance**: reflow jobs table to stacked cards on mobile
+
+### Refactor
+
+- **css**: drop !important + biome-ignore on .app-row-line overrides
+
 ## v1.4.2 (2026-05-22)
 
 ### Fix
