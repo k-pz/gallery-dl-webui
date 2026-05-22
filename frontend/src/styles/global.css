@@ -280,6 +280,7 @@ a {
    `order: 99` pushes the name behind the short meta chips when it wraps.
    The `!important` flag is required to beat Mantine's inline `--group-wrap`
    variable that the `wrap="nowrap"` prop sets on the Group element. */
+/* biome-ignore-start lint/complexity/noImportantStyles: required to override Mantine's inline `--group-wrap` from `wrap="nowrap"` (see block comment above) */
 @container (max-width: 480px) {
   .app-row-line {
     flex-wrap: wrap !important;
@@ -296,6 +297,7 @@ a {
     word-break: break-all;
   }
 }
+/* biome-ignore-end lint/complexity/noImportantStyles: see start marker */
 
 /* Status pill in row lists. Borderless, low-saturation; reads as a label
    rather than a notification badge. Canonical name is `.pill`; the legacy
