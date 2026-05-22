@@ -11,7 +11,9 @@ from backend.maintenance.schemas import (
     MaintenanceJobOut,
     MaintenanceProgressOut,
     MaintenanceScheduleIn,
+    UpdateCheckOut,
 )
+from backend.maintenance.update_check import check_for_updates
 
 router = APIRouter(tags=["maintenance"])
 
@@ -110,6 +112,26 @@ async def cancel_maintenance_job(
         raise HTTPException(status_code=404, detail="maintenance job not found")
     bus.publish(maintenance_event("updated", id=job_id))
     return _to_out(refreshed)
+
+
+@router.get("/maintenance/update-check", operation_id="checkForUpdates")
+async def check_for_updates_endpoint(force: bool = False) -> UpdateCheckOut:
+    """Compare the installed checkout to upstream main on GitHub.
+
+    `force=true` bypasses the 60 s in-process cache for an explicit refresh
+    button; default polling reuses the cached result so the UI can refetch
+    aggressively without burning GitHub's anon rate limit.
+    """
+    result = await check_for_updates(force=force)
+    return UpdateCheckOut(
+        branch=result.branch,
+        current_sha=result.current_sha,
+        latest_sha=result.latest_sha,
+        latest_message=result.latest_message,
+        latest_committed_at=result.latest_committed_at,
+        behind=result.behind,
+        reason=result.reason,
+    )
 
 
 @router.get("/maintenance/jobs/{job_id}/progress", operation_id="getMaintenanceJobProgress")
