@@ -25,7 +25,7 @@ from backend.downloads.postprocess import (
     normalize_tags,
     sanitize,
 )
-from backend.events import EventBus, maintenance_event, maintenance_progress_event
+from backend.events import EventBus, maintenance_event, maintenance_progress_event, targets_event
 from backend.maintenance import service
 from backend.maintenance.komga import (
     KomgaPushResult,
@@ -328,6 +328,8 @@ class MaintenanceWorker:
             return await self._run_push_komga_status(job_id)
         if kind == "update_lxc":
             return await self._run_update_lxc(job_id)
+        if kind == "unwatch_ended_series":
+            return await self._run_unwatch_ended_series(job_id)
         raise ValueError(f"unsupported maintenance kind: {kind}")
 
     async def _run_rename(self, job_id: int) -> dict[str, int]:
@@ -594,6 +596,25 @@ class MaintenanceWorker:
             on_cancel=_on_cancel,
         )
         return result.as_dict()
+
+    async def _run_unwatch_ended_series(self, job_id: int) -> dict[str, int]:
+        """Flip every watched target whose series_status is "Ended" to unwatched.
+
+        Bulk DB update so the run is O(1) trips regardless of library size; the
+        per-target events are emitted afterwards from the returned id list so
+        connected UI clients refresh without polling. Cancellation isn't
+        plumbed in because the single UPDATE is effectively atomic — there's
+        no progress-loop checkpoint to honour a mid-run signal at.
+        """
+        sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
+        async with self._db_lock:
+            ids = await targets_service.unwatch_ended(self._db)
+        sink.total(len(ids))
+        for target_id in ids:
+            sink.step(f"unwatched target {target_id}")
+            if self._bus is not None:
+                self._bus.publish(targets_event("updated", id=target_id))
+        return {"unwatched": len(ids)}
 
     async def _run_update_lxc(self, job_id: int) -> dict[str, str]:
         """Kick off an in-place LXC update by dropping a trigger file in DATA_DIR.

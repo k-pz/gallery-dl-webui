@@ -34,6 +34,7 @@ import {
   IconAlertTriangle,
   IconArrowUp,
   IconClock,
+  IconEyeOff,
   IconFileText,
   IconInfo,
   IconRefresh,
@@ -56,6 +57,7 @@ const KIND_LABEL: Record<string, string> = {
   rebuild_library: "Rebuild library",
   push_komga_series_status: "Push series status to Komga",
   update_lxc: "Update LXC from upstream",
+  unwatch_ended_series: "Unwatch ended series",
 };
 
 export function MaintenancePanel() {
@@ -117,6 +119,14 @@ export function MaintenancePanel() {
               loading={schedule.isPending}
             >
               Regenerate series metadata
+            </Button>
+            <Button
+              variant="light"
+              leftSection={<IconEyeOff size={14} />}
+              onClick={() => schedule.mutate({ body: { kind: "unwatch_ended_series" } })}
+              loading={schedule.isPending}
+            >
+              Unwatch ended series
             </Button>
           </Group>
           {scheduleError && (

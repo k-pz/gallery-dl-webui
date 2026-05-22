@@ -132,6 +132,14 @@ export const IconEye = (p: IconProps) => (
     <circle cx="12" cy="12" r="3" />
   </Svg>
 );
+export const IconEyeOff = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-10-7-10-7a18.5 18.5 0 0 1 4.06-5.06" />
+    <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 10 7 10 7a18.6 18.6 0 0 1-3.07 4.19" />
+    <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+    <path d="M1 1l22 22" />
+  </Svg>
+);
 export const IconTrash = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3 6h18" />

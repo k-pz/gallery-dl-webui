@@ -249,6 +249,30 @@ async def list_watched(db: aiosqlite.Connection) -> list[Target]:
     return [row_to_target(r) for r in rows]
 
 
+async def unwatch_ended(db: aiosqlite.Connection) -> list[int]:
+    """Flip `watched = 0` on every watched target whose series_status is "Ended".
+
+    Returns the ids of the rows that were actually flipped, so callers can fan
+    out events / log a per-target line without re-querying. Targets that are
+    Ended but already unwatched aren't touched (and aren't reported), which
+    keeps the count meaningful when re-running the job is a no-op.
+    """
+    async with db.execute(
+        "SELECT id FROM targets WHERE watched = 1 AND series_status = 'Ended' ORDER BY id ASC"
+    ) as cur:
+        rows = await cur.fetchall()
+    ids = [row["id"] for row in rows]
+    if not ids:
+        return []
+    placeholders = ",".join("?" * len(ids))
+    await db.execute(
+        f"UPDATE targets SET watched = 0 WHERE id IN ({placeholders})",
+        ids,
+    )
+    await db.commit()
+    return ids
+
+
 async def delete(db: aiosqlite.Connection, id_: int) -> bool:
     cursor = await db.execute("DELETE FROM targets WHERE id = ?", (id_,))
     await db.commit()
