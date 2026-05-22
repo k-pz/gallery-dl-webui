@@ -29,3 +29,20 @@ class MaintenanceProgressOut(BaseModel):
     total: int
     done: int
     lines: list[str]
+
+
+class UpdateCheckOut(BaseModel):
+    """Snapshot returned by `/api/maintenance/update-check`.
+
+    All fields are nullable because the underlying check has several
+    inert outcomes (no git metadata, network unreachable, non-GitHub
+    origin); `reason` carries the machine-readable label for those.
+    """
+
+    branch: str | None
+    current_sha: str | None
+    latest_sha: str | None
+    latest_message: str | None
+    latest_committed_at: str | None
+    behind: bool | None
+    reason: str | None

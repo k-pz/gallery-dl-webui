@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelDownload, cancelMaintenanceJob, createDownload, createOutputDir, deleteTarget, exportLibrary, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, putConfig, requeueDownload, scheduleMaintenanceJob, updateTarget } from '../sdk.gen';
-import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CancelMaintenanceJobData, CancelMaintenanceJobError, CancelMaintenanceJobResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, ExportLibraryData, ExportLibraryResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetError, GetTargetResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
+import { cancelDownload, cancelMaintenanceJob, checkForUpdates, createDownload, createOutputDir, deleteTarget, exportLibrary, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, putConfig, requeueDownload, scheduleMaintenanceJob, updateTarget } from '../sdk.gen';
+import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CancelMaintenanceJobData, CancelMaintenanceJobError, CancelMaintenanceJobResponse, CheckForUpdatesData, CheckForUpdatesError, CheckForUpdatesResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, ExportLibraryData, ExportLibraryResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetError, GetTargetResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -405,6 +405,24 @@ export const cancelMaintenanceJobMutation = (options?: Partial<Options<CancelMai
     };
     return mutationOptions;
 };
+
+export const checkForUpdatesQueryKey = (options?: Options<CheckForUpdatesData>) => createQueryKey('checkForUpdates', options);
+
+/**
+ * Check For Updates
+ */
+export const checkForUpdatesOptions = (options?: Options<CheckForUpdatesData>) => queryOptions<CheckForUpdatesResponse, CheckForUpdatesError, CheckForUpdatesResponse, ReturnType<typeof checkForUpdatesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await checkForUpdates({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: checkForUpdatesQueryKey(options)
+});
 
 export const getMaintenanceJobProgressQueryKey = (options: Options<GetMaintenanceJobProgressData>) => createQueryKey('getMaintenanceJobProgress', options);
 

@@ -19,10 +19,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import {
   cancelMaintenanceJobMutation,
+  checkForUpdatesOptions,
+  checkForUpdatesQueryKey,
   listMaintenanceJobsOptions,
   listMaintenanceJobsQueryKey,
   scheduleMaintenanceJobMutation,
 } from "../api/@tanstack/react-query.gen";
+import type { UpdateCheckOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { usePagination } from "../lib/pagination";
 import { statusTone } from "../lib/status";
@@ -515,8 +518,24 @@ function UpdateLxcCard({
   scheduling: boolean;
   onSchedule: () => void;
 }) {
+  const qc = useQueryClient();
   const [armed, setArmed] = useState(false);
   const [scheduled, setScheduled] = useState(false);
+
+  // The backend caches results for 60 s; polling the UI every 5 min keeps the
+  // status reasonably fresh without pinging GitHub on every render.
+  const updateCheck = useQuery({
+    ...checkForUpdatesOptions(),
+    refetchInterval: 5 * 60 * 1000,
+    staleTime: 60 * 1000,
+  });
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: checkForUpdatesQueryKey() });
+    // Bypass the in-process backend cache too, so the user can force-pull on
+    // demand right after pushing a commit upstream.
+    qc.fetchQuery({ ...checkForUpdatesOptions({ query: { force: true } }) });
+  };
 
   const confirm = () => {
     onSchedule();
@@ -540,6 +559,7 @@ function UpdateLxcCard({
             are present.
           </Text>
         </Stack>
+        <UpdateAvailabilityBanner check={updateCheck.data} onRefresh={refresh} />
         {scheduled ? (
           <Box className="app-alert" data-tone="info">
             <IconInfo size={16} className="alert-icon" />
@@ -586,5 +606,88 @@ function UpdateLxcCard({
         )}
       </Stack>
     </Card>
+  );
+}
+
+/**
+ * Compact status line above the Update LXC button.
+ *
+ * Renders one of: "checking…", "update available <short sha> · <subject>",
+ * "up to date", or a "couldn't check" line with the reason. Inline so the
+ * card stays low-key when nothing is interesting.
+ */
+function UpdateAvailabilityBanner({
+  check,
+  onRefresh,
+}: {
+  check: UpdateCheckOut | undefined;
+  onRefresh: () => void;
+}) {
+  if (check === undefined) {
+    return (
+      <Text size="xs" c="dimmed">
+        Checking for updates…
+      </Text>
+    );
+  }
+
+  const shortSha = (sha: string | null) => (sha ? sha.slice(0, 7) : null);
+
+  if (check.behind === true) {
+    return (
+      <Box className="app-alert" data-tone="info">
+        <IconInfo size={16} className="alert-icon" />
+        <Stack gap={2} style={{ flex: 1 }}>
+          <Text size="sm" fw={500}>
+            Update available — {shortSha(check.latest_sha)}
+          </Text>
+          {check.latest_message && (
+            <Text size="xs" c="dimmed">
+              {check.latest_message}
+            </Text>
+          )}
+          <Text size="xs" c="dimmed">
+            Installed: <span className="code-chip">{shortSha(check.current_sha)}</span> on{" "}
+            <span className="code-chip">{check.branch}</span>
+          </Text>
+        </Stack>
+        <Button variant="subtle" size="compact-xs" onClick={onRefresh}>
+          Refresh
+        </Button>
+      </Box>
+    );
+  }
+
+  if (check.behind === false) {
+    return (
+      <Group gap="xs" wrap="nowrap">
+        <Text size="xs" c="dimmed" style={{ flex: 1 }}>
+          Up to date — installed <span className="code-chip">{shortSha(check.current_sha)}</span> on{" "}
+          <span className="code-chip">{check.branch}</span>
+        </Text>
+        <Button variant="subtle" size="compact-xs" onClick={onRefresh}>
+          Refresh
+        </Button>
+      </Group>
+    );
+  }
+
+  // behind === null → couldn't compare. The reason vocabulary mirrors what
+  // backend/maintenance/update_check.py emits.
+  return (
+    <Group gap="xs" wrap="nowrap">
+      <Text size="xs" c="dimmed" style={{ flex: 1 }}>
+        Couldn't check for updates ({check.reason ?? "unknown"})
+        {check.current_sha && (
+          <>
+            {" "}
+            — installed <span className="code-chip">{shortSha(check.current_sha)}</span>
+          </>
+        )}
+      </Text>
+      <Button variant="subtle" size="compact-xs" onClick={onRefresh}>
+        Retry
+      </Button>
+    </Group>
   );
 }
