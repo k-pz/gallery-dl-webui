@@ -1,3 +1,9 @@
+## v1.4.1 (2026-05-22)
+
+### Fix
+
+- **mobile-nav**: cover Firefox iOS page bleed beneath bottom nav
+
 ## v1.4.0 (2026-05-22)
 
 ### Feat
