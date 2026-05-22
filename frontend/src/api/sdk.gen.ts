@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CancelMaintenanceJobData, CancelMaintenanceJobErrors, CancelMaintenanceJobResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, ExportLibraryData, ExportLibraryResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetMaintenanceJobProgressData, GetMaintenanceJobProgressErrors, GetMaintenanceJobProgressResponses, GetTargetData, GetTargetErrors, GetTargetResponses, ImportLibraryData, ImportLibraryResponses, ListDownloadsData, ListDownloadsResponses, ListMaintenanceJobsData, ListMaintenanceJobsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, ScheduleMaintenanceJobData, ScheduleMaintenanceJobErrors, ScheduleMaintenanceJobResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
+import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CancelMaintenanceJobData, CancelMaintenanceJobErrors, CancelMaintenanceJobResponses, CheckForUpdatesData, CheckForUpdatesErrors, CheckForUpdatesResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, ExportLibraryData, ExportLibraryResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetMaintenanceJobProgressData, GetMaintenanceJobProgressErrors, GetMaintenanceJobProgressResponses, GetTargetData, GetTargetErrors, GetTargetResponses, ImportLibraryData, ImportLibraryResponses, ListDownloadsData, ListDownloadsResponses, ListMaintenanceJobsData, ListMaintenanceJobsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, ScheduleMaintenanceJobData, ScheduleMaintenanceJobErrors, ScheduleMaintenanceJobResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -157,6 +157,11 @@ export const scheduleMaintenanceJob = <ThrowOnError extends boolean = false>(opt
  * Cancel Maintenance Job
  */
 export const cancelMaintenanceJob = <ThrowOnError extends boolean = false>(options: Options<CancelMaintenanceJobData, ThrowOnError>) => (options.client ?? client).post<CancelMaintenanceJobResponses, CancelMaintenanceJobErrors, ThrowOnError>({ url: '/api/maintenance/jobs/{job_id}/cancel', ...options });
+
+/**
+ * Check For Updates
+ */
+export const checkForUpdates = <ThrowOnError extends boolean = false>(options?: Options<CheckForUpdatesData, ThrowOnError>) => (options?.client ?? client).get<CheckForUpdatesResponses, CheckForUpdatesErrors, ThrowOnError>({ url: '/api/maintenance/update-check', ...options });
 
 /**
  * Get Maintenance Job Progress

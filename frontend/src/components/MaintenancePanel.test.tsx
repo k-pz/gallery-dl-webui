@@ -15,14 +15,38 @@ type Job = {
   error: string | null;
 };
 
+type UpdateCheck = {
+  branch: string | null;
+  current_sha: string | null;
+  latest_sha: string | null;
+  latest_message: string | null;
+  latest_committed_at: string | null;
+  behind: boolean | null;
+  reason: string | null;
+};
+
+const DEFAULT_UPDATE_CHECK: UpdateCheck = {
+  branch: "main",
+  current_sha: "abc1234567",
+  latest_sha: "abc1234567",
+  latest_message: "feat: x",
+  latest_committed_at: "2026-05-22T10:00:00Z",
+  behind: false,
+  reason: null,
+};
+
 function jobsHandler(opts: {
   jobs: Job[];
   nextId: { value: number };
   progress: Record<number, { status: string; total: number; done: number; lines: string[] }>;
   postedKinds?: string[];
+  updateCheck?: UpdateCheck;
 }) {
   return async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const u = urlOf(input);
+    if (u.includes("/api/maintenance/update-check")) {
+      return jsonResponse(opts.updateCheck ?? DEFAULT_UPDATE_CHECK);
+    }
     const progressMatch = u.match(/\/api\/maintenance\/jobs\/(\d+)\/progress/);
     if (progressMatch) {
       const id = Number(progressMatch[1]);
@@ -148,6 +172,36 @@ describe("MaintenancePanel", () => {
     await waitFor(() => {
       expect(postedKinds).toContain("regenerate_series_metadata");
     });
+  });
+
+  it("surfaces 'update available' banner when behind is true", async () => {
+    const nextId = { value: 1 };
+    const jobs: Job[] = [];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {};
+    mockFetch(
+      jobsHandler({
+        jobs,
+        nextId,
+        progress,
+        updateCheck: {
+          branch: "main",
+          current_sha: "old1111",
+          latest_sha: "new2222abc",
+          latest_message: "fix: shiny",
+          latest_committed_at: "2026-05-22T10:00:00Z",
+          behind: true,
+          reason: null,
+        },
+      }),
+    );
+
+    renderWithProviders(<MaintenancePanel />);
+
+    await screen.findByText(/update available — new2222/i);
+    expect(screen.getByText("fix: shiny")).toBeInTheDocument();
   });
 
   it("schedules update_lxc only after the second-stage confirm", async () => {

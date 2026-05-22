@@ -479,6 +479,40 @@ export type TargetUpdate = {
 };
 
 /**
+ * UpdateCheckOut
+ */
+export type UpdateCheckOut = {
+    /**
+     * Branch
+     */
+    branch: string | null;
+    /**
+     * Current Sha
+     */
+    current_sha: string | null;
+    /**
+     * Latest Sha
+     */
+    latest_sha: string | null;
+    /**
+     * Latest Message
+     */
+    latest_message: string | null;
+    /**
+     * Latest Committed At
+     */
+    latest_committed_at: string | null;
+    /**
+     * Behind
+     */
+    behind: boolean | null;
+    /**
+     * Reason
+     */
+    reason: string | null;
+};
+
+/**
  * ValidationError
  */
 export type ValidationError = {
@@ -1019,6 +1053,36 @@ export type CancelMaintenanceJobResponses = {
 };
 
 export type CancelMaintenanceJobResponse = CancelMaintenanceJobResponses[keyof CancelMaintenanceJobResponses];
+
+export type CheckForUpdatesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Force
+         */
+        force?: boolean;
+    };
+    url: '/api/maintenance/update-check';
+};
+
+export type CheckForUpdatesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CheckForUpdatesError = CheckForUpdatesErrors[keyof CheckForUpdatesErrors];
+
+export type CheckForUpdatesResponses = {
+    /**
+     * Successful Response
+     */
+    200: UpdateCheckOut;
+};
+
+export type CheckForUpdatesResponse = CheckForUpdatesResponses[keyof CheckForUpdatesResponses];
 
 export type GetMaintenanceJobProgressData = {
     body?: never;
