@@ -1,3 +1,9 @@
+## v1.6.0 (2026-05-22)
+
+### Feat
+
+- **maintenance**: add 'unwatch ended series' kind
+
 ## v1.5.1 (2026-05-22)
 
 ### Fix
