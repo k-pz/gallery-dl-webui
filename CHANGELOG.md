@@ -1,3 +1,9 @@
+## v1.5.1 (2026-05-22)
+
+### Fix
+
+- **mobile-nav**: cover Firefox iOS pill safe area with a deeper extension
+
 ## v1.5.0 (2026-05-22)
 
 ### Feat
