@@ -174,6 +174,24 @@ describe("MaintenancePanel", () => {
     });
   });
 
+  it("schedules an unwatch-ended-series job from the button", async () => {
+    const nextId = { value: 1 };
+    const jobs: Job[] = [];
+    const postedKinds: string[] = [];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {};
+    mockFetch(jobsHandler({ jobs, nextId, progress, postedKinds }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: /unwatch ended series/i }));
+    await waitFor(() => {
+      expect(postedKinds).toContain("unwatch_ended_series");
+    });
+  });
+
   it("surfaces 'update available' banner when behind is true", async () => {
     const nextId = { value: 1 };
     const jobs: Job[] = [];
