@@ -180,7 +180,12 @@ export function MaintenancePanel() {
                 overflow: "hidden",
               }}
             >
-              <Table verticalSpacing="sm" highlightOnHover stickyHeader>
+              <Table
+                verticalSpacing="sm"
+                highlightOnHover
+                stickyHeader
+                className="maint-jobs-table"
+              >
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th style={{ width: 64 }}>ID</Table.Th>
@@ -226,7 +231,7 @@ export function MaintenancePanel() {
                           <Pill tone={statusTone(job.status)}>{job.status}</Pill>
                         </Table.Td>
                         <Table.Td>
-                          <Text size="xs" ff="monospace" c="dimmed" lineClamp={1}>
+                          <Text size="xs" ff="monospace" c="dimmed" className="maint-result">
                             {job.result ? JSON.stringify(job.result) : (job.error ?? "—")}
                           </Text>
                         </Table.Td>

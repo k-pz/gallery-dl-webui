@@ -766,6 +766,81 @@ a {
   border-color: color-mix(in srgb, var(--tone-error) 30%, var(--app-border));
 }
 
+/* Maintenance jobs result cell — clamped so wide JSON doesn't push the
+   table sideways. Desktop shows one line; mobile (card layout below) lifts
+   the limit to two so the value still reads on its own row. */
+.maint-result {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+/* On phones the maintenance jobs table flips from a 5-column grid (where
+   the Result column gets clipped to "{") to a stacked card per row. The
+   <table> markup is preserved so `tbody tr` selectors in the e2e suite
+   keep matching; CSS just rewrites the visual layout. */
+@media (max-width: 640px) {
+  .maint-jobs-table {
+    display: block;
+  }
+  .maint-jobs-table thead {
+    display: none;
+  }
+  .maint-jobs-table tbody {
+    display: block;
+  }
+  .maint-jobs-table tr {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    grid-template-areas:
+      "id     status .      cancel"
+      "title  title  title  title"
+      "result result result result";
+    column-gap: 10px;
+    row-gap: 6px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--app-border-subtle);
+  }
+  .maint-jobs-table tbody tr:last-child {
+    border-bottom: none;
+  }
+  .maint-jobs-table td {
+    display: block;
+    padding: 0;
+    border: none;
+    min-width: 0;
+  }
+  .maint-jobs-table td:nth-of-type(1) {
+    grid-area: id;
+    align-self: center;
+  }
+  .maint-jobs-table td:nth-of-type(2) {
+    grid-area: title;
+    min-width: 0;
+  }
+  .maint-jobs-table td:nth-of-type(3) {
+    grid-area: status;
+    align-self: center;
+  }
+  .maint-jobs-table td:nth-of-type(4) {
+    grid-area: result;
+    min-width: 0;
+  }
+  .maint-jobs-table td:nth-of-type(5) {
+    grid-area: cancel;
+    align-self: center;
+    justify-self: end;
+  }
+  .maint-jobs-table .maint-result {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    word-break: break-word;
+  }
+}
+
 /* Mobile bottom nav. Hidden by default; revealed under 768px.
    Column count matches NAV_ITEMS length in MobileBottomNav.tsx — if items
    are added/removed there, bump this too or the last item wraps onto a
