@@ -1,3 +1,9 @@
+## v1.7.0 (2026-05-22)
+
+### Feat
+
+- **mobile-nav**: replace bottom tab strip with right-side hamburger drawer
+
 ## v1.6.0 (2026-05-22)
 
 ### Feat
