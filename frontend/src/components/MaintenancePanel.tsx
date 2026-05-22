@@ -27,7 +27,15 @@ import { extractErrorMessage } from "../lib/apiError";
 import { usePagination } from "../lib/pagination";
 import { statusTone } from "../lib/status";
 import { EmptyState } from "./EmptyState";
-import { IconAlertTriangle, IconClock, IconFileText, IconRefresh, IconUpload } from "./Icons";
+import {
+  IconAlertTriangle,
+  IconArrowUp,
+  IconClock,
+  IconFileText,
+  IconInfo,
+  IconRefresh,
+  IconUpload,
+} from "./Icons";
 import { ListPagination } from "./ListPagination";
 import { MaintenanceLog } from "./MaintenanceLog";
 import { Pill } from "./Pill";
@@ -44,6 +52,7 @@ const KIND_LABEL: Record<string, string> = {
   regenerate_series_metadata: "Regenerate series metadata",
   rebuild_library: "Rebuild library",
   push_komga_series_status: "Push series status to Komga",
+  update_lxc: "Update LXC from upstream",
 };
 
 export function MaintenancePanel() {
@@ -120,6 +129,11 @@ export function MaintenancePanel() {
         onSchedule={(params) =>
           schedule.mutate({ body: { kind: "push_komga_series_status", params } })
         }
+      />
+
+      <UpdateLxcCard
+        scheduling={schedule.isPending}
+        onSchedule={() => schedule.mutate({ body: { kind: "update_lxc" } })}
       />
 
       <RebuildLibraryCard
@@ -478,6 +492,99 @@ function PushKomgaStatusCard({
           </Group>
         </Stack>
       </Modal>
+    </Card>
+  );
+}
+
+/**
+ * Pulls the latest source from upstream, rebuilds, and restarts the LXC.
+ *
+ * The webapp itself is sandboxed and can't shell out to `/usr/local/bin/update`,
+ * so it writes a sentinel file inside DATA_DIR; a pre-installed systemd path
+ * unit watches for the file and fires the root-owned updater service. That
+ * service ends by restarting this webapp — the user reloads when it returns.
+ *
+ * Two-stage confirm (no type-to-confirm): scheduling restarts the service, so
+ * we want one extra click to prevent stray taps, but the action itself isn't
+ * destructive enough to warrant the rebuild-library word-typing dance.
+ */
+function UpdateLxcCard({
+  scheduling,
+  onSchedule,
+}: {
+  scheduling: boolean;
+  onSchedule: () => void;
+}) {
+  const [armed, setArmed] = useState(false);
+  const [scheduled, setScheduled] = useState(false);
+
+  const confirm = () => {
+    onSchedule();
+    setArmed(false);
+    setScheduled(true);
+  };
+
+  return (
+    <Card>
+      <Stack gap="md">
+        <Stack gap={4}>
+          <span className="app-section-kicker">deployment</span>
+          <Title order={3}>Update LXC from upstream</Title>
+          <Text size="sm" c="dimmed">
+            Pulls the latest <span className="code-chip">main</span> branch, refreshes the
+            backend/frontend toolchains, rebuilds the bundle, and restarts the service. The webapp
+            will be unreachable for a few minutes during the install — reload this page once it
+            comes back. Requires the LXC to have been provisioned by{" "}
+            <span className="code-chip">scripts/proxmox-install.sh</span> (or refreshed by{" "}
+            <span className="code-chip">/usr/local/bin/update</span>) so the helper systemd units
+            are present.
+          </Text>
+        </Stack>
+        {scheduled ? (
+          <Box className="app-alert" data-tone="info">
+            <IconInfo size={16} className="alert-icon" />
+            <Stack gap={2}>
+              <Text size="sm" fw={500}>
+                Update queued
+              </Text>
+              <Text size="xs" c="dimmed">
+                The service will restart automatically once the install completes. Reload this page
+                in a few minutes; if it's still unreachable, check{" "}
+                <span className="code-chip">journalctl -u gallery-dl-webui-update.service -f</span>{" "}
+                from the LXC console.
+              </Text>
+            </Stack>
+          </Box>
+        ) : !armed ? (
+          <Group>
+            <Button
+              variant="light"
+              leftSection={<IconArrowUp size={14} />}
+              onClick={() => setArmed(true)}
+              loading={scheduling}
+            >
+              Update LXC…
+            </Button>
+          </Group>
+        ) : (
+          <Group gap="sm" wrap="wrap" align="flex-end">
+            <Text size="sm" style={{ flex: 1, minWidth: 200 }}>
+              Schedule an update? The service will restart at the end.
+            </Text>
+            <Button
+              color="blue"
+              leftSection={<IconArrowUp size={14} />}
+              onClick={confirm}
+              loading={scheduling}
+            >
+              Yes, update now
+            </Button>
+            <Button variant="subtle" color="gray" onClick={() => setArmed(false)}>
+              Cancel
+            </Button>
+          </Group>
+        )}
+      </Stack>
     </Card>
   );
 }

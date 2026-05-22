@@ -150,6 +150,32 @@ describe("MaintenancePanel", () => {
     });
   });
 
+  it("schedules update_lxc only after the second-stage confirm", async () => {
+    const nextId = { value: 1 };
+    const jobs: Job[] = [];
+    const postedKinds: string[] = [];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {};
+    mockFetch(jobsHandler({ jobs, nextId, progress, postedKinds }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    // Stage 1: the open button doesn't schedule by itself.
+    fireEvent.click(screen.getByRole("button", { name: /update lxc…/i }));
+    expect(postedKinds).toEqual([]);
+
+    // Stage 2: explicit "Yes, update now" confirms.
+    fireEvent.click(screen.getByRole("button", { name: /yes, update now/i }));
+    await waitFor(() => {
+      expect(postedKinds).toContain("update_lxc");
+    });
+
+    // Post-schedule banner explains what happens next.
+    await screen.findByText(/update queued/i);
+  });
+
   it("switches the log to the row the user clicks", async () => {
     const nextId = { value: 3 };
     const jobs: Job[] = [
