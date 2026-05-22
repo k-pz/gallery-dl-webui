@@ -23,6 +23,7 @@ SUPPORTED_KINDS = {
     "rebuild_library",
     "push_komga_series_status",
     "update_lxc",
+    "unwatch_ended_series",
 }
 
 # Kinds whose schedule request must carry credentials in `params`. We stash

@@ -712,3 +712,75 @@ def test_update_lxc_unsupported_when_kind_typoed(client: TestClient) -> None:
     """Unknown kinds still 400 — confirms update_lxc is allowlisted, not a regex."""
     resp = client.post("/api/maintenance/jobs", json={"kind": "update_xyz"})
     assert resp.status_code == 400
+
+
+def test_unwatch_ended_series_flips_only_ended_watched_targets(
+    client: TestClient, gallery_config
+) -> None:
+    """Only watched targets whose series_status == 'Ended' should be flipped to
+    unwatched. Ongoing/Hiatus/Abandoned watched targets and already-unwatched
+    Ended targets must be left alone.
+    """
+    # Stage four targets covering each interesting status x watched combo.
+    urls = {
+        "ended_watched": "https://example/ended-watched",
+        "ongoing_watched": "https://example/ongoing-watched",
+        "ended_unwatched": "https://example/ended-unwatched",
+        "hiatus_watched": "https://example/hiatus-watched",
+    }
+    for url in urls.values():
+        gallery_config.manifest_for[url] = []
+        gallery_config.series_name_for[url] = url.rsplit("/", 1)[-1]
+
+    target_ids: dict[str, int] = {}
+    for key, url in urls.items():
+        sub = client.post("/api/downloads", json={"url": url})
+        assert sub.status_code == 200, sub.json()
+        # Find the target row for this URL.
+        for _ in range(40):
+            targets = client.get("/api/targets").json()
+            match = next((t for t in targets if t["url"] == url), None)
+            if match is not None:
+                target_ids[key] = match["id"]
+                break
+            time.sleep(0.05)
+        assert key in target_ids, f"target for {url} never appeared"
+
+    # Apply status + watched per scenario.
+    client.patch(
+        f"/api/targets/{target_ids['ended_watched']}",
+        json={"watched": True, "series_status": "Ended"},
+    )
+    client.patch(
+        f"/api/targets/{target_ids['ongoing_watched']}",
+        json={"watched": True, "series_status": "Ongoing"},
+    )
+    client.patch(
+        f"/api/targets/{target_ids['ended_unwatched']}",
+        json={"watched": False, "series_status": "Ended"},
+    )
+    client.patch(
+        f"/api/targets/{target_ids['hiatus_watched']}",
+        json={"watched": True, "series_status": "Hiatus"},
+    )
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "unwatch_ended_series"})
+    assert created.status_code == 200, created.json()
+    done = _wait_for_completion(client, created.json()["id"])
+    assert done["status"] == "completed", done
+    assert done["result"]["unwatched"] == 1
+
+    by_id = {t["id"]: t for t in client.get("/api/targets").json()}
+    assert by_id[target_ids["ended_watched"]]["watched"] is False
+    assert by_id[target_ids["ongoing_watched"]]["watched"] is True
+    assert by_id[target_ids["ended_unwatched"]]["watched"] is False
+    assert by_id[target_ids["hiatus_watched"]]["watched"] is True
+
+
+def test_unwatch_ended_series_noop_when_nothing_matches(client: TestClient) -> None:
+    """With no targets in scope the job still completes and reports zero."""
+    created = client.post("/api/maintenance/jobs", json={"kind": "unwatch_ended_series"})
+    assert created.status_code == 200, created.json()
+    done = _wait_for_completion(client, created.json()["id"])
+    assert done["status"] == "completed", done
+    assert done["result"]["unwatched"] == 0
