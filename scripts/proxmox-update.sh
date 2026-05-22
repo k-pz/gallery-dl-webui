@@ -112,9 +112,12 @@ find . -mindepth 1 -maxdepth 1 ! -name backend ! -name frontend -exec rm -rf {} 
 "
 
 log "copying source into CT at $APP_DIR"
+# NOTE: .git/ is intentionally NOT excluded — the in-app update check
+# (backend/maintenance/update_check.py) reads .git/HEAD + .git/config to
+# compare the installed sha against upstream on GitHub. A shallow clone's
+# .git/ is small (~tens of KB).
 tar -C "$SRC_DIR" \
     --exclude='./.venv' \
-    --exclude='./.git' \
     --exclude='./.pytest_cache' \
     --exclude='./.ruff_cache' \
     --exclude='./node_modules' \

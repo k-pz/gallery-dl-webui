@@ -281,9 +281,12 @@ in_ct_sh "install -m 0755 /root/.local/bin/mise /usr/local/bin/mise"
 # ---- Push source into CT --------------------------------------------------
 
 log "copying source into CT at $APP_DIR"
+# NOTE: .git/ is intentionally NOT excluded — the in-app update check
+# (backend/maintenance/update_check.py) reads .git/HEAD + .git/config to
+# compare the installed sha against upstream on GitHub. A shallow clone's
+# .git/ is small (~tens of KB).
 tar -C "$SRC_DIR" \
     --exclude='./.venv' \
-    --exclude='./.git' \
     --exclude='./.pytest_cache' \
     --exclude='./.ruff_cache' \
     --exclude='./node_modules' \
