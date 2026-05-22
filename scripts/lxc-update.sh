@@ -138,6 +138,48 @@ if [[ -f "$UNIT_PATH" ]] && ! grep -qF "$DESIRED_EXEC" "$UNIT_PATH"; then
     systemctl daemon-reload
 fi
 
+# ---- Install in-CT update trigger units (one-time) ------------------------
+#
+# Older CTs (pre this feature) don't have the path+service pair that lets the
+# webapp's Maintenance tab fire this very script. Drop them in idempotently
+# so existing installs converge on the first run from the console; subsequent
+# runs (host- or webapp-triggered) skip the write.
+
+UPDATE_UNIT_PATH="/etc/systemd/system/gallery-dl-webui-update.path"
+UPDATE_UNIT_SERVICE="/etc/systemd/system/gallery-dl-webui-update.service"
+
+if [[ ! -f "$UPDATE_UNIT_SERVICE" ]] || [[ ! -f "$UPDATE_UNIT_PATH" ]]; then
+    log "installing webapp-triggered update units"
+    cat > "$UPDATE_UNIT_SERVICE" <<EOF
+[Unit]
+Description=gallery-dl webui in-place updater
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/rm -f ${DATA_DIR}/.update-request
+ExecStart=/usr/local/bin/update
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=30min
+EOF
+    cat > "$UPDATE_UNIT_PATH" <<EOF
+[Unit]
+Description=Trigger gallery-dl webui updater on request
+After=gallery-dl-webui.service
+
+[Path]
+PathExists=${DATA_DIR}/.update-request
+Unit=gallery-dl-webui-update.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now gallery-dl-webui-update.path
+fi
+
 # ---- Ensure service user can read its own journal (one-time) --------------
 #
 # The in-app Live Log Tail shells out to `journalctl -u ${SERVICE}` as the

@@ -180,6 +180,47 @@ in_ct_sh "getent group systemd-journal >/dev/null \
     && usermod -aG systemd-journal '${APP_USER}' \
     || usermod -aG adm '${APP_USER}' || true"
 
+# ---- Install in-CT update trigger units (one-time) ------------------------
+#
+# CTs created before this feature lack the path+service pair that lets the
+# webapp's Maintenance tab self-trigger /usr/local/bin/update. Drop them in
+# idempotently so existing installs converge on the next host-side update.
+
+UPDATE_UNIT_PATH="/etc/systemd/system/gallery-dl-webui-update.path"
+UPDATE_UNIT_SERVICE="/etc/systemd/system/gallery-dl-webui-update.service"
+
+if ! in_ct test -f "$UPDATE_UNIT_SERVICE" || ! in_ct test -f "$UPDATE_UNIT_PATH"; then
+    log "installing webapp-triggered update units"
+    in_ct bash -c "cat > $UPDATE_UNIT_SERVICE" <<EOF
+[Unit]
+Description=gallery-dl webui in-place updater
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/rm -f ${DATA_DIR}/.update-request
+ExecStart=/usr/local/bin/update
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=30min
+EOF
+    in_ct bash -c "cat > $UPDATE_UNIT_PATH" <<EOF
+[Unit]
+Description=Trigger gallery-dl webui updater on request
+After=gallery-dl-webui.service
+
+[Path]
+PathExists=${DATA_DIR}/.update-request
+Unit=gallery-dl-webui-update.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    in_ct systemctl daemon-reload
+    in_ct systemctl enable --now gallery-dl-webui-update.path
+fi
+
 # ---- Restart --------------------------------------------------------------
 #
 # `systemctl restart` blocks until both stop and start complete (default 90s
