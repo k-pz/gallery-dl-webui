@@ -2,9 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>gallery-dl-webui</title>
+
+    <!-- Favicons. The SVG is preferred where supported; PNGs cover older
+         browsers and the .ico catches the rest. apple-touch-icon is the
+         iOS home-screen / Safari pinned-tab source. The manifest carries
+         the icon set used by Android Chrome's "Add to Home screen". -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="alternate icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f2e8" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#16130d" />
+    <meta name="apple-mobile-web-app-title" content="gallery-dl" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <script>
       // Resolve the saved color scheme before React mounts so the first paint
       // already matches the theme — no white flash on a dark "paper" body.
