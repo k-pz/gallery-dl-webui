@@ -272,32 +272,51 @@ a {
   margin-top: 0.15rem;
 }
 
+/* Default row layout — single line of [pill][id][name][meta]. The name
+   ellipsises when there's no room. Owned by these classes (not Mantine's
+   Group prop / inline Text styles) so the container query below can flip
+   to a wrapped layout without `!important` battles. */
+.app-row-line {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+}
+.app-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-row-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Narrow-row layout: when the row container is < ~480px wide (master/detail
    left column on desktop, full-row on phones), allow the meta strip to wrap
    and reserve a min-width for the name so it slides onto its own full line
    instead of ellipsing to "I…". The earlier 360px threshold missed phones
    entirely — at 430px viewport an .app-row sits around 380–400px wide.
-   `order: 99` pushes the name behind the short meta chips when it wraps.
-   The `!important` flag is required to beat Mantine's inline `--group-wrap`
-   variable that the `wrap="nowrap"` prop sets on the Group element. */
-/* biome-ignore-start lint/complexity/noImportantStyles: required to override Mantine's inline `--group-wrap` from `wrap="nowrap"` (see block comment above) */
+   `order: 99` pushes the name behind the short meta chips when it wraps. */
 @container (max-width: 480px) {
   .app-row-line {
-    flex-wrap: wrap !important;
+    flex-wrap: wrap;
   }
   .app-row-name {
     min-width: 8rem;
     order: 99;
-    flex-basis: 100% !important;
+    flex-basis: 100%;
   }
   .app-row-url {
-    white-space: normal !important;
-    overflow: visible !important;
-    text-overflow: clip !important;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
     word-break: break-all;
   }
 }
-/* biome-ignore-end lint/complexity/noImportantStyles: see start marker */
 
 /* Status pill in row lists. Borderless, low-saturation; reads as a label
    rather than a notification badge. Canonical name is `.pill`; the legacy

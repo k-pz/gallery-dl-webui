@@ -110,23 +110,12 @@ function RunningRow({
       }}
     >
       <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-        <Group className="app-row-line" gap="xs" wrap="nowrap" align="center">
+        <div className="app-row-line">
           <Pill tone={statusTone(item.status)}>{step.label}</Pill>
           <Text size="xs" c="dimmed" ff="monospace">
             #{item.id}
           </Text>
-          <Text
-            className="app-row-name"
-            size="sm"
-            fw={selected ? 600 : 500}
-            style={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              flex: 1,
-            }}
-            title={displayName}
-          >
+          <Text className="app-row-name" size="sm" fw={selected ? 600 : 500} title={displayName}>
             {displayName}
           </Text>
           {eta.kind === "eta" && (
@@ -143,7 +132,7 @@ function RunningRow({
           <Text size="xs" c="dimmed" ff="monospace" style={{ whiteSpace: "nowrap" }}>
             {progressLabel(item)}
           </Text>
-        </Group>
+        </div>
       </Stack>
     </Box>
   );

@@ -330,39 +330,20 @@ function RecentRow({
       }}
     >
       <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-        <Group className="app-row-line" gap="xs" wrap="nowrap" align="center">
+        <div className="app-row-line">
           <Pill tone={tone}>{step.label}</Pill>
           <Text size="xs" c="dimmed" ff="monospace">
             #{item.id}
           </Text>
-          <Text
-            className="app-row-name"
-            size="sm"
-            fw={selected ? 600 : 500}
-            style={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              flex: 1,
-            }}
-            title={displayName}
-          >
+          <Text className="app-row-name" size="sm" fw={selected ? 600 : 500} title={displayName}>
             {displayName}
           </Text>
           <Text size="xs" c="dimmed" ff="monospace" style={{ whiteSpace: "nowrap" }}>
             {chapterCountLabel(item)}
           </Text>
-        </Group>
+        </div>
         {showUrlSubtitle && (
-          <Text
-            className="app-url app-row-url"
-            style={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-            title={item.url}
-          >
+          <Text className="app-url app-row-url" title={item.url}>
             {item.url}
           </Text>
         )}
