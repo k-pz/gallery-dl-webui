@@ -1,3 +1,9 @@
+## v1.4.2 (2026-05-22)
+
+### Fix
+
+- **maintenance**: make the update-check actually work in production
+
 ## v1.4.1 (2026-05-22)
 
 ### Fix
