@@ -20,6 +20,7 @@ SUPPORTED_KINDS = {
     "regenerate_series_metadata",
     "rebuild_library",
     "push_komga_series_status",
+    "update_lxc",
 }
 
 # Kinds whose schedule request must carry credentials in `params`. We stash

@@ -62,3 +62,25 @@ It mirrors `proxmox-update.sh`: preserves `backend/.venv` and
 as `gallery-dl`, applies the `ExecStart=` migration, then
 `systemctl restart --no-block` and waits up to 30 s for active. Defaults
 the clone to HTTPS so it works without a CT-side SSH key.
+
+### Webapp-triggered update
+
+`scripts/proxmox-install.sh` also drops two helper units alongside the
+main service so the Maintenance tab can self-update without sudo:
+
+- `gallery-dl-webui-update.service` — oneshot, runs as root, executes
+  `/usr/local/bin/update`. Output goes to its own journal.
+- `gallery-dl-webui-update.path` — watches `${DATA_DIR}/.update-request`
+  and triggers the service when the file appears. `ExecStartPre` in the
+  service removes the file so each click re-arms the trigger.
+
+The sandboxed webapp writes the trigger file (its only privilege is
+`ReadWritePaths=${DATA_DIR}`), the path unit fires, and the service
+ends by restarting `gallery-dl-webui.service`. Existing CTs converge
+on the next `proxmox-update.sh` or `update` run — both install the
+helper units idempotently.
+
+If the `update_lxc` maintenance kind fails with "update infrastructure
+not installed", either run `/usr/local/bin/update` once from the CT
+console (which installs the helpers) or re-run `scripts/proxmox-update.sh`
+from the host.

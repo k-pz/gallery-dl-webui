@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
+import subprocess
 from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 
@@ -42,6 +43,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Filename of the trigger file the webapp drops into DATA_DIR to ask the
+# host-side `gallery-dl-webui-update.path` unit to fire its
+# `gallery-dl-webui-update.service`. The update service removes the file in
+# ExecStartPre so a future write re-arms the trigger.
+UPDATE_TRIGGER_FILENAME = ".update-request"
+UPDATE_PATH_UNIT = "gallery-dl-webui-update.path"
+
 
 def _exclude_dirs(cfg: dict[str, object]) -> list[str]:
     """Pull the user-configured directory-name exclusions out of app_config."""
@@ -77,6 +85,42 @@ async def _designated_output_dirs(db: aiosqlite.Connection, cfg: dict[str, objec
             continue
         seen[raw] = Path(raw)
     return list(seen.values())
+
+
+def _write_update_trigger(path: Path) -> None:
+    """Create or refresh the systemd path-unit trigger file.
+
+    The update.service's ExecStartPre removes the file before each run, so a
+    plain write is enough to fire the path unit. Overwriting an existing
+    file (e.g. a stale trigger left behind when the path unit was disabled)
+    is fine — the next time the unit is enabled, PathExists fires again.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("requested\n", encoding="utf-8")
+
+
+def _update_path_unit_enabled() -> bool:
+    """Best-effort check: is gallery-dl-webui-update.path enabled?
+
+    `systemctl is-enabled` exits 0 only for enabled units, non-zero otherwise
+    (disabled, masked, not-found, no systemd available). Any failure mode is
+    treated as "not ready", which matches what users actually want: a clear
+    error instead of a silent no-op when the host-side units are missing.
+    """
+    systemctl = shutil.which("systemctl")
+    if systemctl is None:
+        return False
+    try:
+        result = subprocess.run(
+            [systemctl, "is-enabled", UPDATE_PATH_UNIT],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except OSError, subprocess.TimeoutExpired:
+        return False
+    return result.returncode == 0
 
 
 def _unlink_if_exists(path: Path) -> bool:
@@ -273,7 +317,7 @@ class MaintenanceWorker:
     def _should_cancel(self) -> bool:
         return self._cancel_requested
 
-    async def _execute(self, kind: str, job_id: int) -> dict[str, int]:
+    async def _execute(self, kind: str, job_id: int) -> dict[str, Any]:
         if kind == "rename_chapters":
             return await self._run_rename(job_id)
         if kind == "regenerate_series_metadata":
@@ -282,6 +326,8 @@ class MaintenanceWorker:
             return await self._run_rebuild_library(job_id)
         if kind == "push_komga_series_status":
             return await self._run_push_komga_status(job_id)
+        if kind == "update_lxc":
+            return await self._run_update_lxc(job_id)
         raise ValueError(f"unsupported maintenance kind: {kind}")
 
     async def _run_rename(self, job_id: int) -> dict[str, int]:
@@ -548,6 +594,47 @@ class MaintenanceWorker:
             on_cancel=_on_cancel,
         )
         return result.as_dict()
+
+    async def _run_update_lxc(self, job_id: int) -> dict[str, str]:
+        """Kick off an in-place LXC update by dropping a trigger file in DATA_DIR.
+
+        Privilege bridge: the sandboxed webapp cannot run the host-side
+        `/usr/local/bin/update` (needs root + writes outside ReadWritePaths).
+        Instead a pre-installed systemd `gallery-dl-webui-update.path` unit
+        watches `${DATA_DIR}/.update-request`; writing the file fires the
+        corresponding `gallery-dl-webui-update.service` (root, oneshot), which
+        runs the updater and restarts the webapp at the end.
+
+        The maintenance job completes the moment the trigger is written — the
+        actual update takes minutes and ends in the webapp being killed, so
+        there's no waitable terminal state from inside this process. The UI
+        explains the rest.
+        """
+        if self._settings is None:
+            raise ValueError("update_lxc requires settings")
+        sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
+
+        # Pre-check: refuse to leave a useless trigger file if the path unit
+        # isn't installed (older CTs that pre-date this feature). Surfacing the
+        # mismatch here keeps the UI from claiming "done" when nothing
+        # actually fires. `systemctl is-enabled` returns 0 only for enabled
+        # units; on hosts without systemd it errors out and we skip too.
+        if not await asyncio.to_thread(_update_path_unit_enabled):
+            raise ValueError(
+                "update infrastructure not installed: enable "
+                f"{UPDATE_PATH_UNIT} (run /usr/local/bin/update once from the "
+                "LXC console to install it)"
+            )
+
+        trigger = self._settings.data_dir / UPDATE_TRIGGER_FILENAME
+        sink.step(f"writing update trigger: {trigger}")
+        await asyncio.to_thread(_write_update_trigger, trigger)
+        sink.step("trigger written — systemd will run /usr/local/bin/update")
+        sink.step(
+            "the webapp will be restarted at the end of the update; "
+            "reload this page once it comes back"
+        )
+        return {"status": "kicked_off", "trigger": str(trigger)}
 
     async def _build_series_overrides(self, default_direction: str) -> dict[str, SeriesMetadata]:
         """Index targets by sanitized series name so the regen pass can map

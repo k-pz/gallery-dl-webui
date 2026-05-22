@@ -667,3 +667,48 @@ def test_push_komga_status_end_to_end(
     assert done["status"] == "completed", done
     assert done["result"]["updated"] == 1
     assert patches == [("/api/v1/series/k-series-id/metadata", "HIATUS")]
+
+
+def test_update_lxc_writes_trigger_when_path_unit_enabled(
+    client: TestClient, settings, monkeypatch
+) -> None:
+    """update_lxc should drop the trigger file inside DATA_DIR and complete."""
+    from backend.maintenance import worker as worker_mod
+
+    monkeypatch.setattr(worker_mod, "_update_path_unit_enabled", lambda: True)
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "update_lxc"})
+    assert created.status_code == 200, created.json()
+    job_id = created.json()["id"]
+
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "completed", done
+    assert done["result"]["status"] == "kicked_off"
+
+    trigger = settings.data_dir / worker_mod.UPDATE_TRIGGER_FILENAME
+    assert trigger.is_file(), f"expected trigger at {trigger}"
+    assert trigger.read_text(encoding="utf-8") == "requested\n"
+
+
+def test_update_lxc_fails_when_path_unit_not_enabled(
+    client: TestClient, settings, monkeypatch
+) -> None:
+    """No path unit installed → job fails fast instead of leaving a stale file."""
+    from backend.maintenance import worker as worker_mod
+
+    monkeypatch.setattr(worker_mod, "_update_path_unit_enabled", lambda: False)
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "update_lxc"})
+    assert created.status_code == 200, created.json()
+    job_id = created.json()["id"]
+
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "failed", done
+    assert "update infrastructure not installed" in (done["error"] or "")
+    assert not (settings.data_dir / worker_mod.UPDATE_TRIGGER_FILENAME).exists()
+
+
+def test_update_lxc_unsupported_when_kind_typoed(client: TestClient) -> None:
+    """Unknown kinds still 400 — confirms update_lxc is allowlisted, not a regex."""
+    resp = client.post("/api/maintenance/jobs", json={"kind": "update_xyz"})
+    assert resp.status_code == 400

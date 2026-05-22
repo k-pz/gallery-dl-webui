@@ -385,6 +385,48 @@ fi
 in_ct systemctl daemon-reload
 in_ct systemctl enable --now gallery-dl-webui
 
+# ---- In-CT update trigger units -------------------------------------------
+#
+# Two extra units let the sandboxed webapp self-update without sudo/polkit:
+#   * gallery-dl-webui-update.path     watches ${DATA_DIR}/.update-request
+#   * gallery-dl-webui-update.service  runs /usr/local/bin/update as root
+# The webapp drops the trigger file via the Maintenance tab; the path unit
+# fires the oneshot service, which ends by restarting gallery-dl-webui.
+# ExecStartPre removes the trigger so the next write re-arms it.
+
+log "writing /etc/systemd/system/gallery-dl-webui-update.service"
+in_ct bash -c "cat > /etc/systemd/system/gallery-dl-webui-update.service" <<EOF
+[Unit]
+Description=gallery-dl webui in-place updater
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/rm -f ${DATA_DIR}/.update-request
+ExecStart=/usr/local/bin/update
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=30min
+EOF
+
+log "writing /etc/systemd/system/gallery-dl-webui-update.path"
+in_ct bash -c "cat > /etc/systemd/system/gallery-dl-webui-update.path" <<EOF
+[Unit]
+Description=Trigger gallery-dl webui updater on request
+After=gallery-dl-webui.service
+
+[Path]
+PathExists=${DATA_DIR}/.update-request
+Unit=gallery-dl-webui-update.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+in_ct systemctl daemon-reload
+in_ct systemctl enable --now gallery-dl-webui-update.path
+
 # ---- Console autologin ----------------------------------------------------
 
 log "enabling root autologin on tty1 (pct console)"
