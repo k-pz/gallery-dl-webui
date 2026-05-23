@@ -1,12 +1,12 @@
 """Test doubles used by both unit and integration tests."""
 
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from gallery_dl.exception import StopExtraction
 
 from backend.config import Settings
-from backend.downloads.gallery import Manifest, MetadataResult, SkipChapterFn
+from backend.downloads.gallery import MetadataResult, SkipChapterFn
 from backend.downloads.postprocess import FileRecord
 
 
@@ -21,21 +21,25 @@ class FakeGalleryConfig:
 
     def __init__(self) -> None:
         self.extractor_for: dict[str, str | None] = {}
+        # `manifest_for` is per-URL list of file relpaths the fake "downloads"
+        # (also drives the chapter list returned by extract_metadata: each
+        # unique parent dir is one chapter unless `chapter_dates_for` is set
+        # explicitly).
         self.manifest_for: dict[str, list[str]] = {}
         # Optional per-URL metadata; when set, FakeGallery.run_download returns
         # these as records. When unset, no records are emitted.
         self.records_for: dict[str, list[FileRecord]] = {}
-        # Optional per-URL series name surfaced by extract_manifest, mirroring
-        # the metadata gallery-dl's simulation job exposes via kwdict.
+        # Optional per-URL series name surfaced by extract_metadata.
         self.series_name_for: dict[str, str | None] = {}
         # Optional per-URL series publication status (already normalised to a
-        # Komga label) surfaced by extract_manifest.
+        # Komga label) surfaced by extract_metadata.
         self.series_status_for: dict[str, str | None] = {}
-        # Optional per-URL series tags/genres surfaced by extract_manifest.
+        # Optional per-URL series tags/genres surfaced by extract_metadata.
         self.series_tags_for: dict[str, list[str] | None] = {}
         # Optional per-URL chapter-date map surfaced by the metadata-only
         # sim pass (extract_metadata). Keys are (manga, chapter) tuples,
-        # values are ISO YYYY-MM-DD strings.
+        # values are ISO YYYY-MM-DD strings. Falls back to the parent dirs
+        # of `manifest_for` paths when unset.
         self.chapter_dates_for: dict[str, dict[tuple[str, str], str]] = {}
         self.default_extractor: str | None = "fake"
         self.write_files: bool = True
@@ -52,9 +56,8 @@ class FakeGallery:
     ) -> None:
         self._downloads_dir = settings.downloads_dir
         self._config = config or FakeGalleryConfig()
-        self.extract_calls: list[str] = []
-        self.download_calls: list[str] = []
         self.metadata_calls: list[str] = []
+        self.download_calls: list[str] = []
 
     @property
     def config(self) -> FakeGalleryConfig:
@@ -69,32 +72,16 @@ class FakeGallery:
             return self._config.extractor_for[url]
         return self._config.default_extractor
 
-    def extract_manifest(
-        self,
-        url: str,
-        skip_chapter: SkipChapterFn | None = None,
-    ) -> Manifest:
-        self.extract_calls.append(url)
-        paths: list[str] = []
-        for rel in self._config.manifest_for.get(url, []):
-            manga, chapter = self._chapter_for(url, rel)
-            if skip_chapter is not None and manga and chapter and skip_chapter(manga, chapter):
-                continue
-            paths.append(rel)
-        return Manifest(
-            paths=paths,
-            series_name=self._config.series_name_for.get(url),
-            series_status=self._config.series_status_for.get(url),
-            series_tags=self._config.series_tags_for.get(url),
-        )
-
     def extract_metadata(self, url: str) -> MetadataResult:
         self.metadata_calls.append(url)
+        dates = self._config.chapter_dates_for.get(url)
+        if dates is None:
+            dates = self._derive_chapter_dates(url)
         return MetadataResult(
             series_name=self._config.series_name_for.get(url),
             series_status=self._config.series_status_for.get(url),
             series_tags=self._config.series_tags_for.get(url),
-            chapter_dates=dict(self._config.chapter_dates_for.get(url, {})),
+            chapter_dates=dict(dates),
         )
 
     def run_download(
@@ -143,3 +130,19 @@ class FakeGallery:
             if rel == relpath:
                 return rec.manga, rec.chapter
         return "", ""
+
+    def _derive_chapter_dates(self, url: str) -> dict[tuple[str, str], str]:
+        """Synthesise a chapter_dates dict from the URL's manifest_for entries
+        when the test didn't set chapter_dates_for explicitly. Maps each
+        unique parent directory of a manifest path to a (manga, chapter)
+        key — manga taken from `records_for` when present, else "" — so the
+        worker's chapter-list extraction has something to walk."""
+        out: dict[tuple[str, str], str] = {}
+        for rel in self._config.manifest_for.get(url, []):
+            parent = str(PurePosixPath(rel).parent)
+            if parent == ".":
+                parent = ""
+            manga, chapter = self._chapter_for(url, rel)
+            key = (manga, chapter or parent)
+            out.setdefault(key, "")
+        return out

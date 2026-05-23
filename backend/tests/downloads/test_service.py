@@ -82,39 +82,39 @@ async def test_claim_next_pending_returns_none_when_empty(db: aiosqlite.Connecti
 
 async def test_save_and_get_manifest(db: aiosqlite.Connection) -> None:
     d = await service.insert_pending(db, "https://example/x", "fake")
-    await service.save_manifest(db, d.id, ["ch1/001.jpg", "ch1/002.jpg"])
+    await service.save_manifest(db, d.id, ["1", "2"])
 
     manifest = await service.get_manifest(db, d.id)
     fetched = await service.get(db, d.id)
 
-    assert manifest == ["ch1/001.jpg", "ch1/002.jpg"]
+    # The manifest now stores chapter names (one row per chapter), and
+    # both files_expected and chapters_total carry the same count.
+    assert manifest == ["1", "2"]
     assert fetched is not None
     assert fetched.files_expected == 2
-    assert fetched.chapters_total == 1
+    assert fetched.chapters_total == 2
 
 
-async def test_save_manifest_counts_distinct_chapters(db: aiosqlite.Connection) -> None:
+async def test_save_manifest_counts_chapters(db: aiosqlite.Connection) -> None:
     d = await service.insert_pending(db, "https://example/x", "fake")
-    await service.save_manifest(
-        db,
-        d.id,
-        ["ch1/001.jpg", "ch1/002.jpg", "ch2/001.jpg", "ch3/001.jpg"],
-    )
+    await service.save_manifest(db, d.id, ["1", "2", "3", "4"])
 
     fetched = await service.get(db, d.id)
     assert fetched is not None
-    assert fetched.chapters_total == 3
+    assert fetched.chapters_total == 4
+    assert fetched.files_expected == 4
 
 
 async def test_save_manifest_replaces_existing(db: aiosqlite.Connection) -> None:
     d = await service.insert_pending(db, "https://example/x", "fake")
-    await service.save_manifest(db, d.id, ["a.jpg", "b.jpg"])
-    await service.save_manifest(db, d.id, ["c.jpg"])
+    await service.save_manifest(db, d.id, ["1", "2"])
+    await service.save_manifest(db, d.id, ["3"])
 
-    assert await service.get_manifest(db, d.id) == ["c.jpg"]
+    assert await service.get_manifest(db, d.id) == ["3"]
     fetched = await service.get(db, d.id)
     assert fetched is not None
     assert fetched.files_expected == 1
+    assert fetched.chapters_total == 1
 
 
 async def test_mark_running(db: aiosqlite.Connection) -> None:
@@ -241,7 +241,7 @@ async def test_reset_to_pending_clears_terminal_fields_and_manifest(
     db: aiosqlite.Connection,
 ) -> None:
     d = await service.insert_pending(db, "https://example/x", "fake")
-    await service.save_manifest(db, d.id, ["a.jpg", "b.jpg"])
+    await service.save_manifest(db, d.id, ["1", "2"])
     await service.finish_job(db, d.id, exit_code=1, files_downloaded=1)
     await service.mark_postprocess(db, d.id, "failed", chapters_packed=0, error="boom")
 
