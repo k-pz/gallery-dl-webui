@@ -1,13 +1,14 @@
-from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-# downloading: at least one expected file is still missing on disk / in-memory.
-# downloaded: all files are present, but postprocess has not started yet.
-# processing: all files are present and postprocess is actively running.
-# completed:   the chapter has been packed (CBZ exists or chapter dir gone after
-#              delete_raw) OR the whole job's postprocess has finished.
+# downloading: chapter has not been observed in the live record stream yet.
+# downloaded: at least one file has landed in a chapter directory, but
+#             postprocess has not packed it yet.
+# processing: all expected chapters have started downloading and postprocess
+#             is actively running.
+# completed:  the whole job (download + postprocess, if applicable) has
+#             settled.
 ChapterStage = Literal["downloading", "downloaded", "processing", "completed"]
 
 
@@ -19,119 +20,82 @@ class ChapterProgress:
     stage: ChapterStage
 
 
-def _group_stems_by_dir(relpaths: list[str]) -> OrderedDict[Path, list[str]]:
-    """Group manifest relpaths into expected stems per parent directory.
-
-    Stems (not full filenames) are used because SimulationJob may predict an
-    extension (e.g. ".jpg") that differs from what the real download writes
-    (".png") — extractors only learn the real type from response headers.
-    """
-    groups: OrderedDict[Path, list[str]] = OrderedDict()
-    for rel in relpaths:
-        p = Path(rel)
-        groups.setdefault(p.parent, []).append(p.stem)
-    return groups
-
-
-def _present_stems_in(directory: Path) -> set[str]:
-    try:
-        return {child.stem for child in directory.iterdir() if child.is_file()}
-    except FileNotFoundError:
-        return set()
-
-
 _TERMINAL_DOWNLOAD_STATUSES = {"completed", "failed", "cancelled"}
 _TERMINAL_POSTPROCESS_STATUSES = {"completed", "skipped", "failed"}
 
 
-def _stage_for(
-    files_present: int,
-    files_total: int,
-    dir_existed: bool,
-    download_status: str,
-    postprocess_status: str | None,
-) -> ChapterStage:
-    """Derive a per-chapter stage from the available signals.
-
-    Once the whole job has settled — the download is terminal AND post-process
-    (when applicable) has reached its own terminal state — every chapter that
-    had any expected files is reported as completed. While post-process is
-    still running, we infer per-chapter completion from the absence of the
-    chapter directory (delete_raw removes it post-pack).
-    """
-    settled = download_status in _TERMINAL_DOWNLOAD_STATUSES and (
+def _settled(download_status: str, postprocess_status: str | None) -> bool:
+    return download_status in _TERMINAL_DOWNLOAD_STATUSES and (
         postprocess_status is None or postprocess_status in _TERMINAL_POSTPROCESS_STATUSES
     )
-    if settled and files_total > 0:
-        return "completed"
-    if files_total > 0 and not dir_existed:
-        return "completed"
-    if files_total > 0 and files_present >= files_total:
-        if postprocess_status == "running":
-            return "processing"
-        return "downloaded"
-    return "downloading"
+
+
+def _unique_chapter_dirs(file_relpaths: list[str]) -> int:
+    return len({str(Path(rel).parent) for rel in file_relpaths})
 
 
 def chapter_progress(
-    relpaths: list[str],
+    chapter_names: list[str],
     downloads_dir: Path,
     download_status: str = "running",
     postprocess_status: str | None = None,
 ) -> list[ChapterProgress]:
-    out: list[ChapterProgress] = []
-    for parent, expected in _group_stems_by_dir(relpaths).items():
-        dir_path = downloads_dir / parent
-        dir_existed = dir_path.exists()
-        present_set = _present_stems_in(dir_path) if dir_existed else set()
-        present = sum(1 for s in expected if s in present_set)
-        name = parent.name if str(parent) != "." else ""
-        out.append(
-            ChapterProgress(
-                name=name,
-                files_total=len(expected),
-                files_present=present,
-                stage=_stage_for(
-                    present, len(expected), dir_existed, download_status, postprocess_status
-                ),
-            )
-        )
-    return out
+    """Settle-time progress: no live record stream, so per-chapter completion
+    state is inferred from the overall job status.
 
-
-def count_present(relpaths: list[str], downloads_dir: Path) -> int:
-    return sum(c.files_present for c in chapter_progress(relpaths, downloads_dir))
+    `downloads_dir` is unused (kept for API compatibility) — without the live
+    record stream we can't map a chapter back to its on-disk directory.
+    """
+    del downloads_dir
+    settled = _settled(download_status, postprocess_status)
+    stage: ChapterStage = "completed" if settled else "downloading"
+    present = 1 if settled else 0
+    return [
+        ChapterProgress(name=name, files_total=1, files_present=present, stage=stage)
+        for name in chapter_names
+    ]
 
 
 def chapter_progress_from_completed(
-    relpaths: list[str],
+    chapter_names: list[str],
     completed: list[str],
     download_status: str = "running",
     postprocess_status: str | None = None,
 ) -> list[ChapterProgress]:
-    """Like chapter_progress, but counts matches against an in-memory set of
-    completed relpaths instead of scanning the filesystem. Stem matching is
-    preserved so a real-extension/simulated-extension mismatch still resolves.
+    """Live-time progress: count unique chapter directories observed in the
+    record stream and mark the first N rows as downloaded (order-based).
 
-    The in-memory snapshot is only used while the download is live, so dir
-    existence is implied (true) and the stage never reports "completed" from
-    the disk signal — that path is only reached via `postprocess_status`.
+    Gallery-dl downloads chapter-by-chapter, so "N unique chapter directories
+    have received at least one file" maps cleanly to "the first N rows in our
+    chapter manifest are at least started". The last started chapter is
+    technically mid-flight, but `downloaded` is the closest stage label and
+    flips to `completed` once the job settles.
     """
-    completed_by_dir: dict[Path, set[str]] = {}
-    for rel in completed:
-        p = Path(rel)
-        completed_by_dir.setdefault(p.parent, set()).add(p.stem)
+    settled = _settled(download_status, postprocess_status)
+    completed_count = _unique_chapter_dirs(completed)
     out: list[ChapterProgress] = []
-    for parent, expected in _group_stems_by_dir(relpaths).items():
-        present_set = completed_by_dir.get(parent, set())
-        present = sum(1 for s in expected if s in present_set)
-        name = parent.name if str(parent) != "." else ""
-        out.append(
-            ChapterProgress(
-                name=name,
-                files_total=len(expected),
-                files_present=present,
-                stage=_stage_for(present, len(expected), True, download_status, postprocess_status),
-            )
-        )
+    for i, name in enumerate(chapter_names):
+        if settled:
+            stage: ChapterStage = "completed"
+            present = 1
+        elif i < completed_count:
+            present = 1
+            if postprocess_status == "running":
+                stage = "processing"
+            else:
+                stage = "downloaded"
+        else:
+            present = 0
+            stage = "downloading"
+        out.append(ChapterProgress(name=name, files_total=1, files_present=present, stage=stage))
     return out
+
+
+def count_present_chapters(records_paths: list[Path]) -> int:
+    """Count unique chapter directories represented in a list of file paths.
+
+    Used by the worker to derive `files_downloaded` (now: chapters downloaded)
+    from the FileRecords returned by a real download run, or from the live
+    snapshot when a download fails mid-flight.
+    """
+    return len({str(p.parent) for p in records_paths})

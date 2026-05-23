@@ -24,7 +24,7 @@ from backend.downloads.postprocess import (
     normalize_reading_direction,
     normalize_tags,
 )
-from backend.downloads.progress import count_present
+from backend.downloads.progress import count_present_chapters
 from backend.events import EventBus, downloads_event, progress_event
 from backend.targets import service as targets_service
 
@@ -154,26 +154,33 @@ class Worker:
                 self._cancel_flags.pop(job.id, None)
 
     async def _process(self, job: Download) -> None:
-        relpaths: list[str] = []
+        chapter_names: list[str] = []
         records: list[FileRecord] = []
         exit_code = 1
         cancelled = False
+        # Shared across the worker thread (gallery-dl's per-file callback) and
+        # the event loop (failure accounting). The set is only mutated from
+        # the callback; the GIL covers it.
+        chapters_seen: set[str] = set()
         try:
             skip_chapter = await self._build_skip_chapter(job)
-            relpaths = await self._extract_manifest(job, skip_chapter)
+            chapter_names = await self._extract_metadata(job, skip_chapter)
             if self._cancel_flags.get(job.id, False):
                 async with self._db_lock:
                     await service.mark_cancelled(self._db, job.id, 0)
                 self._publish(downloads_event("updated", id=job.id, status="cancelled"))
                 return
             async with self._db_lock:
-                await service.save_manifest(self._db, job.id, relpaths)
-            self._publish(downloads_event("manifest_ready", id=job.id, files=len(relpaths)))
-            exit_code, records, cancelled = await self._execute_download(
-                job, relpaths, skip_chapter
-            )
+                await service.save_manifest(self._db, job.id, chapter_names)
+            self._publish(downloads_event("manifest_ready", id=job.id, files=len(chapter_names)))
+            try:
+                exit_code, records, cancelled = await self._execute_download(
+                    job, skip_chapter, chapters_seen
+                )
+            finally:
+                self._live.clear(job.id)
         except Exception as exc:
-            await self._handle_failure(job, exc, relpaths)
+            await self._handle_failure(job, exc, len(chapters_seen))
             return
 
         # The simulation pass's series_name can be approximate; the real download
@@ -220,77 +227,81 @@ class Worker:
 
         return skip
 
-    async def _extract_manifest(
+    async def _extract_metadata(
         self, job: Download, skip_chapter: SkipChapterFn | None
     ) -> list[str]:
-        """Sim-run to discover expected file paths and capture an early series_name."""
-        manifest = await asyncio.to_thread(self._gallery.extract_manifest, job.url, skip_chapter)
-        if job.target_id is not None and manifest.series_name:
+        """Metadata-only pull: discover the chapter list and seed the target's
+        series_name / status / tags. Skips the per-page enumeration the manifest
+        sim does, so the worker can hand control to the actual download sooner.
+        """
+        meta = await asyncio.to_thread(self._gallery.extract_metadata, job.url)
+        if job.target_id is not None and meta.series_name:
             async with self._db_lock:
-                await targets_service.set_name(self._db, job.target_id, manifest.series_name)
-            self._publish(
-                downloads_event("target_named", id=job.target_id, name=manifest.series_name)
-            )
-        if job.target_id is not None and manifest.series_status:
+                await targets_service.set_name(self._db, job.target_id, meta.series_name)
+            self._publish(downloads_event("target_named", id=job.target_id, name=meta.series_name))
+        if job.target_id is not None and meta.series_status:
             async with self._db_lock:
-                await targets_service.set_series_status(
-                    self._db, job.target_id, manifest.series_status
-                )
-        if job.target_id is not None and manifest.series_tags:
+                await targets_service.set_series_status(self._db, job.target_id, meta.series_status)
+        if job.target_id is not None and meta.series_tags:
             async with self._db_lock:
-                await targets_service.set_series_tags(self._db, job.target_id, manifest.series_tags)
-        return manifest.paths
+                await targets_service.set_series_tags(self._db, job.target_id, meta.series_tags)
+        chapter_names: list[str] = []
+        for (manga, chapter), _date in meta.chapter_dates.items():
+            if skip_chapter is not None and manga and chapter and skip_chapter(manga, chapter):
+                continue
+            chapter_names.append(chapter)
+        return chapter_names
 
     async def _execute_download(
         self,
         job: Download,
-        relpaths: list[str],
         skip_chapter: SkipChapterFn | None,
+        chapters_seen: set[str],
     ) -> tuple[int, list[FileRecord], bool]:
-        """Run the real download; return (exit_code, file records, was_cancelled)."""
+        """Run the real download; return (exit_code, file records, was_cancelled).
+
+        `chapters_seen` is mutated by the per-file callback so the caller can
+        read a live chapter count even if `run_download` raises.
+        """
         async with self._db_lock:
             await service.mark_running(self._db, job.id)
         self._publish(downloads_event("updated", id=job.id, status="running"))
         self._live.start(job.id)
-        try:
-            exit_code, records = await asyncio.to_thread(
-                self._gallery.run_download,
-                job.url,
-                self._make_progress_cb(job.id),
-                skip_chapter,
-            )
-            cancelled = self._cancel_flags.get(job.id, False)
-            present = await asyncio.to_thread(count_present, relpaths, self._gallery.downloads_dir)
-            async with self._db_lock:
-                if cancelled:
-                    await service.mark_cancelled(self._db, job.id, present)
-                else:
-                    await service.finish_job(self._db, job.id, exit_code, present)
-            if cancelled:
-                self._publish(downloads_event("updated", id=job.id, status="cancelled"))
-            else:
-                terminal = "completed" if exit_code == 0 else "failed"
-                self._publish(downloads_event("updated", id=job.id, status=terminal))
-            return exit_code, records, cancelled
-        finally:
-            self._live.clear(job.id)
-
-    async def _handle_failure(self, job: Download, exc: BaseException, relpaths: list[str]) -> None:
-        """Log + persist a job failure, counting whatever files made it to disk."""
-        logger.exception("download %d failed", job.id)
-        present = 0
-        if relpaths:
-            try:
-                present = await asyncio.to_thread(
-                    count_present, relpaths, self._gallery.downloads_dir
-                )
-            except Exception:
-                present = 0
+        exit_code, records = await asyncio.to_thread(
+            self._gallery.run_download,
+            job.url,
+            self._make_progress_cb(job.id, chapters_seen),
+            skip_chapter,
+        )
+        cancelled = self._cancel_flags.get(job.id, False)
+        # Prefer chapters_seen (populated by the per-file callback) over
+        # `records` so the count stays correct when run_download surfaces no
+        # records — e.g. extractors whose handle_url path doesn't reach
+        # coerce_record_from_kwdict.
+        present = max(len(chapters_seen), count_present_chapters([r.path for r in records]))
         async with self._db_lock:
-            await service.mark_failed(self._db, job.id, repr(exc), present)
+            if cancelled:
+                await service.mark_cancelled(self._db, job.id, present)
+            else:
+                await service.finish_job(self._db, job.id, exit_code, present)
+        if cancelled:
+            self._publish(downloads_event("updated", id=job.id, status="cancelled"))
+        else:
+            terminal = "completed" if exit_code == 0 else "failed"
+            self._publish(downloads_event("updated", id=job.id, status=terminal))
+        return exit_code, records, cancelled
+
+    async def _handle_failure(
+        self, job: Download, exc: BaseException, chapters_present: int
+    ) -> None:
+        """Log + persist a job failure, recording chapters that landed before the
+        failure (counted by the progress callback on the worker thread)."""
+        logger.exception("download %d failed", job.id)
+        async with self._db_lock:
+            await service.mark_failed(self._db, job.id, repr(exc), chapters_present)
         self._publish(downloads_event("updated", id=job.id, status="failed"))
 
-    def _make_progress_cb(self, job_id: int):
+    def _make_progress_cb(self, job_id: int, chapters_seen: set[str]):
         # Raise StopExtraction so gallery-dl's own dispatcher catches it
         # and unwinds cleanly (it treats StopExtraction as a normal stop,
         # so job.run() still returns a status code).
@@ -301,6 +312,7 @@ class Worker:
             if self._cancel_flags.get(job_id, False):
                 raise StopExtraction()
             self._live.record(job_id, rel)
+            chapters_seen.add(str(Path(rel).parent))
             if bus is not None and loop is not None:
                 bus.publish_threadsafe(loop, progress_event(job_id, relpath=rel))
 

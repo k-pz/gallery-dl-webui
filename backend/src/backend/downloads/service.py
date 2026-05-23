@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import PurePosixPath
-
 import aiosqlite
 
 from backend.database import now_iso
@@ -88,21 +86,31 @@ async def claim_next_pending(db: aiosqlite.Connection) -> Download | None:
     return None
 
 
-async def save_manifest(db: aiosqlite.Connection, download_id: int, relpaths: list[str]) -> None:
+async def save_manifest(
+    db: aiosqlite.Connection, download_id: int, chapter_names: list[str]
+) -> None:
+    """Persist the chapter list discovered by the metadata pull.
+
+    Each chapter gets one row in `download_files`; we reuse that table even
+    though the rows no longer represent individual files. `files_expected`
+    and `chapters_total` both equal the chapter count — the legacy
+    `files_*` columns are kept in sync so older UI fallbacks keep working.
+    """
     await db.execute("DELETE FROM download_files WHERE download_id = ?", (download_id,))
     await db.executemany(
         "INSERT INTO download_files(download_id, idx, relpath) VALUES(?, ?, ?)",
-        [(download_id, i, p) for i, p in enumerate(relpaths)],
+        [(download_id, i, name) for i, name in enumerate(chapter_names)],
     )
-    chapters_total = len({str(PurePosixPath(p).parent) for p in relpaths})
+    n = len(chapter_names)
     await db.execute(
         "UPDATE downloads SET files_expected = ?, chapters_total = ? WHERE id = ?",
-        (len(relpaths), chapters_total, download_id),
+        (n, n, download_id),
     )
     await db.commit()
 
 
 async def get_manifest(db: aiosqlite.Connection, download_id: int) -> list[str]:
+    """Return the chapter-name list previously saved by `save_manifest`."""
     async with db.execute(
         "SELECT relpath FROM download_files WHERE download_id = ? ORDER BY idx ASC",
         (download_id,),
