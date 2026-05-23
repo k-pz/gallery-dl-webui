@@ -84,8 +84,10 @@ def test_full_lifecycle_to_completed(client: TestClient, gallery_config: FakeGal
 
     assert final["status"] == "completed"
     assert final["exit_code"] == 0
-    assert final["files_expected"] == 3
-    assert final["files_downloaded"] == 3
+    # Two unique chapter dirs in the manifest → chapter count of 2.
+    assert final["files_expected"] == 2
+    assert final["chapters_total"] == 2
+    assert final["files_downloaded"] == 2
     assert final["error"] is None
 
 
@@ -103,16 +105,16 @@ def test_progress_endpoint_returns_chapter_breakdown(
 
     progress = client.get(f"/api/downloads/{created['id']}/progress").json()
     assert progress["status"] == "completed"
-    assert progress["files_expected"] == 3
-    assert progress["files_present"] == 3
-    by_name = {c["name"]: c for c in progress["chapters"]}
-    assert by_name["ch1"]["files_total"] == 2
-    assert by_name["ch1"]["files_present"] == 2
-    assert by_name["ch2"]["files_total"] == 1
+    # Two unique chapter dirs in the manifest → two ChapterProgress entries.
+    assert progress["files_expected"] == 2
+    assert progress["files_present"] == 2
+    names = [c["name"] for c in progress["chapters"]]
+    assert names == ["ch1", "ch2"]
+    # Each chapter row collapses to a single "expected" entry.
+    assert all(c["files_total"] == 1 for c in progress["chapters"])
     # No postprocess root configured → postprocess_status is "skipped", which
-    # counts as terminal; chapters with downloaded files settle to "completed".
-    assert by_name["ch1"]["stage"] == "completed"
-    assert by_name["ch2"]["stage"] == "completed"
+    # counts as terminal; every chapter row settles to "completed".
+    assert all(c["stage"] == "completed" for c in progress["chapters"])
 
 
 def test_progress_endpoint_returns_404_for_missing(client: TestClient) -> None:

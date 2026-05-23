@@ -8,7 +8,7 @@ from backend.app_config import service as app_config_service
 from backend.config import Settings
 from backend.database import open_database
 from backend.downloads import service as downloads_service
-from backend.downloads.gallery import Manifest, SkipChapterFn
+from backend.downloads.gallery import MetadataResult
 from backend.downloads.live_progress import LiveProgress
 from backend.downloads.postprocess import FileRecord
 from backend.downloads.worker import Worker
@@ -46,6 +46,7 @@ async def test_worker_runs_pending_job_to_completion(
 ) -> None:
     config = FakeGalleryConfig()
     config.extractor_for["https://example/x"] = "fake"
+    # Two files in the same chapter dir → derived chapter count is 1.
     config.manifest_for["https://example/x"] = ["ch1/001.jpg", "ch1/002.jpg"]
     gallery = FakeGallery(settings, config=config)
     live = LiveProgress()
@@ -65,9 +66,11 @@ async def test_worker_runs_pending_job_to_completion(
         assert row is not None
         assert row.status == "completed"
         assert row.exit_code == 0
-        assert row.files_expected == 2
-        assert row.files_downloaded == 2
-        assert gallery.extract_calls == ["https://example/x"]
+        # files_expected / chapters_total / files_downloaded all carry the
+        # chapter count now (one chapter dir in the manifest above).
+        assert row.files_expected == 1
+        assert row.chapters_total == 1
+        assert gallery.metadata_calls == ["https://example/x"]
         assert gallery.download_calls == ["https://example/x"]
     finally:
         await worker.stop()
@@ -78,8 +81,9 @@ async def test_worker_cancels_running_job_mid_download(
 ) -> None:
     """Cancellation requested mid-flight unwinds gallery-dl and marks the job cancelled."""
     config = FakeGalleryConfig()
-    # Six files; cancel after the first lands so the rest are skipped.
-    config.manifest_for["https://example/x"] = [f"ch1/{i:03d}.jpg" for i in range(6)]
+    # Six files spread across six chapter dirs; cancel after the first lands
+    # so the rest are skipped.
+    config.manifest_for["https://example/x"] = [f"ch{i}/001.jpg" for i in range(6)]
     gallery = FakeGallery(settings, config=config)
     live = LiveProgress()
     worker = Worker(db, gallery, live)  # type: ignore[arg-type]
@@ -112,8 +116,10 @@ async def test_worker_cancels_running_job_mid_download(
         assert row is not None
         assert row.status == "cancelled"
         assert row.finished_at is not None
-        # The cancel arrives between file callbacks, so at least one file
-        # lands before unwinding, but the bulk of the manifest is skipped.
+        # files_downloaded now tracks chapters touched (chapters_seen, fed by
+        # the per-file callback), not files. The fake emits one file per
+        # chapter dir; the cancel lands after the first one or two land but
+        # before all six.
         assert 1 <= row.files_downloaded < 6
     finally:
         await worker.stop()
@@ -122,24 +128,24 @@ async def test_worker_cancels_running_job_mid_download(
 async def test_worker_cancel_after_extract_skips_download(
     settings: Settings, db: aiosqlite.Connection
 ) -> None:
-    """A cancel that lands between manifest extract and download is honoured."""
+    """A cancel that lands between metadata extract and download is honoured."""
     config = FakeGalleryConfig()
     config.manifest_for["https://example/x"] = ["ch1/001.jpg"]
     gallery = FakeGallery(settings, config=config)
 
-    # Stamp the cancel during extract_manifest so the worker sees it on the
+    # Stamp the cancel during extract_metadata so the worker sees it on the
     # next check (right after extract returns).
-    real_extract = gallery.extract_manifest
+    real_extract = gallery.extract_metadata
 
-    def extract_and_request_cancel(url: str, skip_chapter: SkipChapterFn | None = None) -> Manifest:
-        result = real_extract(url, skip_chapter)
+    def extract_and_request_cancel(url: str) -> MetadataResult:
+        result = real_extract(url)
         # The slot puts the job id into `_cancel_flags` before starting extract,
         # so iterating that dict yields the currently-claimed job.
         for active_id in list(worker._cancel_flags.keys()):
             worker.request_cancel(active_id)
         return result
 
-    gallery.extract_manifest = extract_and_request_cancel  # type: ignore[method-assign]
+    gallery.extract_metadata = extract_and_request_cancel  # type: ignore[method-assign]
 
     live = LiveProgress()
     worker = Worker(db, gallery, live)  # type: ignore[arg-type]
@@ -167,9 +173,7 @@ async def test_worker_marks_failed_when_extract_raises(
     settings: Settings, db: aiosqlite.Connection
 ) -> None:
     class Boom(FakeGallery):
-        def extract_manifest(  # type: ignore[override]
-            self, url: str, skip_chapter: SkipChapterFn | None = None
-        ) -> Manifest:
+        def extract_metadata(self, url: str) -> MetadataResult:  # type: ignore[override]
             raise RuntimeError("nope")
 
     gallery = Boom(settings, config=FakeGalleryConfig())
@@ -194,7 +198,7 @@ async def test_worker_marks_failed_when_extract_raises(
         await worker.stop()
 
 
-async def test_worker_captures_series_name_from_manifest(
+async def test_worker_captures_series_name_from_metadata(
     settings: Settings, db: aiosqlite.Connection
 ) -> None:
     config = FakeGalleryConfig()
@@ -222,7 +226,7 @@ async def test_worker_captures_series_name_from_manifest(
         await worker.stop()
 
 
-async def test_worker_captures_series_name_from_records_when_manifest_lacks_it(
+async def test_worker_captures_series_name_from_records_when_metadata_lacks_it(
     settings: Settings, db: aiosqlite.Connection
 ) -> None:
     config = FakeGalleryConfig()
@@ -511,8 +515,9 @@ async def test_worker_skips_already_packed_chapter_for_watched_target(
         assert row is not None
         assert row.status == "completed"
         # Only c2 should appear in the manifest — c1 was filtered out.
+        # The manifest now stores chapter names (one row per chapter).
         manifest = await downloads_service.get_manifest(db, d.id)
-        assert manifest == ["fake/S/c2/001.jpg"]
+        assert manifest == ["2"]
         # And only c2 should have been newly packed.
         assert row.postprocess_chapters_packed == 1
         # The pre-existing CBZ wasn't overwritten.
@@ -566,8 +571,8 @@ async def test_worker_does_not_skip_for_unwatched_target(
         await _wait_for(packed)
 
         manifest = await downloads_service.get_manifest(db, d.id)
-        # Full manifest preserved.
-        assert manifest == ["fake/S/c1/001.jpg"]
+        # Full chapter list preserved (one chapter row, since c1 wasn't filtered).
+        assert manifest == ["1"]
     finally:
         await worker.stop()
 

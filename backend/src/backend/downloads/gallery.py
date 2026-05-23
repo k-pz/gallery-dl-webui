@@ -29,25 +29,6 @@ SkipChapterFn = Callable[[str, str], bool]
 class MetadataResult:
     """What a metadata-only sim pass discovers about a series.
 
-    `series_name`, `series_status`, and `series_tags` mirror the same fields
-    on `Manifest` (sourced from the same kwdict). `chapter_dates` maps
-    `(manga_name, chapter_string)` to an ISO `YYYY-MM-DD` date when the
-    extractor surfaced one — extractors that derive chapter dates from the
-    chapter page itself (kaliscan et al.) won't populate this until the
-    chapter has been visited; mangadex-style API extractors fill it from the
-    series-level chapter list.
-    """
-
-    series_name: str | None = None
-    series_status: str | None = None
-    series_tags: list[str] | None = None
-    chapter_dates: dict[tuple[str, str], str] = field(default_factory=dict)
-
-
-@dataclass
-class Manifest:
-    """Result of a simulation pass: which files we expect, plus discovered metadata.
-
     `series_name` is the first non-empty `manga` (or `series`) value seen in any
     directory's kwdict — gallery-dl exposes a per-source metadata dict before
     pages are enumerated, so we capture it without running a real download.
@@ -61,12 +42,19 @@ class Manifest:
     directory's kwdict (gallery-dl extractors variously expose this as `tags`,
     `genres`, or `genre`). `None` when no directory exposed any — leaves the
     target's existing value untouched.
+
+    `chapter_dates` maps `(manga_name, chapter_string)` to an ISO `YYYY-MM-DD`
+    date when the extractor surfaced one — extractors that derive chapter
+    dates from the chapter page itself (kaliscan et al.) won't populate this
+    until the chapter has been visited; mangadex-style API extractors fill it
+    from the series-level chapter list. `len(chapter_dates)` is the discovered
+    chapter count.
     """
 
-    paths: list[str]
     series_name: str | None = None
     series_status: str | None = None
     series_tags: list[str] | None = None
+    chapter_dates: dict[tuple[str, str], str] = field(default_factory=dict)
 
 
 def _inherit_shared_state(child: Any, parent: Any, *attrs: str) -> bool:
@@ -82,80 +70,6 @@ def _inherit_shared_state(child: Any, parent: Any, *attrs: str) -> bool:
     for name in attrs:
         setattr(child, name, getattr(parent, name))
     return True
-
-
-class _ManifestSimulationJob(SimulationJob):
-    """SimulationJob variant that records every would-be file path.
-
-    Child jobs spawned for nested extractors share the same _manifest list and
-    series-name box so a single run accumulates all expected paths and the
-    first-seen series name.
-    """
-
-    _manifest: list[tuple[str, str, str]]
-    _series_box: list[str | None]
-    _status_box: list[str | None]
-    _tags_box: list[list[str] | None]
-
-    def __init__(self, url: Any, parent: SimulationJob | None = None) -> None:
-        super().__init__(url, parent)
-        if not _inherit_shared_state(
-            self, parent, "_manifest", "_series_box", "_status_box", "_tags_box"
-        ):
-            self._manifest = []
-            self._series_box = [None]
-            self._status_box = [None]
-            self._tags_box = [None]
-
-    def handle_directory(self, kwdict: dict[str, Any]) -> None:
-        # SimulationJob.handle_directory only calls initialize() and never sets
-        # pathfmt.directory, so the recorded paths would be missing the per-job
-        # directory prefix. Mirror DownloadJob.handle_directory's behavior.
-        if self.pathfmt is None:
-            self.initialize(kwdict)
-        else:
-            self.pathfmt.set_directory(kwdict)
-        if self._series_box[0] is None:
-            for key in ("manga", "series", "title"):
-                value = kwdict.get(key)
-                if isinstance(value, str) and value.strip():
-                    self._series_box[0] = value.strip()
-                    break
-        if self._status_box[0] is None:
-            for key in ("status", "publication_status"):
-                value = kwdict.get(key)
-                if isinstance(value, str) and value.strip():
-                    normalised = normalize_series_status(value)
-                    if normalised:
-                        self._status_box[0] = normalised
-                    break
-        if self._tags_box[0] is None:
-            # Extractors variously call this `tags`, `genres`, or `genre`
-            # (mangapark uses the singular for what is in fact a list).
-            for key in ("tags", "genres", "genre"):
-                raw = kwdict.get(key)
-                if isinstance(raw, list):
-                    candidates = [v for v in raw if isinstance(v, str)]
-                elif isinstance(raw, str) and raw.strip():
-                    candidates = [raw]
-                else:
-                    continue
-                cleaned = normalize_tags(candidates)
-                if cleaned:
-                    self._tags_box[0] = cleaned
-                    break
-
-    def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
-        pathfmt = self.pathfmt
-        assert pathfmt is not None
-        ext = kwdict["extension"] or "jpg"
-        kwdict["extension"] = pathfmt.extension_map(ext, ext)
-        if self.archive is not None and self._archive_write_skip:
-            self.archive.add(kwdict)
-        filename = pathfmt.build_filename(kwdict)
-        manga = str(kwdict.get("manga") or "")
-        chapter = chapter_with_minor(kwdict)
-        self._manifest.append((pathfmt.directory + filename, manga, chapter))
 
 
 class _ProgressDownloadJob(DownloadJob):
@@ -355,42 +269,14 @@ class Gallery:
             return None
         return getattr(found, "category", None)
 
-    def extract_manifest(
-        self,
-        url: str,
-        skip_chapter: SkipChapterFn | None = None,
-    ) -> Manifest:
-        """Run gallery-dl in simulate mode; return the expected files (as paths
-        relative to the configured downloads directory) plus the first series
-        name we observed in any directory's metadata.
-
-        When `skip_chapter` is supplied, manifest entries belonging to chapters
-        the callable identifies as already-done are omitted, so progress
-        accounting reflects only the work the real download will perform.
-        """
-        job = _ManifestSimulationJob(url)
-        job.run()
-        base = str(self._downloads_dir).rstrip(os.sep) + os.sep
-        paths: list[str] = []
-        for full, manga, chapter in job._manifest:
-            if skip_chapter is not None and manga and chapter and skip_chapter(manga, chapter):
-                continue
-            paths.append(full[len(base) :] if full.startswith(base) else full)
-        return Manifest(
-            paths=paths,
-            series_name=job._series_box[0],
-            series_status=job._status_box[0],
-            series_tags=job._tags_box[0],
-        )
-
     def extract_metadata(self, url: str) -> MetadataResult:
         """Run a metadata-only sim: capture per-chapter and series-level
         kwdict fields without enumerating page URLs.
 
-        Used by the regen maintenance job to rediscover series status, tags,
-        and chapter release dates against the upstream extractor — the
-        normal `extract_manifest` would also work but spends time fetching
-        page lists for chapters we already have on disk.
+        Used by the download worker to discover the chapter list (and seed
+        series metadata) before a real download starts, and by the regen
+        maintenance job to rediscover series status, tags, and chapter
+        release dates against the upstream extractor.
         """
         job = _MetadataSimulationJob(url)
         job.run()
