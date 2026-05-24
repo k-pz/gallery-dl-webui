@@ -6,7 +6,6 @@ import {
   Divider,
   Group,
   Stack,
-  Stepper,
   Text,
   Title,
   Tooltip,
@@ -22,10 +21,11 @@ import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
 import { useOptimisticCancel } from "../lib/optimisticCancel";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
-import { isCancellable, isTerminal, JOB_STEPS, jobStep, statusTone } from "../lib/status";
+import { isCancellable, isTerminal, jobStep } from "../lib/status";
 import { useNotifyingMutation } from "../lib/useNotifyingMutation";
 import { IconAlertTriangle, IconX } from "./Icons";
-import { Pill } from "./Pill";
+import { JobDetailField } from "./JobDetailField";
+import { JobStepper } from "./JobStepper";
 import { ProgressCard } from "./ProgressCard";
 
 export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () => void }) {
@@ -219,9 +219,9 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
         <JobStepper job={{ status: job.status, step }} />
         <Divider />
         <Group gap="xl" wrap="wrap">
-          <DetailField label="Extractor" value={job.extractor ?? "—"} mono />
+          <JobDetailField label="Extractor" value={job.extractor ?? "—"} mono />
           {job.exit_code !== null && (
-            <DetailField label="Exit code" value={String(job.exit_code)} mono />
+            <JobDetailField label="Exit code" value={String(job.exit_code)} mono />
           )}
         </Group>
         {job.error && (
@@ -244,48 +244,5 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
         <ProgressCard jobId={jobId} status={job.status} startedAt={job.started_at} />
       </Stack>
     </Card>
-  );
-}
-
-function DetailField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <Stack gap={2}>
-      <Text size="xs" c="dimmed" style={{ letterSpacing: "0.06em", textTransform: "uppercase" }}>
-        {label}
-      </Text>
-      <Text size="sm" ff={mono ? "monospace" : undefined}>
-        {value}
-      </Text>
-    </Stack>
-  );
-}
-
-function JobStepper({ job }: { job: { status: string; step: ReturnType<typeof jobStep> } }) {
-  const { step } = job;
-  if (step.kind === "failed" || step.kind === "cancelled") {
-    return (
-      <Group gap="xs">
-        <Pill tone={statusTone(job.status)} solid noDot>
-          {step.label}
-        </Pill>
-      </Group>
-    );
-  }
-  const active = step.kind === "done" ? step.total : step.index;
-  return (
-    <Stepper
-      active={active}
-      size="xs"
-      iconSize={20}
-      color={step.kind === "cancelling" ? "orange" : undefined}
-    >
-      {JOB_STEPS.map((label, i) => (
-        <Stepper.Step
-          key={label}
-          label={label}
-          loading={step.kind === "running" && i === step.index}
-        />
-      ))}
-    </Stepper>
   );
 }
