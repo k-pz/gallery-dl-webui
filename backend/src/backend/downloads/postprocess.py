@@ -432,7 +432,7 @@ def _read_cbz_series_chapter(path: Path) -> tuple[str | None, str | None]:
     try:
         with zipfile.ZipFile(path) as zf:
             xml_bytes = zf.read("ComicInfo.xml")
-    except (OSError, zipfile.BadZipFile, KeyError):
+    except OSError, zipfile.BadZipFile, KeyError:
         return None, None
     try:
         root = ET.fromstring(xml_bytes)
@@ -469,7 +469,7 @@ def chapter_already_packed(output_dir: Path, manga: str, chapter: str) -> bool:
             stem = child.stem
             if stem == stem_prefix or stem.startswith(stem_prefix + " "):
                 return True
-    except (FileNotFoundError, NotADirectoryError):
+    except FileNotFoundError, NotADirectoryError:
         return False
     return False
 
@@ -546,7 +546,7 @@ def build_comicinfo_xml(
 def _is_under(path: Path, root: Path) -> bool:
     try:
         path.resolve().relative_to(root.resolve())
-    except (ValueError, OSError):
+    except ValueError, OSError:
         return False
     return True
 
@@ -1040,7 +1040,7 @@ def _read_regen_chapter(
         with zipfile.ZipFile(cbz) as zf:
             xml_bytes = zf.read("ComicInfo.xml")
             page_names = [n for n in zf.namelist() if n != "ComicInfo.xml"]
-    except (OSError, zipfile.BadZipFile, KeyError):
+    except OSError, zipfile.BadZipFile, KeyError:
         return _REGEN_SKIP_NONE
     try:
         root = ET.fromstring(xml_bytes)
