@@ -112,9 +112,7 @@ export function MaintenancePanel() {
 
       <PushKomgaStatusCard
         scheduling={schedule.isPending}
-        onSchedule={(params) =>
-          schedule.mutate({ body: { kind: "push_komga_series_status", params } })
-        }
+        onSchedule={() => schedule.mutate({ body: { kind: "push_komga_series_status" } })}
       />
 
       <UpdateLxcCard

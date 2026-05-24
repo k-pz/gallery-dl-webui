@@ -164,3 +164,40 @@ def test_put_config_persists_excluded_dir_names(client: TestClient, tmp_path: Pa
     assert body["postprocess_excluded_dir_names"] == ["#recycle", "@eaDir"]
     follow = client.get("/api/config").json()
     assert follow["postprocess_excluded_dir_names"] == ["#recycle", "@eaDir"]
+
+
+def test_get_config_defaults_komga_fields_to_null(client: TestClient) -> None:
+    body = client.get("/api/config").json()
+    assert body["komga_base_url"] is None
+    assert body["komga_api_key"] is None
+
+
+def test_put_config_persists_komga_credentials(client: TestClient) -> None:
+    resp = _put(
+        client,
+        komga_base_url="http://komga.local/",
+        komga_api_key="abc123",
+    )
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    # Trailing slash stripped so per-request paths can be joined verbatim.
+    assert body["komga_base_url"] == "http://komga.local"
+    assert body["komga_api_key"] == "abc123"
+    follow = client.get("/api/config").json()
+    assert follow["komga_base_url"] == "http://komga.local"
+    assert follow["komga_api_key"] == "abc123"
+
+
+def test_put_config_rejects_komga_base_url_without_scheme(client: TestClient) -> None:
+    resp = _put(client, komga_base_url="komga.local", komga_api_key="k")
+    assert resp.status_code == 400
+    assert "http" in resp.json()["detail"]
+
+
+def test_put_config_clears_komga_fields_with_null(client: TestClient) -> None:
+    _put(client, komga_base_url="http://komga.local", komga_api_key="k")
+    resp = _put(client, komga_base_url=None, komga_api_key=None)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["komga_base_url"] is None
+    assert body["komga_api_key"] is None

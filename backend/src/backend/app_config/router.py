@@ -55,6 +55,12 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
     max_postprocess = _coerce_clamped_int(
         cfg.get("max_parallel_postprocess"), DEFAULT_MAX_PARALLEL_POSTPROCESS
     )
+    komga_base_url = cfg.get("komga_base_url")
+    if not isinstance(komga_base_url, str) or not komga_base_url:
+        komga_base_url = None
+    komga_api_key = cfg.get("komga_api_key")
+    if not isinstance(komga_api_key, str) or not komga_api_key:
+        komga_api_key = None
     return AppConfigOut(
         postprocess_root=root,
         postprocess_default_output_dir=default,
@@ -65,6 +71,8 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
         chapter_naming_template=chapter_template,
         default_reading_direction=reading_direction,
         max_parallel_postprocess=max_postprocess,
+        komga_base_url=komga_base_url,
+        komga_api_key=komga_api_key,
     )
 
 
@@ -155,6 +163,15 @@ async def put_config(body: AppConfigIn, db: DbDep, bus: EventBusDep) -> AppConfi
         DEFAULT_MAX_PARALLEL_POSTPROCESS,
     )
 
+    komga_base_url_raw = coerce_optional(body.komga_base_url)
+    if komga_base_url_raw is not None:
+        komga_base_url_raw = komga_base_url_raw.rstrip("/")
+        if not (
+            komga_base_url_raw.startswith("http://") or komga_base_url_raw.startswith("https://")
+        ):
+            raise BadRequestError("komga_base_url must start with http:// or https://")
+    komga_api_key_raw = coerce_optional(body.komga_api_key)
+
     updates: dict[str, object] = {
         "postprocess_root": root_str,
         "postprocess_default_output_dir": str(default_path) if default_path else None,
@@ -165,6 +182,8 @@ async def put_config(body: AppConfigIn, db: DbDep, bus: EventBusDep) -> AppConfi
         "chapter_naming_template": template_raw,
         "default_reading_direction": direction_raw,
         "max_parallel_postprocess": max_post,
+        "komga_base_url": komga_base_url_raw,
+        "komga_api_key": komga_api_key_raw,
     }
     await service.set_many(db, updates)
     bus.publish(config_event())

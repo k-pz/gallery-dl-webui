@@ -13,8 +13,8 @@ import pytest
 from backend.maintenance.komga import (
     KomgaCredentials,
     TargetForPush,
+    load_credentials,
     push_series_statuses,
-    validate_credentials,
 )
 
 
@@ -25,7 +25,7 @@ def _make_factory(handler):
     def factory() -> httpx.AsyncClient:
         return httpx.AsyncClient(
             base_url="http://komga.example",
-            auth=httpx.BasicAuth("user", "pw"),
+            headers={"X-API-Key": "secret"},
             transport=transport,
             timeout=5.0,
         )
@@ -35,29 +35,39 @@ def _make_factory(handler):
 
 @pytest.fixture
 def creds() -> KomgaCredentials:
-    return KomgaCredentials(base_url="http://komga.example", username="user", password="pw")
+    return KomgaCredentials(base_url="http://komga.example", api_key="secret")
 
 
-def test_validate_credentials_strips_trailing_slash() -> None:
-    out = validate_credentials({"base_url": "http://k/", "username": "u", "password": "p"})
+def test_load_credentials_strips_trailing_slash() -> None:
+    out = load_credentials({"komga_base_url": "http://k/", "komga_api_key": "secret"})
     assert out.base_url == "http://k"
-    assert out.username == "u"
-    assert out.password == "p"
+    assert out.api_key == "secret"
 
 
-def test_validate_credentials_rejects_missing_fields() -> None:
-    with pytest.raises(ValueError, match="missing params"):
-        validate_credentials({"base_url": "http://k", "username": "", "password": "p"})
+def test_load_credentials_strips_surrounding_whitespace() -> None:
+    out = load_credentials({"komga_base_url": "  http://k  ", "komga_api_key": "  secret  "})
+    assert out.base_url == "http://k"
+    assert out.api_key == "secret"
 
 
-def test_validate_credentials_rejects_none() -> None:
-    with pytest.raises(ValueError, match="requires params"):
-        validate_credentials(None)
+def test_load_credentials_rejects_missing_url() -> None:
+    with pytest.raises(ValueError, match="not configured"):
+        load_credentials({"komga_base_url": "", "komga_api_key": "secret"})
 
 
-def test_validate_credentials_rejects_bare_host() -> None:
+def test_load_credentials_rejects_missing_key() -> None:
+    with pytest.raises(ValueError, match="not configured"):
+        load_credentials({"komga_base_url": "http://k", "komga_api_key": ""})
+
+
+def test_load_credentials_rejects_missing_both() -> None:
+    with pytest.raises(ValueError, match="not configured"):
+        load_credentials({})
+
+
+def test_load_credentials_rejects_bare_host() -> None:
     with pytest.raises(ValueError, match="http://"):
-        validate_credentials({"base_url": "komga.example", "username": "u", "password": "p"})
+        load_credentials({"komga_base_url": "komga.example", "komga_api_key": "k"})
 
 
 async def test_push_updates_single_matching_series(creds: KomgaCredentials) -> None:
