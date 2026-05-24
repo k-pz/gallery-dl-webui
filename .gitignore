@@ -318,7 +318,12 @@ pyrightconfig.json
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,pycharm+all,python,macos
 
 .local
-.claude
+
+# Claude Code: keep the shared hook + settings but ignore user-local overrides
+.claude/*
+!.claude/hooks/
+!.claude/settings.json
+.claude/settings.local.json
 
 # Frontend
 frontend/node_modules/
