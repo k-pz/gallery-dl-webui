@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import aiosqlite
 
@@ -317,20 +317,20 @@ class MaintenanceWorker:
     def _should_cancel(self) -> bool:
         return self._cancel_requested
 
+    _RUNNERS: ClassVar[dict[str, str]] = {
+        "rename_chapters": "_run_rename",
+        "regenerate_series_metadata": "_run_regenerate_metadata",
+        "rebuild_library": "_run_rebuild_library",
+        "push_komga_series_status": "_run_push_komga_status",
+        "update_lxc": "_run_update_lxc",
+        "unwatch_ended_series": "_run_unwatch_ended_series",
+    }
+
     async def _execute(self, kind: str, job_id: int) -> dict[str, Any]:
-        if kind == "rename_chapters":
-            return await self._run_rename(job_id)
-        if kind == "regenerate_series_metadata":
-            return await self._run_regenerate_metadata(job_id)
-        if kind == "rebuild_library":
-            return await self._run_rebuild_library(job_id)
-        if kind == "push_komga_series_status":
-            return await self._run_push_komga_status(job_id)
-        if kind == "update_lxc":
-            return await self._run_update_lxc(job_id)
-        if kind == "unwatch_ended_series":
-            return await self._run_unwatch_ended_series(job_id)
-        raise ValueError(f"unsupported maintenance kind: {kind}")
+        method_name = self._RUNNERS.get(kind)
+        if method_name is None:
+            raise ValueError(f"unsupported maintenance kind: {kind}")
+        return await getattr(self, method_name)(job_id)
 
     async def _run_rename(self, job_id: int) -> dict[str, int]:
         async with self._db_lock:
