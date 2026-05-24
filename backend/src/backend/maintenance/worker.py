@@ -118,7 +118,7 @@ def _update_path_unit_enabled() -> bool:
             timeout=5,
             check=False,
         )
-    except OSError, subprocess.TimeoutExpired:
+    except (OSError, subprocess.TimeoutExpired):
         return False
     return result.returncode == 0
 
