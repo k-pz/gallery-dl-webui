@@ -75,7 +75,9 @@ selected (via `openJob` callback).
 | `status.ts`           | `Status`, `statusColor`, `isTerminal`, `isActive`, `isCancellable`, the `JOB_STEPS` constant, `jobStep(...)`. Owns the UI-only `CANCELLING_LABEL` (`"cancelling"`) which is *not* a backend status. |
 | `polling.ts`          | `REFETCH_ACTIVE_MS = 5000`, `REFETCH_LIST_MS = 10000`. Fallbacks only — the websocket event stream is what keeps the cache fresh. |
 | `eventStream.ts`      | `useEventStream()` — opens `/api/ws` for the app lifetime and pushes server events into the TanStack Query cache (invalidates the matching `queryKey` per topic). Reconnects with exponential backoff; re-syncs every cached list on reconnect. |
-| `invalidate.ts`       | `useDataInvalidators()` hook returning `{ downloads, targets, config, outputDirs, download(id) }` — named invalidators reused everywhere. |
+| `backendEvents.ts`    | `handleBackendEvent(qc, event)` — shared dispatch table that maps a backend event's `topic`/`data` to the TanStack `queryKey`s to invalidate. Used by both `eventStream.ts` (WS) and `responseEventInterceptor.ts` (HTTP `X-Events` header). |
+| `responseEventInterceptor.ts` | Installs a `client.interceptors.response` hook that reads the `X-Events` response header and feeds the events into `handleBackendEvent`. Wired up once at app boot in `main.tsx`. Lets the mutating client invalidate caches synchronously instead of waiting for the WS to deliver the same events. |
+| `invalidate.ts`       | `useDataInvalidators()` hook returning `{ downloads, targets, config, outputDirs, download(id) }` — named invalidators for the few spots that still need to invalidate without going through an event. |
 | `apiError.ts`         | `extractErrorMessage(err)` — peeks at FastAPI's `detail` shape before falling back to `Error.message`.                                    |
 | `optimisticCancel.ts` | `useOptimisticCancel(id, status)` (single job) + `useOptimisticCancelMany(items)` (list). Shows "Cancelling…" between the user clicking Cancel and the server reflecting it. Auto-clears on terminal. |
 | `listFilters.ts`      | `makeNeedleMatcher(needle, ...getters)` — case-insensitive substring match over an arbitrary set of field getters.                        |
@@ -87,15 +89,21 @@ selected (via `openJob` callback).
 There's effectively no global client state. All data is owned by TanStack
 Query:
 
-- **Realtime stream**: `useEventStream()` runs once at app mount, opens a
-  websocket to `/api/ws`, and on every server-published event invalidates the
-  matching `queryKey`. This is the primary mechanism that keeps the UI in
-  sync; users see status changes essentially instantly.
+- **Mutating client (synchronous)**: the response interceptor in
+  `responseEventInterceptor.ts` reads an `X-Events` header that the backend
+  attaches to every response, and dispatches its events through
+  `handleBackendEvent` immediately. The mutating client never sees stale
+  data after a mutation lands.
+- **Other clients (realtime stream)**: `useEventStream()` runs once at app
+  mount, opens a websocket to `/api/ws`, and on every server-published event
+  invalidates the matching `queryKey`. Two paths feed the same handler so
+  the mutating client double-invalidates harmlessly (`invalidateQueries` is
+  idempotent), and tabs / clients that didn't make the request stay in sync.
 - **Polling fallback**: lists still set a long `refetchInterval`
   (`REFETCH_LIST_MS = 10 s`) and the active-job view a shorter one
-  (`REFETCH_ACTIVE_MS = 5 s`). These only matter when the websocket has been
-  disconnected (proxy timeout, suspended laptop); on reconnect the event
-  stream catches the cache up.
+  (`REFETCH_ACTIVE_MS = 5 s`). These only matter when both event paths are
+  disrupted (e.g. websocket dropped and the user is just browsing without
+  triggering mutations); on reconnect the event stream catches the cache up.
 - Mutations call `useDataInvalidators` after success — there's no manual
   `setQueryData` write-through.
 - Two pieces of genuinely-UI state escape this rule: the optimistic-cancel
