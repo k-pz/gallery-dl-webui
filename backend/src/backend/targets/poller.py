@@ -71,13 +71,11 @@ class Poller:
         *,
         tick_seconds: float = TICK_SECONDS,
         event_bus: EventBus | None = None,
-        db_lock: asyncio.Lock | None = None,
     ) -> None:
         self._db = db
         self._worker = worker
         self._tick = tick_seconds
         self._bus = event_bus
-        self._db_lock = db_lock or asyncio.Lock()
         self._stop = asyncio.Event()
         self._wakeup = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -111,8 +109,7 @@ class Poller:
             self._wakeup.clear()
 
     async def _tick_once(self) -> None:
-        async with self._db_lock:
-            cfg = await app_config_service.get_all(self._db)
+        cfg = await app_config_service.get_all(self._db)
         default_raw = cfg.get("default_watch_period")
         if not isinstance(default_raw, str) or not default_raw:
             default_raw = "1d"
@@ -122,19 +119,17 @@ class Poller:
             default_period = timedelta(days=1)
 
         now = datetime.now(UTC)
-        async with self._db_lock:
-            watched = await targets_service.list_watched(self._db)
+        watched = await targets_service.list_watched(self._db)
         notified = False
         for t in watched:
             if not is_due(t, default_period, now):
                 continue
-            async with self._db_lock:
-                if await downloads_service.has_active_for_target(self._db, t.id):
-                    continue
-                download = await downloads_service.insert_pending(
-                    self._db, t.url, t.extractor, output_dir=t.output_dir, target_id=t.id
-                )
-                await targets_service.mark_polled(self._db, t.id)
+            if await downloads_service.has_active_for_target(self._db, t.id):
+                continue
+            download = await downloads_service.insert_pending(
+                self._db, t.url, t.extractor, output_dir=t.output_dir, target_id=t.id
+            )
+            await targets_service.mark_polled(self._db, t.id)
             notified = True
             logger.info("poller queued target %d (%s)", t.id, t.url)
             if self._bus is not None:

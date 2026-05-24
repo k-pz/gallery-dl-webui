@@ -49,7 +49,6 @@ class Worker:
         gallery: Gallery,
         live: LiveProgress,
         event_bus: EventBus | None = None,
-        db_lock: asyncio.Lock | None = None,
     ) -> None:
         self._db = db
         self._gallery = gallery
@@ -58,10 +57,6 @@ class Worker:
         self._wakeup = asyncio.Event()
         self._stop = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
-        # Connection-wide lock. Shared with the maintenance worker + poller so
-        # multi-statement transactions on the single aiosqlite connection
-        # don't trip "SQL statements in progress" on concurrent commits.
-        self._db_lock = db_lock or asyncio.Lock()
         # Per-job cancel flags. Keyed by download id while the job is in the
         # worker; cleared in the finally block. The dict is only mutated from
         # the asyncio loop; the bool value is also read from the gallery-dl
@@ -106,8 +101,7 @@ class Worker:
         the worker — the user can bump the config and restart the service.
         """
         try:
-            async with self._db_lock:
-                cfg = await app_config_service.get_all(self._db)
+            cfg = await app_config_service.get_all(self._db)
         except Exception:
             cfg = {}
         post = _coerce_int(cfg.get("max_parallel_postprocess"), DEFAULT_MAX_PARALLEL_POSTPROCESS)
@@ -116,8 +110,7 @@ class Worker:
         while not self._stop.is_set():
             self._wakeup.clear()
             try:
-                async with self._db_lock:
-                    job = await service.claim_next_pending(self._db)
+                job = await service.claim_next_pending(self._db)
             except Exception:
                 logger.exception("claim_next_pending failed")
                 await asyncio.sleep(1.0)
@@ -145,12 +138,10 @@ class Worker:
             skip_chapter = await self._build_skip_chapter(job)
             chapter_names = await self._extract_metadata(job, skip_chapter)
             if self._cancel_flags.get(job.id, False):
-                async with self._db_lock:
-                    await service.mark_cancelled(self._db, job.id, 0)
+                await service.mark_cancelled(self._db, job.id, 0)
                 self._publish(downloads_event("updated", id=job.id, status="cancelled"))
                 return
-            async with self._db_lock:
-                await service.save_manifest(self._db, job.id, chapter_names)
+            await service.save_manifest(self._db, job.id, chapter_names)
             self._publish(downloads_event("manifest_ready", id=job.id, files=len(chapter_names)))
             try:
                 exit_code, records, cancelled = await self._execute_download(
@@ -184,12 +175,10 @@ class Worker:
         """
         if job.target_id is None:
             return None
-        async with self._db_lock:
-            target = await targets_service.get(self._db, job.target_id)
+        target = await targets_service.get(self._db, job.target_id)
         if target is None or not target.watched:
             return None
-        async with self._db_lock:
-            cfg = await app_config_service.get_all(self._db)
+        cfg = await app_config_service.get_all(self._db)
         output_dir_str = job.output_dir or cfg.get("postprocess_default_output_dir")
         if not isinstance(output_dir_str, str) or not output_dir_str:
             return None
@@ -215,15 +204,12 @@ class Worker:
         """
         meta = await asyncio.to_thread(self._gallery.extract_metadata, job.url)
         if job.target_id is not None and meta.series_name:
-            async with self._db_lock:
-                await targets_service.set_name(self._db, job.target_id, meta.series_name)
+            await targets_service.set_name(self._db, job.target_id, meta.series_name)
             self._publish(downloads_event("target_named", id=job.target_id, name=meta.series_name))
         if job.target_id is not None and meta.series_status:
-            async with self._db_lock:
-                await targets_service.set_series_status(self._db, job.target_id, meta.series_status)
+            await targets_service.set_series_status(self._db, job.target_id, meta.series_status)
         if job.target_id is not None and meta.series_tags:
-            async with self._db_lock:
-                await targets_service.set_series_tags(self._db, job.target_id, meta.series_tags)
+            await targets_service.set_series_tags(self._db, job.target_id, meta.series_tags)
         chapter_names: list[str] = []
         for (manga, chapter), _date in meta.chapter_dates.items():
             if skip_chapter is not None and manga and chapter and skip_chapter(manga, chapter):
@@ -242,8 +228,7 @@ class Worker:
         `chapters_seen` is mutated by the per-file callback so the caller can
         read a live chapter count even if `run_download` raises.
         """
-        async with self._db_lock:
-            await service.mark_running(self._db, job.id)
+        await service.mark_running(self._db, job.id)
         self._publish(downloads_event("updated", id=job.id, status="running"))
         self._live.start(job.id)
         exit_code, records = await asyncio.to_thread(
@@ -258,14 +243,11 @@ class Worker:
         # records — e.g. extractors whose handle_url path doesn't reach
         # coerce_record_from_kwdict.
         present = max(len(chapters_seen), count_present_chapters([r.path for r in records]))
-        async with self._db_lock:
-            if cancelled:
-                await service.mark_cancelled(self._db, job.id, present)
-            else:
-                await service.finish_job(self._db, job.id, exit_code, present)
         if cancelled:
+            await service.mark_cancelled(self._db, job.id, present)
             self._publish(downloads_event("updated", id=job.id, status="cancelled"))
         else:
+            await service.finish_job(self._db, job.id, exit_code, present)
             terminal = "completed" if exit_code == 0 else "failed"
             self._publish(downloads_event("updated", id=job.id, status=terminal))
         return exit_code, records, cancelled
@@ -276,8 +258,7 @@ class Worker:
         """Log + persist a job failure, recording chapters that landed before the
         failure (counted by the progress callback on the worker thread)."""
         logger.exception("download %d failed", job.id)
-        async with self._db_lock:
-            await service.mark_failed(self._db, job.id, repr(exc), chapters_present)
+        await service.mark_failed(self._db, job.id, repr(exc), chapters_present)
         self._publish(downloads_event("updated", id=job.id, status="failed"))
 
     def _make_progress_cb(self, job_id: int, chapters_seen: set[str]):
@@ -300,44 +281,38 @@ class Worker:
     async def _run_postprocess(
         self, job: Download, records: list[FileRecord], downloads_dir: Path
     ) -> None:
-        async with self._db_lock:
-            cfg = await app_config_service.get_all(self._db)
+        cfg = await app_config_service.get_all(self._db)
         output_dir_str = job.output_dir or cfg.get("postprocess_default_output_dir")
         root_str = cfg.get("postprocess_root")
         if not output_dir_str or not root_str:
-            async with self._db_lock:
-                await service.mark_postprocess(self._db, job.id, "skipped")
+            await service.mark_postprocess(self._db, job.id, "skipped")
             return
         output_dir = Path(output_dir_str)
         root = Path(root_str).resolve()
         try:
             resolved = output_dir.resolve()
         except OSError as exc:
-            async with self._db_lock:
-                await service.mark_postprocess(self._db, job.id, "failed", error=repr(exc))
+            await service.mark_postprocess(self._db, job.id, "failed", error=repr(exc))
             return
         if resolved != root and root not in resolved.parents:
-            async with self._db_lock:
-                await service.mark_postprocess(
-                    self._db,
-                    job.id,
-                    "failed",
-                    error=f"output_dir {resolved} is not under root {root}",
-                )
+            await service.mark_postprocess(
+                self._db,
+                job.id,
+                "failed",
+                error=f"output_dir {resolved} is not under root {root}",
+            )
             return
         try:
             output_dir.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
-            async with self._db_lock:
-                await service.mark_postprocess(self._db, job.id, "failed", error=repr(exc))
+            await service.mark_postprocess(self._db, job.id, "failed", error=repr(exc))
             return
         delete_raw = bool(cfg.get("delete_raw_after_pack", True))
         naming_template = cfg.get("chapter_naming_template")
         if not isinstance(naming_template, str) or not naming_template:
             naming_template = DEFAULT_CHAPTER_NAMING_TEMPLATE
         metadata_overrides = await self._series_metadata_overrides(job, cfg)
-        async with self._db_lock:
-            await service.mark_postprocess(self._db, job.id, "running")
+        await service.mark_postprocess(self._db, job.id, "running")
         self._publish(downloads_event("postprocess", id=job.id, status="running"))
         try:
             result = await postprocess.run(
@@ -354,19 +329,17 @@ class Worker:
             )
         except Exception as exc:
             logger.exception("postprocess for download %d failed", job.id)
-            async with self._db_lock:
-                await service.mark_postprocess(self._db, job.id, "failed", error=repr(exc))
+            await service.mark_postprocess(self._db, job.id, "failed", error=repr(exc))
             self._publish(downloads_event("postprocess", id=job.id, status="failed"))
             return
         status = "completed" if result.failed == 0 else "failed"
-        async with self._db_lock:
-            await service.mark_postprocess(
-                self._db,
-                job.id,
-                status,
-                chapters_packed=result.succeeded,
-                error=result.error_summary,
-            )
+        await service.mark_postprocess(
+            self._db,
+            job.id,
+            status,
+            chapters_packed=result.succeeded,
+            error=result.error_summary,
+        )
         self._publish(downloads_event("postprocess", id=job.id, status=status))
 
     async def _series_metadata_overrides(
@@ -385,8 +358,7 @@ class Worker:
             reading_direction = DEFAULT_READING_DIRECTION
         series_status = ""
         if job.target_id is not None:
-            async with self._db_lock:
-                target = await targets_service.get(self._db, job.target_id)
+            target = await targets_service.get(self._db, job.target_id)
             if target is not None:
                 tags = list(target.tags)
                 if target.reading_direction:
