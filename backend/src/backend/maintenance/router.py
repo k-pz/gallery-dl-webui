@@ -9,7 +9,7 @@ from backend.events import maintenance_event
 from backend.exceptions import BadRequestError, ConflictError, NotFoundError
 from backend.maintenance import service
 from backend.maintenance.schemas import (
-    MaintenanceJobOut,
+    MaintenanceJob,
     MaintenanceProgressOut,
     MaintenanceScheduleIn,
     UpdateCheckOut,
@@ -33,31 +33,9 @@ SUPPORTED_KINDS = {
 KINDS_REQUIRING_PARAMS = {"push_komga_series_status"}
 
 
-def _to_out(job) -> MaintenanceJobOut:
-    parsed = None
-    if job.result_json:
-        try:
-            loaded = json.loads(job.result_json)
-        except json.JSONDecodeError:
-            loaded = None
-        if isinstance(loaded, dict):
-            parsed = loaded
-    return MaintenanceJobOut(
-        id=job.id,
-        kind=job.kind,
-        status=job.status,
-        created_at=job.created_at,
-        started_at=job.started_at,
-        finished_at=job.finished_at,
-        result=parsed,
-        error=job.error,
-    )
-
-
 @router.get("/maintenance/jobs", operation_id="listMaintenanceJobs")
-async def list_maintenance_jobs(db: DbDep) -> list[MaintenanceJobOut]:
-    jobs = await service.list_jobs(db)
-    return [_to_out(j) for j in jobs]
+async def list_maintenance_jobs(db: DbDep) -> list[MaintenanceJob]:
+    return await service.list_jobs(db)
 
 
 @router.post("/maintenance/jobs", operation_id="scheduleMaintenanceJob")
@@ -66,7 +44,7 @@ async def schedule_maintenance_job(
     db: DbDep,
     request: Request,
     bus: EventBusDep,
-) -> MaintenanceJobOut:
+) -> MaintenanceJob:
     if body.kind not in SUPPORTED_KINDS:
         raise BadRequestError(f"unsupported maintenance kind: {body.kind}")
     if body.kind in KINDS_REQUIRING_PARAMS:
@@ -86,7 +64,7 @@ async def schedule_maintenance_job(
         request.app.state.maintenance_worker.stash_params(created.id, body.params or {})
     request.app.state.maintenance_worker.notify()
     bus.publish(maintenance_event("created", id=created.id))
-    return _to_out(created)
+    return created
 
 
 @router.post("/maintenance/jobs/{job_id}/cancel", operation_id="cancelMaintenanceJob")
@@ -95,7 +73,7 @@ async def cancel_maintenance_job(
     db: DbDep,
     request: Request,
     bus: EventBusDep,
-) -> MaintenanceJobOut:
+) -> MaintenanceJob:
     job = await service.get_job(db, job_id)
     if job is None:
         raise NotFoundError("maintenance job not found")
@@ -113,7 +91,7 @@ async def cancel_maintenance_job(
     if refreshed is None:
         raise NotFoundError("maintenance job not found")
     bus.publish(maintenance_event("updated", id=job_id))
-    return _to_out(refreshed)
+    return refreshed
 
 
 @router.get("/maintenance/update-check", operation_id="checkForUpdates")
@@ -157,11 +135,11 @@ async def get_maintenance_job_progress(
     # callers can still render something useful after the worker has cleared
     # its in-memory buffer.
     summary: list[str] = []
-    if job.status == "completed" and job.result_json:
-        summary.append(f"done: {job.result_json}")
+    if job.status == "completed" and job.result is not None:
+        summary.append(f"done: {json.dumps(job.result)}")
     elif job.status == "cancelled":
-        if job.result_json:
-            summary.append(f"cancelled: {job.result_json}")
+        if job.result is not None:
+            summary.append(f"cancelled: {json.dumps(job.result)}")
         else:
             summary.append("cancelled")
     elif job.status == "failed" and job.error:
