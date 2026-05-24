@@ -23,8 +23,8 @@ from backend.downloads.postprocess import normalize_tags
 from backend.downloads.progress import chapter_progress, chapter_progress_from_completed
 from backend.downloads.schemas import (
     ChapterProgress,
+    Download,
     DownloadCreate,
-    DownloadOut,
     ProgressOut,
 )
 from backend.events import Event, downloads_event
@@ -35,19 +35,12 @@ from backend.targets import service as targets_service
 router = APIRouter(tags=["downloads"])
 
 
-async def _name_for(db, target_id: int | None) -> str | None:
-    if target_id is None:
-        return None
-    names = await targets_service.list_names(db, [target_id])
-    return names.get(target_id)
-
-
-async def _refresh_view(db, download_id: int) -> DownloadOut:
-    """Reload a row we just mutated and return the DTO. 500 if it vanished."""
+async def _refresh_view(db, download_id: int) -> Download:
+    """Reload a row we just mutated. 500 if it vanished."""
     d = await service.get(db, download_id)
     if d is None:
         raise DownloadVanished(download_id)
-    return DownloadOut.from_download(d, name=await _name_for(db, d.target_id))
+    return d
 
 
 @router.post("/downloads", operation_id="createDownload")
@@ -57,7 +50,7 @@ async def create_download(
     worker: WorkerDep,
     gallery: GalleryDep,
     bus: EventBusDep,
-) -> DownloadOut:
+) -> Download:
     url = body.url.strip()
     if not url:
         raise BadRequestError("url is required")
@@ -110,26 +103,23 @@ async def create_download(
     worker.notify()
     bus.publish(downloads_event("created", id=download.id))
     bus.publish(Event(topic="targets", type="updated", data={"id": target.id}))
-    return DownloadOut.from_download(download, name=target.name)
+    return download
 
 
 @router.get("/downloads", operation_id="listDownloads")
-async def list_downloads(db: DbDep) -> list[DownloadOut]:
-    rows = await service.list_recent(db, 50)
-    ids = [d.target_id for d in rows if d.target_id is not None]
-    names = await targets_service.list_names(db, ids)
-    return [DownloadOut.from_download(d, name=names.get(d.target_id or -1)) for d in rows]
+async def list_downloads(db: DbDep) -> list[Download]:
+    return await service.list_recent(db, 50)
 
 
 @router.get("/downloads/{download_id}", operation_id="getDownload")
-async def get_download(download: DownloadDep, db: DbDep) -> DownloadOut:
-    return DownloadOut.from_download(download, name=await _name_for(db, download.target_id))
+async def get_download(download: DownloadDep) -> Download:
+    return download
 
 
 @router.post("/downloads/{download_id}/cancel", operation_id="cancelDownload")
 async def cancel_download(
     download: DownloadDep, db: DbDep, worker: WorkerDep, bus: EventBusDep
-) -> DownloadOut:
+) -> Download:
     if download.status in TERMINAL_STATUSES:
         raise DownloadAlreadyTerminal(download.status)
     # Best-effort: tell the worker so an in-flight job unwinds on its next
@@ -143,7 +133,7 @@ async def cancel_download(
 @router.post("/downloads/{download_id}/requeue", operation_id="requeueDownload")
 async def requeue_download(
     download: DownloadDep, db: DbDep, worker: WorkerDep, bus: EventBusDep
-) -> DownloadOut:
+) -> Download:
     if download.status not in TERMINAL_STATUSES:
         raise DownloadNotTerminal(download.status)
     if not await service.reset_to_pending(db, download.id):
