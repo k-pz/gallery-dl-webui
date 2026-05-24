@@ -86,9 +86,7 @@ def now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-async def insert_returning_id(
-    db: aiosqlite.Connection, sql: str, params: Iterable[object]
-) -> int:
+async def insert_returning_id(db: aiosqlite.Connection, sql: str, params: Iterable[object]) -> int:
     """Run an INSERT and return its lastrowid, failing loud if it's missing.
 
     Centralises the cursor.lastrowid dance so callers never have to assert
