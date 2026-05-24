@@ -1,4 +1,4 @@
-import { api, ApiError } from "../lib/api.js";
+import { api, apiErrorMessage } from "../lib/api.js";
 import { loadSettings, normalizeBackendUrl } from "../lib/storage.js";
 
 const el = (id) => document.getElementById(id);
@@ -68,8 +68,7 @@ async function init() {
     el("url").focus();
     el("url").select();
   } catch (err) {
-    const msg = err instanceof ApiError ? err.message : String(err);
-    showFatal(`Could not reach ${backendUrl}: ${msg}`);
+    showFatal(`Could not reach ${backendUrl}: ${apiErrorMessage(err)}`);
   }
 }
 
@@ -145,8 +144,7 @@ async function onSubmit(e) {
     el("view-link").href = backendUrl;
     show("success");
   } catch (err) {
-    const msg = err instanceof ApiError ? err.message : String(err);
-    errBox.textContent = msg;
+    errBox.textContent = apiErrorMessage(err);
     show("form-error");
   } finally {
     submit.disabled = false;
