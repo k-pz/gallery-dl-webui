@@ -1,3 +1,9 @@
+## v1.9.1 (2026-05-24)
+
+### Fix
+
+- **docs**: green the strict mkdocs build
+
 ## v1.9.0 (2026-05-24)
 
 ### Feat
