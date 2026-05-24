@@ -118,10 +118,24 @@ def normalize_reading_direction(value: str | None) -> str:
     return DEFAULT_READING_DIRECTION
 
 
-# Komga reads `metadata.status` out of the Mylar-style series.json and matches
-# the four labels below verbatim — anything else is silently ignored on import.
+# Four-state local labels surfaced in the UI / persisted on each target.
 # Keep this set in sync with the SERIES_STATUS_OPTIONS list in the frontend.
+# Komga's series.json importer only understands a two-state subset
+# (see `_MYLAR_STATUS_BY_LOCAL` below); Hiatus/Abandoned are pushed via the
+# REST `push_komga_series_status` maintenance job in `maintenance/komga.py`.
 SERIES_STATUSES: tuple[str, ...] = ("Ongoing", "Ended", "Hiatus", "Abandoned")
+
+# Komga's `MylarSeriesProvider` only matches two literal status strings:
+# `Continuing` → ONGOING and `Ended` → ENDED. Anything else (including
+# `Ongoing`, `Hiatus`, `Abandoned`) is silently ignored on import, which is
+# why every series ends up looking ONGOING by default if we write our local
+# labels verbatim. Translate to the wire subset before serialising; the
+# unmapped states are omitted from series.json entirely and handled by the
+# REST push instead.
+_MYLAR_STATUS_BY_LOCAL: dict[str, str] = {
+    "Ongoing": "Continuing",
+    "Ended": "Ended",
+}
 
 # Synonyms that manga extractors (mangadex, manganelo, mangafire, kaliscan…)
 # surface via the `status` kwdict field, normalised to the Komga set above.
@@ -579,7 +593,7 @@ def build_series_json_bytes(meta: SeriesMetadata, total_issues: int | None = Non
         "comic_image": None,
         "total_issues": total_issues,
         "publication_run": None,
-        "status": meta.status or None,
+        "status": _MYLAR_STATUS_BY_LOCAL.get(meta.status),
         # Extension fields — non-standard, kept for round-tripping our own
         # state through the regen job and for downstream Komga config.
         "language": meta.language or None,

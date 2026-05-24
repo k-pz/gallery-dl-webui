@@ -883,10 +883,27 @@ def test_derive_series_metadata_blank_override_keeps_chapter_status() -> None:
     assert meta.status == "Hiatus"
 
 
-def test_build_series_json_bytes_emits_status() -> None:
-    meta = SeriesMetadata(name="S", status="Hiatus", tags=[], reading_direction="ltr")
+def test_build_series_json_bytes_emits_ongoing_as_continuing() -> None:
+    # Komga's Mylar importer only recognises "Continuing" (→ ONGOING) and
+    # "Ended" — emitting our local label "Ongoing" verbatim is ignored.
+    meta = SeriesMetadata(name="S", status="Ongoing", tags=[], reading_direction="ltr")
     payload = json.loads(build_series_json_bytes(meta).decode())
-    assert payload["metadata"]["status"] == "Hiatus"
+    assert payload["metadata"]["status"] == "Continuing"
+
+
+def test_build_series_json_bytes_emits_ended_unchanged() -> None:
+    meta = SeriesMetadata(name="S", status="Ended", tags=[], reading_direction="ltr")
+    payload = json.loads(build_series_json_bytes(meta).decode())
+    assert payload["metadata"]["status"] == "Ended"
+
+
+@pytest.mark.parametrize("local_status", ["Hiatus", "Abandoned"])
+def test_build_series_json_bytes_omits_states_komga_cannot_import(local_status: str) -> None:
+    # Komga's Mylar provider has no mapping for these — emitting them would be
+    # silently dropped. The REST push (maintenance/komga.py) handles them.
+    meta = SeriesMetadata(name="S", status=local_status, tags=[], reading_direction="ltr")
+    payload = json.loads(build_series_json_bytes(meta).decode())
+    assert "status" not in payload["metadata"]
 
 
 def test_build_series_json_bytes_omits_blank_status() -> None:
@@ -895,7 +912,22 @@ def test_build_series_json_bytes_omits_blank_status() -> None:
     assert "status" not in payload["metadata"]
 
 
-async def test_run_writes_status_to_series_json(tmp_path: Path) -> None:
+async def test_run_writes_ongoing_status_as_continuing(tmp_path: Path) -> None:
+    downloads_dir = tmp_path / "downloads"
+    output_dir = tmp_path / "out"
+    rec_dir = downloads_dir / "fake" / "S" / "c1"
+    rec_dir.mkdir(parents=True)
+    (rec_dir / "001.jpg").write_bytes(b"\xff\xd8\xff")
+    records = [
+        FileRecord("fake", "S", "1", "", "", "", "", "", rec_dir / "001.jpg", status="Ongoing"),
+    ]
+    result = await run(records, output_dir, downloads_dir, delete_raw=False)
+    assert result.succeeded == 1
+    payload = json.loads((output_dir / "S" / SERIES_JSON_NAME).read_text())
+    assert payload["metadata"]["status"] == "Continuing"
+
+
+async def test_run_omits_hiatus_status_from_series_json(tmp_path: Path) -> None:
     downloads_dir = tmp_path / "downloads"
     output_dir = tmp_path / "out"
     rec_dir = downloads_dir / "fake" / "S" / "c1"
@@ -907,4 +939,4 @@ async def test_run_writes_status_to_series_json(tmp_path: Path) -> None:
     result = await run(records, output_dir, downloads_dir, delete_raw=False)
     assert result.succeeded == 1
     payload = json.loads((output_dir / "S" / SERIES_JSON_NAME).read_text())
-    assert payload["metadata"]["status"] == "Hiatus"
+    assert "status" not in payload["metadata"]

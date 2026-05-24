@@ -17,6 +17,8 @@ from typing import Any
 
 import httpx
 
+from backend.downloads.postprocess import sanitize
+
 # Local series_status labels (defined in downloads.postprocess.SERIES_STATUSES)
 # mapped to Komga's REST enum. Komga's series metadata endpoint accepts only
 # the four uppercase labels below; anything else is rejected with a 400.
@@ -178,13 +180,22 @@ async def push_series_statuses(
             content = payload.get("content") if isinstance(payload, dict) else None
             if not isinstance(content, list):
                 content = []
-            wanted = target.name.strip().lower()
+            # Match against both the raw target name and the post-`sanitize`
+            # directory name: Komga shows the imported series.json `name` when
+            # available (raw), but falls back to the on-disk directory name
+            # (sanitized) when series.json hasn't been imported yet. `casefold`
+            # so non-ASCII titles (ß, Turkish dotless i, etc.) compare under
+            # the same Unicode rules Komga uses server-side.
+            wanted = {
+                target.name.strip().casefold(),
+                sanitize(target.name).strip().casefold(),
+            }
             exact = [
                 s
                 for s in content
                 if isinstance(s, dict)
                 and isinstance(s.get("name"), str)
-                and s["name"].strip().lower() == wanted
+                and s["name"].strip().casefold() in wanted
             ]
 
             if len(exact) == 0:
@@ -203,9 +214,14 @@ async def push_series_statuses(
                 continue
 
             try:
+                # `statusLock: true` pins the field so Komga's next library
+                # scan can't overwrite our REST value via the Mylar series.json
+                # importer. Without the lock, Hiatus/Abandoned (which we omit
+                # from series.json) would survive but Ongoing/Ended would be
+                # re-applied on every scan from the wire-format value.
                 patch_resp = await http.patch(
                     f"/api/v1/series/{series_id}/metadata",
-                    json={"status": komga_status},
+                    json={"status": komga_status, "statusLock": True},
                 )
                 patch_resp.raise_for_status()
             except httpx.HTTPError as exc:
