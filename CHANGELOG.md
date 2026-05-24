@@ -1,3 +1,19 @@
+## v1.8.1 (2026-05-24)
+
+### Refactor
+
+- **extension**: add apiErrorMessage helper and drop ApiError duplication
+- **tests**: centralise _write_cbz/_make_record helpers and drop gallery_holder
+- **database**: add insert_returning_id helper and name claim retry limit
+- **maintenance**: replace _execute if-chain with a kind→method dispatch dict
+- **backend**: use BadRequestError/ConflictError/NotFoundError consistently
+- **downloads**: extract DetailField and JobStepper from ActiveJobCard
+- **downloads**: extract RecentRow into a sibling file
+- **config**: extract FormSection and LibraryBackup from ConfigPanel
+- **targets**: extract TargetRow + recencyKey into a sibling file
+- **maintenance**: split MaintenancePanel sub-cards into siblings
+- **frontend**: add useNotifyingMutation hook and consolidate notify+mutate sites
+
 ## v1.8.0 (2026-05-24)
 
 ### Feat

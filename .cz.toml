@@ -10,7 +10,7 @@
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "1.8.0"
+version = "1.8.1"
 tag_format = "v$version"
 update_changelog_on_bump = true
 changelog_incremental = true
