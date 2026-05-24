@@ -203,8 +203,8 @@ uses the same `<Section>` component (a styled header pattern):
    - Excluded directory names (TextInput, mono, comma-separated).
 2. **Polling cadence** — kicker `watching`, single "Default poll period"
    input with mono font and format hint.
-3. **Parallelism** — kicker `concurrency`, two NumberInputs side by side
-   for max concurrent downloads + max parallel postprocess.
+3. **Parallelism** — kicker `concurrency`, one NumberInput for max parallel
+   postprocess.
 4. **Save changes** button + saved/error feedback. Only renders when the
    form is dirty or has a recent save result.
 5. **Remembered output directories** — kicker `cache`, a `.app-surface-muted`
