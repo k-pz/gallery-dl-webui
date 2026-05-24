@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { chapterStageLabel, isTerminal, jobStatusLabel, jobStep, statusColor } from "./status";
+import {
+  chapterStageLabel,
+  isTerminal,
+  jobStatusLabel,
+  jobStep,
+  pickCurrentActiveJobId,
+  statusColor,
+} from "./status";
 
 describe("statusColor", () => {
   it("maps each known status to its color", () => {
@@ -48,6 +55,51 @@ describe("jobStep", () => {
 
   it("shows processing while postprocess is running", () => {
     expect(jobStep("completed", "running")).toMatchObject({ label: "Processing", index: 4 });
+  });
+});
+
+describe("pickCurrentActiveJobId", () => {
+  it("picks the oldest running job", () => {
+    expect(
+      pickCurrentActiveJobId([
+        { id: 3, status: "running" },
+        { id: 1, status: "running" },
+        { id: 2, status: "extracting" },
+      ]),
+    ).toBe(1);
+  });
+
+  it("falls back to the oldest pending job when nothing is running", () => {
+    expect(
+      pickCurrentActiveJobId([
+        { id: 5, status: "completed" },
+        { id: 7, status: "pending" },
+        { id: 4, status: "pending" },
+      ]),
+    ).toBe(4);
+  });
+
+  it("prefers a running job over a pending one even when the pending id is smaller", () => {
+    expect(
+      pickCurrentActiveJobId([
+        { id: 2, status: "pending" },
+        { id: 9, status: "running" },
+      ]),
+    ).toBe(9);
+  });
+
+  it("returns null when no jobs are active", () => {
+    expect(
+      pickCurrentActiveJobId([
+        { id: 1, status: "completed" },
+        { id: 2, status: "failed" },
+        { id: 3, status: "cancelled" },
+      ]),
+    ).toBeNull();
+  });
+
+  it("returns null for an empty list", () => {
+    expect(pickCurrentActiveJobId([])).toBeNull();
   });
 });
 
