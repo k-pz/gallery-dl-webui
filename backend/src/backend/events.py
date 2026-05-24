@@ -14,10 +14,19 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+# When set (by `RequestEventCollectorMiddleware`), every `EventBus.publish`
+# also appends to this list. The middleware then drains the list into the
+# `X-Events` response header so the mutating client invalidates its TanStack
+# caches without waiting for the websocket roundtrip. None outside a
+# request — worker / poller publishes still only fan-out to WS subscribers.
+_request_events: ContextVar[list[Event] | None] = ContextVar("_request_events", default=None)
 
 
 @dataclass(frozen=True)
@@ -37,6 +46,24 @@ class Event:
         return {"topic": self.topic, "type": self.type, "data": self.data}
 
 
+def open_request_event_buffer() -> list[Event]:
+    """Start collecting events for the duration of this contextvar scope.
+
+    Returns the list `EventBus.publish` will append to; the caller is
+    responsible for resetting the contextvar via `close_request_event_buffer`.
+    Idempotent within nested calls — the inner buffer is preferred so a
+    sub-request (e.g. background task scheduled mid-handler) doesn't bleed
+    into the outer response.
+    """
+    buf: list[Event] = []
+    _request_events.set(buf)
+    return buf
+
+
+def close_request_event_buffer() -> None:
+    _request_events.set(None)
+
+
 class EventBus:
     DEFAULT_QUEUE_SIZE = 256
 
@@ -52,7 +79,14 @@ class EventBus:
         meant to be non-blocking, and a missed transient event is better than
         a stalled worker. Workers publishing from threads should use
         `publish_threadsafe`.
+
+        If a request-scoped buffer is open (`open_request_event_buffer`), the
+        event is also appended there so the middleware can emit it in the
+        response's `X-Events` header.
         """
+        buf = _request_events.get()
+        if buf is not None:
+            buf.append(event)
         for q in list(self._subscribers):
             if q.full():
                 try:
