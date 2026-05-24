@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from backend.app_config import service as app_config_service
 from backend.app_config.constants import READING_DIRECTIONS
@@ -28,6 +28,7 @@ from backend.downloads.schemas import (
     ProgressOut,
 )
 from backend.events import Event, downloads_event
+from backend.exceptions import BadRequestError, ConflictError
 from backend.output_dirs.utils import coerce_optional, validate_under_root
 from backend.targets import service as targets_service
 
@@ -59,13 +60,10 @@ async def create_download(
 ) -> DownloadOut:
     url = body.url.strip()
     if not url:
-        raise HTTPException(status_code=400, detail="url is required")
+        raise BadRequestError("url is required")
     category = gallery.find_extractor(url)
     if category is None:
-        raise HTTPException(
-            status_code=400,
-            detail="unsupported URL (no gallery-dl extractor matched)",
-        )
+        raise BadRequestError("unsupported URL (no gallery-dl extractor matched)")
 
     output_dir = coerce_optional(body.output_dir)
     output_dir_str: str | None = None
@@ -87,12 +85,9 @@ async def create_download(
         cleaned = body.reading_direction.strip().lower()
         if cleaned:
             if cleaned not in READING_DIRECTIONS:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"invalid reading_direction: {body.reading_direction!r}; "
-                        f"expected one of {sorted(READING_DIRECTIONS)}"
-                    ),
+                raise BadRequestError(
+                    f"invalid reading_direction: {body.reading_direction!r}; "
+                    f"expected one of {sorted(READING_DIRECTIONS)}"
                 )
             reading_direction = cleaned
 
@@ -152,7 +147,7 @@ async def requeue_download(
     if download.status not in TERMINAL_STATUSES:
         raise DownloadNotTerminal(download.status)
     if not await service.reset_to_pending(db, download.id):
-        raise HTTPException(status_code=409, detail="download is no longer terminal")
+        raise ConflictError("download is no longer terminal")
     worker.notify()
     bus.publish(downloads_event("updated", id=download.id, status="pending"))
     return await _refresh_view(db, download.id)

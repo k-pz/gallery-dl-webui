@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from backend.app_config import service as app_config_service
 from backend.app_config.constants import READING_DIRECTIONS
@@ -12,6 +12,7 @@ from backend.downloads import service as downloads_service
 from backend.downloads.dependencies import WorkerDep
 from backend.downloads.postprocess import SERIES_STATUSES, normalize_tags
 from backend.events import downloads_event, targets_event
+from backend.exceptions import BadRequestError
 from backend.output_dirs.utils import coerce_optional, validate_under_root
 from backend.targets import service
 from backend.targets.dependencies import PollerDep, TargetDep
@@ -64,7 +65,7 @@ async def update_target(
             try:
                 parse_duration(cleaned)
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
+                raise BadRequestError(str(exc)) from exc
             new_period = cleaned
 
     if body.output_dir is not None:
@@ -88,12 +89,9 @@ async def update_target(
         if cleaned_dir == "":
             new_direction = None
         elif cleaned_dir not in READING_DIRECTIONS:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"invalid reading_direction: {body.reading_direction!r}; "
-                    f"expected one of {sorted(READING_DIRECTIONS)}"
-                ),
+            raise BadRequestError(
+                f"invalid reading_direction: {body.reading_direction!r}; "
+                f"expected one of {sorted(READING_DIRECTIONS)}"
             )
         else:
             new_direction = cleaned_dir
@@ -103,12 +101,9 @@ async def update_target(
         if cleaned_status == "":
             new_series_status = None
         elif cleaned_status not in SERIES_STATUSES:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"invalid series_status: {body.series_status!r}; "
-                    f"expected one of {sorted(SERIES_STATUSES)}"
-                ),
+            raise BadRequestError(
+                f"invalid series_status: {body.series_status!r}; "
+                f"expected one of {sorted(SERIES_STATUSES)}"
             )
         else:
             new_series_status = cleaned_status
