@@ -26,34 +26,8 @@ from backend.downloads.postprocess import (
     strip_enclosing_brackets,
 )
 
-
-def _make_record(downloads_dir: Path, manga: str, chapter: str, name: str, **extra) -> FileRecord:
-    ch_dir = downloads_dir / "fake" / manga / f"c{chapter}"
-    ch_dir.mkdir(parents=True, exist_ok=True)
-    path = ch_dir / name
-    path.write_bytes(b"\x89PNG\r\n\x1a\n")  # arbitrary bytes
-    return FileRecord(
-        category="fake",
-        manga=manga,
-        chapter=chapter,
-        title=extra.get("title", ""),
-        volume=extra.get("volume", ""),
-        lang=extra.get("lang", ""),
-        author=extra.get("author", ""),
-        date=extra.get("date", ""),
-        path=path,
-    )
-
-
-def _write_cbz_with_comicinfo(path: Path, series: str, chapter: str, title: str = "") -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    ch = collect_chapters(
-        [FileRecord("c", series, chapter, title, "", "", "", "", Path("/x/001.jpg"))]
-    )[0]
-    ch.pages = [Path("/x/001.jpg")]
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("ComicInfo.xml", build_comicinfo_xml(ch))
-        zf.writestr("001.jpg", b"x")
+from .._helpers import make_record as _make_record
+from .._helpers import write_cbz_with_comicinfo as _write_cbz_with_comicinfo
 
 
 async def test_run_packs_chapter_into_cbz(tmp_path: Path) -> None:

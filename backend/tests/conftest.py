@@ -21,25 +21,21 @@ def gallery_config() -> FakeGalleryConfig:
 
 
 @pytest.fixture
-def gallery_holder() -> dict[str, FakeGallery]:
-    return {}
-
-
-@pytest.fixture
 def client(
     settings: Settings,
     gallery_config: FakeGalleryConfig,
-    gallery_holder: dict[str, FakeGallery],
 ) -> Iterator[TestClient]:
-    def factory(s: Settings) -> FakeGallery:
-        g = FakeGallery(s, config=gallery_config)
-        gallery_holder["gallery"] = g
-        return g
-
     app = create_app(
         settings_factory=lambda: settings,
-        gallery_factory=factory,
+        gallery_factory=lambda s: FakeGallery(s, config=gallery_config),
         serve_frontend=False,
     )
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture
+def gallery(client: TestClient) -> FakeGallery:
+    """The FakeGallery the app's lifespan constructed. Depends on `client` so
+    the lifespan has already run by the time the test sees this."""
+    return client.app.state.gallery
