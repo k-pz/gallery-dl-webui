@@ -1,3 +1,9 @@
+## v1.10.1 (2026-05-24)
+
+### Fix
+
+- **frontend**: declutter active job card on mobile
+
 ## v1.10.0 (2026-05-24)
 
 ### Feat
