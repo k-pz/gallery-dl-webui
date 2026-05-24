@@ -62,6 +62,28 @@ export function isScheduled(status: string): boolean {
   return status === "pending";
 }
 
+/**
+ * Picks the job that should be shown as "currently in focus" in the Jobs
+ * tab. Prefers the oldest running job (smallest id, i.e. the one that
+ * started first); when nothing is running, falls back to the oldest
+ * pending job (next to be processed). Returns null when there are no
+ * active jobs at all.
+ */
+export function pickCurrentActiveJobId(
+  downloads: ReadonlyArray<{ id: number; status: string }>,
+): number | null {
+  let runningId: number | null = null;
+  let pendingId: number | null = null;
+  for (const d of downloads) {
+    if (isRunning(d.status)) {
+      if (runningId === null || d.id < runningId) runningId = d.id;
+    } else if (isScheduled(d.status)) {
+      if (pendingId === null || d.id < pendingId) pendingId = d.id;
+    }
+  }
+  return runningId ?? pendingId;
+}
+
 export function isCancellable(status: Status): boolean {
   return !isTerminal(status);
 }

@@ -1,6 +1,6 @@
 import { Box, Container, Stack, Tabs } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { listDownloadsOptions } from "./api/@tanstack/react-query.gen";
 import { ActiveJobCard } from "./components/ActiveJobCard";
 import { AppVersion } from "./components/AppVersion";
@@ -17,7 +17,7 @@ import { SubmitForm } from "./components/SubmitForm";
 import { TargetsList } from "./components/TargetsList";
 import { useEventStream } from "./lib/eventStream";
 import { REFETCH_LIST_MS } from "./lib/polling";
-import { isRunning, isScheduled } from "./lib/status";
+import { isRunning, isScheduled, isTerminal, pickCurrentActiveJobId } from "./lib/status";
 
 export default function App() {
   // Open one websocket for the app lifetime — push events into the cache so
@@ -38,6 +38,33 @@ export default function App() {
       scheduled: list.reduce((n, d) => n + (isScheduled(d.status) ? 1 : 0), 0),
     };
   }, [downloads]);
+
+  // Auto-open the "current" job (running, falling back to pending) so the
+  // Jobs tab shows what's happening by default, and advance to the next
+  // active job when the one we opened finishes. We only act on selections
+  // we made ourselves — manual picks and explicit closes are respected.
+  const lastAutoSelectedRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!downloads) return;
+    const current = pickCurrentActiveJobId(downloads);
+    if (current === null) return;
+
+    if (selectedId === null) {
+      if (lastAutoSelectedRef.current === null) {
+        lastAutoSelectedRef.current = current;
+        setSelectedId(current);
+      }
+      return;
+    }
+
+    if (selectedId === lastAutoSelectedRef.current && current !== selectedId) {
+      const sel = downloads.find((d) => d.id === selectedId);
+      if (sel && isTerminal(sel.status)) {
+        lastAutoSelectedRef.current = current;
+        setSelectedId(current);
+      }
+    }
+  }, [downloads, selectedId]);
 
   const openJob = (id: number) => {
     setSelectedId(id);
