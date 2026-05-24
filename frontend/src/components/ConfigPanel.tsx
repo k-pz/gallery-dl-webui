@@ -39,7 +39,6 @@ export function ConfigPanel() {
   const [deleteRaw, setDeleteRaw] = useState(true);
   const [readingDirection, setReadingDirection] = useState("ltr");
   const [excludedDirsRaw, setExcludedDirsRaw] = useState("");
-  const [maxConcurrent, setMaxConcurrent] = useState<number>(2);
   const [maxPostprocess, setMaxPostprocess] = useState<number>(3);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -53,7 +52,6 @@ export function ConfigPanel() {
       setDeleteRaw(data.delete_raw_after_pack);
       setReadingDirection(data.default_reading_direction ?? "ltr");
       setExcludedDirsRaw((data.postprocess_excluded_dir_names ?? []).join(", "));
-      setMaxConcurrent(data.max_concurrent_downloads ?? 2);
       setMaxPostprocess(data.max_parallel_postprocess ?? 3);
     }
   }, [data]);
@@ -87,7 +85,6 @@ export function ConfigPanel() {
       chapterTemplate.trim() !== (data.chapter_naming_template ?? "") ||
       deleteRaw !== data.delete_raw_after_pack ||
       readingDirection !== (data.default_reading_direction ?? "ltr") ||
-      maxConcurrent !== (data.max_concurrent_downloads ?? 2) ||
       maxPostprocess !== (data.max_parallel_postprocess ?? 3) ||
       excludedDirty);
 
@@ -103,7 +100,6 @@ export function ConfigPanel() {
         chapter_naming_template: chapterTemplate.trim() || null,
         default_reading_direction: readingDirection,
         postprocess_excluded_dir_names: parsedExcluded,
-        max_concurrent_downloads: maxConcurrent,
         max_parallel_postprocess: maxPostprocess,
       },
     });
@@ -234,30 +230,18 @@ export function ConfigPanel() {
           <FormSection
             kicker="concurrency"
             title="Parallelism"
-            description="Applied at startup. Bumping these speeds up queue-heavy sessions but adds load on the source extractor and on disk I/O."
+            description="Applied at startup. Bumping this speeds up CBZ packing inside one job but adds disk I/O."
           >
-            <Group gap="xl" wrap="wrap">
-              <NumberInput
-                label="Max concurrent downloads"
-                description="Worker slots that drain the queue. Restart to apply."
-                value={maxConcurrent}
-                onChange={(v) => setMaxConcurrent(typeof v === "number" ? v : maxConcurrent)}
-                min={1}
-                max={16}
-                disabled={mutation.isPending}
-                w={240}
-              />
-              <NumberInput
-                label="Max parallel postprocess"
-                description="CBZ packing threads per job."
-                value={maxPostprocess}
-                onChange={(v) => setMaxPostprocess(typeof v === "number" ? v : maxPostprocess)}
-                min={1}
-                max={16}
-                disabled={mutation.isPending}
-                w={240}
-              />
-            </Group>
+            <NumberInput
+              label="Max parallel postprocess"
+              description="CBZ packing threads per job."
+              value={maxPostprocess}
+              onChange={(v) => setMaxPostprocess(typeof v === "number" ? v : maxPostprocess)}
+              min={1}
+              max={16}
+              disabled={mutation.isPending}
+              w={240}
+            />
           </FormSection>
 
           {(dirty || mutation.isPending || savedAt !== null || submitError) && (

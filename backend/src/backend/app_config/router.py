@@ -7,7 +7,6 @@ from backend.app_config.constants import (
     DEFAULT_CHAPTER_NAMING_TEMPLATE,
     DEFAULT_DELETE_RAW,
     DEFAULT_EXCLUDED_DIR_NAMES,
-    DEFAULT_MAX_CONCURRENT_DOWNLOADS,
     DEFAULT_MAX_PARALLEL_POSTPROCESS,
     DEFAULT_READING_DIRECTION,
     DEFAULT_WATCH_PERIOD,
@@ -53,9 +52,6 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
     reading_direction = cfg.get("default_reading_direction")
     if not isinstance(reading_direction, str) or reading_direction not in READING_DIRECTIONS:
         reading_direction = DEFAULT_READING_DIRECTION
-    max_concurrent = _coerce_clamped_int(
-        cfg.get("max_concurrent_downloads"), DEFAULT_MAX_CONCURRENT_DOWNLOADS
-    )
     max_postprocess = _coerce_clamped_int(
         cfg.get("max_parallel_postprocess"), DEFAULT_MAX_PARALLEL_POSTPROCESS
     )
@@ -68,7 +64,6 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
         default_watch_period=period,
         chapter_naming_template=chapter_template,
         default_reading_direction=reading_direction,
-        max_concurrent_downloads=max_concurrent,
         max_parallel_postprocess=max_postprocess,
     )
 
@@ -153,12 +148,6 @@ async def put_config(body: AppConfigIn, db: DbDep, bus: EventBusDep) -> AppConfi
             seen.add(cleaned)
             excluded_norm.append(cleaned)
 
-    max_concurrent = _coerce_clamped_int(
-        body.max_concurrent_downloads
-        if body.max_concurrent_downloads is not None
-        else existing.get("max_concurrent_downloads"),
-        DEFAULT_MAX_CONCURRENT_DOWNLOADS,
-    )
     max_post = _coerce_clamped_int(
         body.max_parallel_postprocess
         if body.max_parallel_postprocess is not None
@@ -175,7 +164,6 @@ async def put_config(body: AppConfigIn, db: DbDep, bus: EventBusDep) -> AppConfi
         "default_watch_period": period_raw,
         "chapter_naming_template": template_raw,
         "default_reading_direction": direction_raw,
-        "max_concurrent_downloads": max_concurrent,
         "max_parallel_postprocess": max_post,
     }
     await service.set_many(db, updates)

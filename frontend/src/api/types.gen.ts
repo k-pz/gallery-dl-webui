@@ -37,10 +37,6 @@ export type AppConfigIn = {
      */
     postprocess_excluded_dir_names?: Array<string> | null;
     /**
-     * Max Concurrent Downloads
-     */
-    max_concurrent_downloads?: number | null;
-    /**
      * Max Parallel Postprocess
      */
     max_parallel_postprocess?: number | null;
@@ -82,10 +78,6 @@ export type AppConfigOut = {
      * Default Reading Direction
      */
     default_reading_direction: string;
-    /**
-     * Max Concurrent Downloads
-     */
-    max_concurrent_downloads: number;
     /**
      * Max Parallel Postprocess
      */

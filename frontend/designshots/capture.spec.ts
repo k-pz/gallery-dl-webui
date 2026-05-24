@@ -134,7 +134,6 @@ async function seedConfig(request: APIRequestContext) {
       chapter_naming_template: "",
       default_reading_direction: "ltr",
       postprocess_excluded_dir_names: ["#recycle", "@eaDir"],
-      max_concurrent_downloads: 2,
       max_parallel_postprocess: 3,
     },
   });

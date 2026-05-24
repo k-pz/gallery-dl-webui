@@ -19,11 +19,6 @@ KNOWN_OUTPUT_DIRS_LIMIT = 20
 READING_DIRECTIONS = ("ltr", "rtl", "vertical", "webtoon")
 DEFAULT_READING_DIRECTION = "ltr"
 
-# How many gallery-dl simulation/download passes run in parallel. Two is a
-# conservative default: it doubles throughput for queue-heavy sessions while
-# keeping the load on the gallery-dl archive.db and the remote extractor
-# polite. The hard ceiling at construction time is 16.
-DEFAULT_MAX_CONCURRENT_DOWNLOADS = 2
 # Parallel CBZ packing inside one job's postprocess pass. zipfile releases the
 # GIL during deflate, so a small handful of threads is enough to overlap
 # packing with shutil.rmtree on the previous chapter.

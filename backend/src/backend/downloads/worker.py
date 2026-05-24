@@ -8,7 +8,6 @@ from gallery_dl.exception import StopExtraction
 from backend.app_config import service as app_config_service
 from backend.app_config.constants import (
     DEFAULT_CHAPTER_NAMING_TEMPLATE,
-    DEFAULT_MAX_CONCURRENT_DOWNLOADS,
     DEFAULT_MAX_PARALLEL_POSTPROCESS,
     DEFAULT_READING_DIRECTION,
     READING_DIRECTIONS,
@@ -32,12 +31,11 @@ logger = logging.getLogger(__name__)
 
 
 class Worker:
-    """Background coroutine pool that drains the `downloads` queue.
+    """Background coroutine that drains the `downloads` queue one job at a time.
 
-    `Worker` runs N "slots" (asyncio tasks) concurrently; each slot calls
-    `service.claim_next_pending`, which is atomic (see its docstring) so two
-    slots never end up on the same job. The pool size comes from
-    `app_config.max_concurrent_downloads` when available, with a small default.
+    Strictly serial: one job in flight, ever. The loop calls
+    `service.claim_next_pending` (atomic — see its docstring) to grab the
+    next pending row, processes it to terminal, then loops.
 
     `request_cancel(id)` signals a per-id flag the gallery-dl worker thread
     polls inside its per-file callback; the bool is single-writer (the event
@@ -59,7 +57,7 @@ class Worker:
         self._bus = event_bus
         self._wakeup = asyncio.Event()
         self._stop = asyncio.Event()
-        self._tasks: list[asyncio.Task[None]] = []
+        self._task: asyncio.Task[None] | None = None
         # Connection-wide lock. Shared with the maintenance worker + poller so
         # multi-statement transactions on the single aiosqlite connection
         # don't trip "SQL statements in progress" on concurrent commits.
@@ -70,25 +68,21 @@ class Worker:
         # worker thread.
         self._cancel_flags: dict[int, bool] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._max_slots = DEFAULT_MAX_CONCURRENT_DOWNLOADS
         self._max_postprocess = DEFAULT_MAX_PARALLEL_POSTPROCESS
 
     def start(self) -> None:
         self._loop = asyncio.get_event_loop()
-        # Bootstrap reads max-concurrency from app_config, then keeps the slot
-        # pool at that size. Doing this in a task avoids making start() async
-        # and keeps the lifespan wiring identical to the old single-slot worker.
-        self._tasks = [asyncio.create_task(self._supervisor(), name="downloads-worker-supervisor")]
+        self._task = asyncio.create_task(self._run(), name="downloads-worker")
 
     async def stop(self) -> None:
         self._stop.set()
         self._wakeup.set()
-        for task in self._tasks:
+        if self._task is not None:
             try:
-                await task
+                await self._task
             except asyncio.CancelledError:
                 pass
-        self._tasks = []
+        self._task = None
 
     def notify(self) -> None:
         self._wakeup.set()
@@ -105,42 +99,27 @@ class Worker:
             return
         self._bus.publish(*args, **kwargs)
 
-    async def _supervisor(self) -> None:
-        """Read concurrency settings from app_config once, then spawn the slot pool.
+    async def _run(self) -> None:
+        """Read postprocess parallelism once, then loop on the queue.
 
-        Each slot is a long-running coroutine; this task waits for them all to
-        finish on shutdown. Live-reconfiguring the slot count would require
-        more coordination — the user can bump max_concurrent_downloads in
-        config and restart the service.
+        Live-reconfiguring `max_parallel_postprocess` would require restarting
+        the worker — the user can bump the config and restart the service.
         """
         try:
             async with self._db_lock:
                 cfg = await app_config_service.get_all(self._db)
         except Exception:
             cfg = {}
-        slots = _coerce_int(cfg.get("max_concurrent_downloads"), DEFAULT_MAX_CONCURRENT_DOWNLOADS)
-        self._max_slots = max(1, min(slots, 16))
         post = _coerce_int(cfg.get("max_parallel_postprocess"), DEFAULT_MAX_PARALLEL_POSTPROCESS)
         self._max_postprocess = max(1, min(post, 16))
-        slot_tasks = [
-            asyncio.create_task(self._slot_loop(i), name=f"downloads-worker-{i}")
-            for i in range(self._max_slots)
-        ]
-        try:
-            await asyncio.gather(*slot_tasks, return_exceptions=True)
-        except asyncio.CancelledError:
-            for t in slot_tasks:
-                t.cancel()
-            raise
 
-    async def _slot_loop(self, slot_id: int) -> None:
         while not self._stop.is_set():
             self._wakeup.clear()
             try:
                 async with self._db_lock:
                     job = await service.claim_next_pending(self._db)
             except Exception:
-                logger.exception("claim_next_pending failed in slot %d", slot_id)
+                logger.exception("claim_next_pending failed")
                 await asyncio.sleep(1.0)
                 continue
             if job is None:
