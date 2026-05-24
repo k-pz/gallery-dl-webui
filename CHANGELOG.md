@@ -1,3 +1,10 @@
+## v1.8.5 (2026-05-24)
+
+### Fix
+
+- **maintenance**: repair UI-triggered LXC update when path unit drifts inactive
+- **backend**: parenthesise multi-type except clauses
+
 ## v1.8.4 (2026-05-24)
 
 ### Fix
