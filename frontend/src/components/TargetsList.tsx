@@ -12,7 +12,6 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -32,6 +31,7 @@ import { READING_DIRECTION_OPTIONS } from "../lib/readingDirection";
 import { SERIES_STATUS_OPTIONS, seriesStatusTone } from "../lib/seriesStatus";
 import { isActive, jobStatusLabel, statusTone } from "../lib/status";
 import { formatRel } from "../lib/time";
+import { useNotifyingMutation } from "../lib/useNotifyingMutation";
 import { EmptyState } from "./EmptyState";
 import {
   IconArrowUpRight,
@@ -286,41 +286,31 @@ function TargetRow({
     onError: (err) => setPeriodError(extractErrorMessage(err)),
   });
 
-  const poll = useMutation({
-    ...pollTargetMutation(),
-    onSuccess: () => {
-      notifications.show({
+  const poll = useNotifyingMutation(
+    {
+      ...pollTargetMutation(),
+      onSuccess: () => invalidate.targets(),
+    },
+    {
+      success: {
         title: "Poll queued",
         message: `Queued a fresh job for ${target.url}`,
         color: "blue",
-      });
-      invalidate.targets();
+      },
+      error: { title: "Poll failed" },
     },
-    onError: (err) =>
-      notifications.show({
-        title: "Poll failed",
-        message: extractErrorMessage(err),
-        color: "red",
-      }),
-  });
+  );
 
-  const del = useMutation({
-    ...deleteTargetMutation(),
-    onSuccess: () => {
-      notifications.show({
-        title: "Series removed",
-        message: target.url,
-        color: "gray",
-      });
-      invalidate.targets();
+  const del = useNotifyingMutation(
+    {
+      ...deleteTargetMutation(),
+      onSuccess: () => invalidate.targets(),
     },
-    onError: (err) =>
-      notifications.show({
-        title: "Delete failed",
-        message: extractErrorMessage(err),
-        color: "red",
-      }),
-  });
+    {
+      success: { title: "Series removed", message: target.url, color: "gray" },
+      error: { title: "Delete failed" },
+    },
+  );
 
   const submitPeriod = () => {
     if (!periodDirty) return;

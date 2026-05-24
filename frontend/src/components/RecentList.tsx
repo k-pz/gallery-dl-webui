@@ -1,6 +1,5 @@
 import { Box, Card, Group, Select, Stack, Text, Tooltip } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
   cancelDownloadMutation,
@@ -8,7 +7,6 @@ import {
   requeueDownloadMutation,
 } from "../api/@tanstack/react-query.gen";
 import type { DownloadOut } from "../api/types.gen";
-import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
 import { makeNeedleMatcher } from "../lib/listFilters";
 import { useOptimisticCancelMany } from "../lib/optimisticCancel";
@@ -22,6 +20,7 @@ import {
   jobStep,
   statusTone,
 } from "../lib/status";
+import { useNotifyingMutation } from "../lib/useNotifyingMutation";
 import { EmptyState } from "./EmptyState";
 import { IconActivity, IconRefresh, IconX } from "./Icons";
 import { ListHeader } from "./ListHeader";
@@ -88,51 +87,42 @@ export function RecentList({
     invalidate.download(id);
   };
 
-  const cancel = useMutation({
-    ...cancelDownloadMutation(),
-    onMutate: (vars) => {
-      cancelIntent.mark(vars.path.download_id);
+  const cancel = useNotifyingMutation(
+    {
+      ...cancelDownloadMutation(),
+      onMutate: (vars) => {
+        cancelIntent.mark(vars.path.download_id);
+      },
+      onSuccess: (d) => refresh(d.id),
+      onError: (_err, vars) => cancelIntent.clear(vars.path.download_id),
     },
-    onSuccess: (d) => {
-      notifications.show({
+    {
+      success: {
         title: "Cancel requested",
-        message: `Job #${d.id} is being cancelled.`,
+        message: (d) => `Job #${d.id} is being cancelled.`,
         color: "orange",
-      });
-      refresh(d.id);
+      },
+      error: { title: (_err, vars) => `Cancel failed (#${vars.path.download_id})` },
     },
-    onError: (err, vars) => {
-      const id = vars.path.download_id;
-      cancelIntent.clear(id);
-      notifications.show({
-        title: `Cancel failed (#${id})`,
-        message: extractErrorMessage(err),
-        color: "red",
-      });
-    },
-  });
+  );
 
-  const requeue = useMutation({
-    ...requeueDownloadMutation(),
-    onMutate: (vars) => {
-      cancelIntent.clear(vars.path.download_id);
+  const requeue = useNotifyingMutation(
+    {
+      ...requeueDownloadMutation(),
+      onMutate: (vars) => {
+        cancelIntent.clear(vars.path.download_id);
+      },
+      onSuccess: (d) => refresh(d.id),
     },
-    onSuccess: (d) => {
-      notifications.show({
+    {
+      success: {
         title: "Requeued",
-        message: `Job #${d.id} has been queued again.`,
+        message: (d) => `Job #${d.id} has been queued again.`,
         color: "blue",
-      });
-      refresh(d.id);
+      },
+      error: { title: (_err, vars) => `Requeue failed (#${vars.path.download_id})` },
     },
-    onError: (err, vars) => {
-      notifications.show({
-        title: `Requeue failed (#${vars.path.download_id})`,
-        message: extractErrorMessage(err),
-        color: "red",
-      });
-    },
-  });
+  );
 
   const inflightId =
     cancel.isPending && cancel.variables
