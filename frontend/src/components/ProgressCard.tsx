@@ -104,6 +104,7 @@ export function ProgressCard({
       <Progress value={pct} size="md" radius="sm" striped={!terminal} animated={!terminal} />
       {manifestReady && (
         <Box
+          className="active-job-chapters"
           style={{
             border: "1px solid var(--app-border-subtle)",
             borderRadius: "var(--mantine-radius-md)",
