@@ -59,20 +59,20 @@ def _normalize_entry(raw: dict[str, Any]) -> dict[str, Any]:
     pri_raw = raw.get("PRIORITY")
     try:
         pri = int(pri_raw) if pri_raw is not None else 6
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         pri = 6
     ts_us_raw = raw.get("__REALTIME_TIMESTAMP")
     try:
         # journald stores microseconds since epoch as a string.
         ts_ms = int(ts_us_raw) // 1000 if ts_us_raw is not None else None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         ts_ms = None
     message = raw.get("MESSAGE")
     if isinstance(message, list):
         # Binary fields come back as a list of ints — render as best-effort utf-8.
         try:
             message = bytes(message).decode("utf-8", errors="replace")
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             message = str(message)
     elif message is None:
         message = ""
@@ -168,7 +168,7 @@ async def _stream(request: Request, lines: int) -> AsyncIterator[bytes]:
             if proc.stderr is not None:
                 try:
                     stderr = await proc.stderr.read()
-                except (OSError, ValueError):
+                except OSError, ValueError:
                     stderr = b""
             logger.warning(
                 "journalctl exited with %s: %s",
