@@ -1,3 +1,9 @@
+## v1.11.0 (2026-05-24)
+
+### Feat
+
+- **frontend**: sync active tab with the URL
+
 ## v1.10.1 (2026-05-24)
 
 ### Fix
