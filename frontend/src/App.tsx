@@ -15,6 +15,7 @@ import { RecentList } from "./components/RecentList";
 import { RunningJobsPanel } from "./components/RunningJobsPanel";
 import { SubmitForm } from "./components/SubmitForm";
 import { TargetsList } from "./components/TargetsList";
+import { useRouteTab } from "./hooks/useRouteTab";
 import { useEventStream } from "./lib/eventStream";
 import { REFETCH_LIST_MS } from "./lib/polling";
 import { isRunning, isScheduled, isTerminal, pickCurrentActiveJobId } from "./lib/status";
@@ -24,7 +25,7 @@ export default function App() {
   // lists refresh immediately on server-side state changes.
   useEventStream();
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [tab, setTab] = useState<string | null>("library");
+  const [tab, setTab] = useRouteTab();
   const [navOpen, setNavOpen] = useState(false);
 
   const { data: downloads } = useQuery({
