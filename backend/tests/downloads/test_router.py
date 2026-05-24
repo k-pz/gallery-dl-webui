@@ -244,7 +244,7 @@ def test_requeue_unknown_download_returns_404(client: TestClient) -> None:
 def test_create_download_invokes_fake_gallery(
     client: TestClient,
     gallery_config: FakeGalleryConfig,
-    gallery_holder: dict[str, FakeGallery],
+    gallery: FakeGallery,
 ) -> None:
     """Sanity check that the route consulted the (fake) Gallery, not the real one."""
     gallery_config.extractor_for["https://example/x"] = "marker"
@@ -252,5 +252,4 @@ def test_create_download_invokes_fake_gallery(
     resp = client.post("/api/downloads", json={"url": "https://example/x"})
     assert resp.json()["extractor"] == "marker"
 
-    gallery = gallery_holder["gallery"]
     assert isinstance(gallery, FakeGallery)
