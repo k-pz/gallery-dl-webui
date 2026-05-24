@@ -6,20 +6,7 @@ from typing import Any
 import aiosqlite
 
 from backend.database import insert_returning_id, now_iso
-from backend.maintenance.models import MaintenanceJob
-
-
-def _row_to_job(row: aiosqlite.Row) -> MaintenanceJob:
-    return MaintenanceJob(
-        id=row["id"],
-        kind=row["kind"],
-        status=row["status"],
-        created_at=row["created_at"],
-        started_at=row["started_at"],
-        finished_at=row["finished_at"],
-        result_json=row["result_json"],
-        error=row["error"],
-    )
+from backend.maintenance.schemas import MaintenanceJob
 
 
 async def create_pending(db: aiosqlite.Connection, kind: str) -> MaintenanceJob:
@@ -37,7 +24,7 @@ async def create_pending(db: aiosqlite.Connection, kind: str) -> MaintenanceJob:
         created_at=created,
         started_at=None,
         finished_at=None,
-        result_json=None,
+        result=None,
         error=None,
     )
 
@@ -59,7 +46,7 @@ async def claim_next_pending(db: aiosqlite.Connection) -> MaintenanceJob | None:
         updated = await cur.fetchone()
     if updated is None:
         return None
-    return _row_to_job(updated)
+    return MaintenanceJob.from_row(updated)
 
 
 async def mark_completed(db: aiosqlite.Connection, id_: int, result: dict[str, Any]) -> None:
@@ -119,7 +106,7 @@ async def list_jobs(db: aiosqlite.Connection, limit: int = 50) -> list[Maintenan
         (limit,),
     ) as cur:
         rows = await cur.fetchall()
-    return [_row_to_job(row) for row in rows]
+    return [MaintenanceJob.from_row(row) for row in rows]
 
 
 async def get_job(db: aiosqlite.Connection, id_: int) -> MaintenanceJob | None:
@@ -130,4 +117,4 @@ async def get_job(db: aiosqlite.Connection, id_: int) -> MaintenanceJob | None:
         row = await cur.fetchone()
     if row is None:
         return None
-    return _row_to_job(row)
+    return MaintenanceJob.from_row(row)
