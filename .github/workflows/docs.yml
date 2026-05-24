@@ -55,6 +55,14 @@ jobs:
         with:
           package_json_file: frontend/package.json
 
+      - name: Configure Pages
+        # Asserts that the repo's Pages source is "GitHub Actions" (i.e.
+        # build_type: workflow). If it's still on the default "Deploy from a
+        # branch", this step fails fast with an actionable error instead of
+        # letting the build run for minutes and then producing a deploy that
+        # silently goes nowhere. Set the source in Settings → Pages.
+        uses: actions/configure-pages@v5
+
       - name: Cache uv package downloads
         uses: actions/cache@v4
         with:
