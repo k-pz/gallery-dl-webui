@@ -1102,6 +1102,59 @@ a {
   }
 }
 
+/* Active job card — desktop shows Mantine's full Stepper with labels beside
+   each icon. The caption underneath is mobile-only filler. */
+.active-job-step-caption {
+  display: none;
+}
+
+/* Phones: declutter the active job card.
+   - Title row: let the action buttons (Cancel/Requeue) wrap onto their own
+     line so the title can use the full width.
+   - Stepper: hide per-step text labels and tighten the separator runs so the
+     six icons sit in one compact row. Surface the current step as a single
+     "Step N of 6 — Name" caption underneath.
+   - Chapter list: shrink the repeating status pill so it stops dominating
+     the row (no letter-spacing, smaller font, tighter padding). */
+@media (max-width: 540px) {
+  .active-job-head {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .active-job-head-actions {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+
+  .active-job-stepper .mantine-Stepper-stepLabel,
+  .active-job-stepper .mantine-Stepper-stepDescription,
+  .active-job-stepper .mantine-Stepper-stepBody {
+    display: none;
+  }
+  .active-job-stepper .mantine-Stepper-separator {
+    margin-left: 4px;
+    margin-right: 4px;
+    min-width: 12px;
+  }
+  .active-job-step-caption {
+    display: block;
+    margin-top: 6px;
+    font-family: var(--app-mono);
+    letter-spacing: 0.04em;
+  }
+
+  .active-job-chapters .pill {
+    padding: 2px 7px;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    gap: 0.3rem;
+  }
+  .active-job-chapters .pill::before {
+    width: 0.35rem;
+    height: 0.35rem;
+  }
+}
+
 /* Modal scrim + dialog box — themed replacement for native confirm. */
 .app-scrim {
   position: fixed;
