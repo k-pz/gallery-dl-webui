@@ -4,7 +4,13 @@ name: ci
 # Each suite (backend pytest, frontend vitest, Playwright e2e) runs in its
 # own job. Unit-test jobs upload coverage as workflow artifacts and write
 # a one-line summary to the job page; the e2e job uploads the Playwright
-# HTML report on failure.
+# HTML report (always).
+#
+# Toolchain versions (python / uv / node) live in mise.toml — never
+# duplicate them here. `jdx/mise-action` reads mise.toml and installs the
+# pinned versions; corepack activates the pnpm version pinned in
+# frontend/package.json's `packageManager` field. Lint/typecheck steps
+# call `mise run <task>` so the exact same commands run locally and in CI.
 
 on:
   pull_request:
@@ -31,22 +37,26 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install uv (with pinned Python)
-        uses: astral-sh/setup-uv@v7
+      - name: Setup mise toolchain (python + uv + node)
+        uses: jdx/mise-action@v2
         with:
-          enable-cache: true
-          cache-dependency-glob: backend/uv.lock
+          cache: true
+
+      - name: Cache uv package downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('backend/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-
 
       - name: Sync backend deps
         run: uv sync --frozen
 
       - name: Lint (ruff)
-        run: |
-          uv run ruff check .
-          uv run ruff format --check .
+        run: mise run lint:backend
 
       - name: Typecheck (ty)
-        run: uv run ty check
+        run: mise run typecheck:backend
 
       - name: Test (pytest + coverage)
         run: |
@@ -88,28 +98,34 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - name: Setup mise toolchain (python + uv + node)
+        uses: jdx/mise-action@v2
         with:
-          # The "packageManager" field lives in frontend/package.json, not at
-          # the repo root where the action looks by default.
-          package_json_file: frontend/package.json
+          cache: true
 
-      - name: Setup Node
-        uses: actions/setup-node@v5
+      - name: Activate pnpm via corepack
+        # pnpm version comes from frontend/package.json's "packageManager"
+        # field — same pattern as the local `mise run install` task.
+        run: corepack enable
+
+      - name: Resolve pnpm store path
+        run: echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
         with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          path: ${{ env.PNPM_STORE_PATH }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
       - name: Lint (biome)
-        run: pnpm lint
+        run: mise run lint:frontend
 
       - name: Typecheck (tsc)
-        run: pnpm typecheck
+        run: mise run typecheck:frontend
 
       - name: Test (vitest + coverage)
         run: |
@@ -166,11 +182,30 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install uv (with pinned Python)
-        uses: astral-sh/setup-uv@v7
+      - name: Setup mise toolchain (python + uv + node)
+        uses: jdx/mise-action@v2
         with:
-          enable-cache: true
-          cache-dependency-glob: backend/uv.lock
+          cache: true
+
+      - name: Activate pnpm via corepack
+        run: corepack enable
+
+      - name: Resolve pnpm store path
+        run: echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: Cache uv package downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('backend/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PNPM_STORE_PATH }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
 
       - name: Sync backend deps
         working-directory: backend
@@ -185,18 +220,6 @@ jobs:
         # "Timed out waiting for webServer".
         working-directory: backend
         run: PYTHONPATH=. uv run python -c "import tests.e2e_server; print('e2e app import ok')"
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          package_json_file: frontend/package.json
-
-      - name: Setup Node
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
