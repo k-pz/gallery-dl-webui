@@ -1,3 +1,10 @@
+## v1.8.3 (2026-05-24)
+
+### Refactor
+
+- **backend**: drop the db_lock plumbing now that the worker is serial
+- **downloads**: serialise the worker and drop max_concurrent_downloads
+
 ## v1.8.2 (2026-05-24)
 
 ### Fix
