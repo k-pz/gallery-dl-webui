@@ -1,3 +1,11 @@
+## v1.8.6 (2026-05-24)
+
+### Refactor
+
+- **maintenance**: collapse MaintenanceJob+MaintenanceJobOut into one Pydantic model
+- **targets**: collapse Target+TargetSummary+TargetOut into one Pydantic model
+- **downloads**: collapse Download dataclass + DownloadOut Pydantic + translator
+
 ## v1.8.5 (2026-05-24)
 
 ### Fix
