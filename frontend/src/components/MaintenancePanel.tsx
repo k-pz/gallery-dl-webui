@@ -119,7 +119,7 @@ export function MaintenancePanel() {
 
       <UpdateLxcCard
         scheduling={schedule.isPending}
-        onSchedule={() => schedule.mutate({ body: { kind: "update_lxc" } })}
+        onSchedule={() => schedule.mutateAsync({ body: { kind: "update_lxc" } })}
       />
 
       <RebuildLibraryCard

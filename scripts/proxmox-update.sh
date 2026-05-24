@@ -183,11 +183,17 @@ in_ct_sh "getent group systemd-journal >/dev/null \
     && usermod -aG systemd-journal '${APP_USER}' \
     || usermod -aG adm '${APP_USER}' || true"
 
-# ---- Install in-CT update trigger units (one-time) ------------------------
+# ---- Install in-CT update trigger units -----------------------------------
 #
 # CTs created before this feature lack the path+service pair that lets the
 # webapp's Maintenance tab self-trigger /usr/local/bin/update. Drop them in
 # idempotently so existing installs converge on the next host-side update.
+#
+# The `enable --now` below runs UNCONDITIONALLY: `systemctl enable` is a
+# no-op when the unit is already enabled, and `--now` also re-starts the
+# unit if it's drifted to inactive between updates (boot transient, manual
+# stop, etc.). Without this, a path unit that stops once stays stopped —
+# webapp-triggered updates then silently write a trigger nobody watches.
 
 UPDATE_UNIT_PATH="/etc/systemd/system/gallery-dl-webui-update.path"
 UPDATE_UNIT_SERVICE="/etc/systemd/system/gallery-dl-webui-update.service"
@@ -221,8 +227,9 @@ Unit=gallery-dl-webui-update.service
 WantedBy=multi-user.target
 EOF
     in_ct systemctl daemon-reload
-    in_ct systemctl enable --now gallery-dl-webui-update.path
 fi
+
+in_ct systemctl enable --now gallery-dl-webui-update.path
 
 # ---- Restart --------------------------------------------------------------
 #
