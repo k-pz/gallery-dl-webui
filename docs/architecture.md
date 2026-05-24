@@ -147,11 +147,11 @@ gallery-dl-webui/
 │   │   │   ├── postprocess.py ← CBZ packing + ComicInfo.xml
 │   │   │   ├── progress.py    ← per-chapter stage derivation
 │   │   │   ├── live_progress.py ← in-memory progress for in-flight downloads
-│   │   │   ├── models.py / schemas.py / dependencies.py / exceptions.py / constants.py
+│   │   │   ├── schemas.py / dependencies.py / exceptions.py / constants.py
 │   │   │
 │   │   ├── targets/           ← saved series; watched/poller logic
 │   │   │   ├── router.py / service.py / poller.py / utils.py
-│   │   │   ├── models.py / schemas.py / dependencies.py / exceptions.py
+│   │   │   ├── schemas.py / dependencies.py / exceptions.py
 │   │   │
 │   │   ├── app_config/        ← app-wide config key/value (postprocess_root, etc.)
 │   │   │   ├── router.py / service.py / schemas.py / constants.py / exceptions.py
