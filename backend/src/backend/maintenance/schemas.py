@@ -47,10 +47,6 @@ class MaintenanceJob(BaseModel):
 
 class MaintenanceScheduleIn(BaseModel):
     kind: str
-    # Per-job, non-persisted parameters. Used by the `push_komga_series_status`
-    # kind to carry Komga URL + credentials from the schedule request into the
-    # worker without writing them to the DB. Validated server-side per kind.
-    params: dict[str, Any] | None = None
 
 
 class MaintenanceProgressOut(BaseModel):

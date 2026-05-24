@@ -40,6 +40,14 @@ export type AppConfigIn = {
      * Max Parallel Postprocess
      */
     max_parallel_postprocess?: number | null;
+    /**
+     * Komga Base Url
+     */
+    komga_base_url?: string | null;
+    /**
+     * Komga Api Key
+     */
+    komga_api_key?: string | null;
 };
 
 /**
@@ -82,6 +90,14 @@ export type AppConfigOut = {
      * Max Parallel Postprocess
      */
     max_parallel_postprocess: number;
+    /**
+     * Komga Base Url
+     */
+    komga_base_url: string | null;
+    /**
+     * Komga Api Key
+     */
+    komga_api_key: string | null;
 };
 
 /**
@@ -336,12 +352,6 @@ export type MaintenanceScheduleIn = {
      * Kind
      */
     kind: string;
-    /**
-     * Params
-     */
-    params?: {
-        [key: string]: unknown;
-    } | null;
 };
 
 /**

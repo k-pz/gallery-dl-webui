@@ -30,8 +30,8 @@ from backend.maintenance import service
 from backend.maintenance.komga import (
     KomgaPushResult,
     TargetForPush,
+    load_credentials,
     push_series_statuses,
-    validate_credentials,
 )
 from backend.maintenance.live_progress import MaintenanceLiveProgress
 from backend.targets import service as targets_service
@@ -229,12 +229,6 @@ class MaintenanceWorker:
         # GIL-atomic, which is all the sync we need.
         self._current_id: int | None = None
         self._cancel_requested: bool = False
-        # Per-job credentials for kinds that need them (only push_komga_series_status
-        # today). Stashed by the router before the DB row is created so the
-        # worker can claim → execute → drop without ever persisting secrets.
-        # Bounded by the number of pending+running jobs; cleared on terminal
-        # transitions and on cancel-pending.
-        self._pending_params: dict[int, dict[str, object]] = {}
 
     def start(self) -> None:
         self._loop = asyncio.get_event_loop()
@@ -263,14 +257,6 @@ class MaintenanceWorker:
             return True
         return False
 
-    def stash_params(self, id_: int, params: dict[str, object]) -> None:
-        """Register per-job parameters (e.g. Komga credentials) by job id."""
-        self._pending_params[id_] = params
-
-    def drop_params(self, id_: int) -> None:
-        """Discard stashed params (called when a pending job is cancelled before claim)."""
-        self._pending_params.pop(id_, None)
-
     async def _run(self) -> None:
         while not self._stop.is_set():
             self._wakeup.clear()
@@ -291,7 +277,6 @@ class MaintenanceWorker:
                 self._live.clear(job.id)
                 self._current_id = None
                 self._cancel_requested = False
-                self._pending_params.pop(job.id, None)
                 self._emit("updated", id=job.id, status="cancelled")
                 continue
             except Exception as exc:
@@ -301,7 +286,6 @@ class MaintenanceWorker:
                 self._live.clear(job.id)
                 self._current_id = None
                 self._cancel_requested = False
-                self._pending_params.pop(job.id, None)
                 self._emit("updated", id=job.id, status="failed")
                 continue
             self._live.record(job.id, f"done: {result}")
@@ -309,7 +293,6 @@ class MaintenanceWorker:
             self._live.clear(job.id)
             self._current_id = None
             self._cancel_requested = False
-            self._pending_params.pop(job.id, None)
             self._emit("updated", id=job.id, status="completed")
 
     def _should_cancel(self) -> bool:
@@ -545,15 +528,16 @@ class MaintenanceWorker:
     async def _run_push_komga_status(self, job_id: int) -> dict[str, int]:
         """Push every target's local `series_status` into the matching Komga series.
 
-        Credentials come from `_pending_params` (router-stashed at schedule
-        time); we pop them up front so a retry would correctly fail rather
-        than silently re-using stale values. Series with no local status or a
-        local status that doesn't map to a Komga enum are skipped; same for
-        zero/multiple Komga matches by name. The job itself never fails on
-        per-series errors — it tallies them and reports the breakdown.
+        Credentials live in `app_config` (`komga_base_url` + `komga_api_key`,
+        set via the Config tab). We re-read them here at claim time so an
+        edit between schedule and execution is honoured. Series with no local
+        status or a local status that doesn't map to a Komga enum are
+        skipped; same for zero/multiple Komga matches by name. The job
+        itself never fails on per-series errors — it tallies them and
+        reports the breakdown.
         """
-        params = self._pending_params.pop(job_id, None)
-        creds = validate_credentials(params)
+        cfg = await app_config_service.get_all(self._db)
+        creds = load_credentials(cfg)
 
         targets = await targets_service.list_all(self._db)
         # Only push for targets that have a name to search by. Status-less
