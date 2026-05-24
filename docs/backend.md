@@ -90,8 +90,10 @@ Each domain folder follows the same shape:
 <domain>/
   router.py        ← APIRouter, route handlers, request validation
   service.py       ← SQL operations on this domain's tables
-  schemas.py       ← Pydantic IO models (FooIn / FooOut / FooCreate / FooUpdate)
-  models.py        ← dataclasses for internal row representations
+  schemas.py       ← Pydantic models — used both as the internal row shape
+                     and as the wire DTO. `Foo.from_row(row)` constructs
+                     from a SELECT; `FooCreate` / `FooUpdate` cover I/O-only
+                     shapes that don't round-trip a row.
   dependencies.py  ← FastAPI Depends() callables (e.g. valid_<id> lookups)
   exceptions.py    ← domain-specific HTTPException subclasses
   constants.py     ← status taxonomies, defaults, limits
@@ -188,7 +190,7 @@ time.
 - `service.update(id, *, watched, watch_period, output_dir, tags,
   reading_direction, series_status)` — sentinel-typed optional updates so
   `None` can mean "leave it" or "clear it" depending on field (see `Unset`
-  in `models.py`).
+  in `service.py`).
 - `service.set_name(id, name)` — captured by the worker from the simulation
   pass and again, more authoritatively, from the real download.
 - `service.set_series_status(id, status)` — fill-only: writes the
