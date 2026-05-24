@@ -170,12 +170,14 @@ run = "pnpm run build-storybook"
 description = "Live-reload docs site on http://localhost:8000 (mkdocs serve)"
 dir = "{{config_root}}/backend"
 depends = ["docs:typescript"]
+env = { DISABLE_MKDOCS_2_WARNING = "true" }
 run = "uv run --group docs mkdocs serve -f {{config_root}}/mkdocs.yml"
 
 [tasks."docs:build"]
 description = "Build the docs site + Storybook into ./site (mirrors the CI Pages layout)"
 dir = "{{config_root}}/backend"
 depends = ["docs:typescript", "docs:storybook:build"]
+env = { DISABLE_MKDOCS_2_WARNING = "true" }
 run = [
     "uv run --group docs mkdocs build -f {{config_root}}/mkdocs.yml",
     "rm -rf {{config_root}}/site/storybook",
@@ -186,6 +188,7 @@ run = [
 description = "Strict docs build (fails on broken refs/links) — used by CI"
 dir = "{{config_root}}/backend"
 depends = ["docs:typescript"]
+env = { DISABLE_MKDOCS_2_WARNING = "true" }
 run = "uv run --group docs mkdocs build --strict -f {{config_root}}/mkdocs.yml"
 
 # ---- Cleanup -------------------------------------------------------------
