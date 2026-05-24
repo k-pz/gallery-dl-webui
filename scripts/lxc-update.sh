@@ -141,12 +141,17 @@ if [[ -f "$UNIT_PATH" ]] && ! grep -qF "$DESIRED_EXEC" "$UNIT_PATH"; then
     systemctl daemon-reload
 fi
 
-# ---- Install in-CT update trigger units (one-time) ------------------------
+# ---- Install in-CT update trigger units -----------------------------------
 #
 # Older CTs (pre this feature) don't have the path+service pair that lets the
 # webapp's Maintenance tab fire this very script. Drop them in idempotently
-# so existing installs converge on the first run from the console; subsequent
-# runs (host- or webapp-triggered) skip the write.
+# so existing installs converge on the first run from the console.
+#
+# The `enable --now` below runs UNCONDITIONALLY: `systemctl enable` is a
+# no-op when the unit is already enabled, and `--now` also re-starts the
+# unit if it's drifted to inactive between updates (boot transient, manual
+# stop, etc.). Without this, a path unit that stops once stays stopped —
+# webapp-triggered updates then silently write a trigger nobody watches.
 
 UPDATE_UNIT_PATH="/etc/systemd/system/gallery-dl-webui-update.path"
 UPDATE_UNIT_SERVICE="/etc/systemd/system/gallery-dl-webui-update.service"
@@ -180,8 +185,9 @@ Unit=gallery-dl-webui-update.service
 WantedBy=multi-user.target
 EOF
     systemctl daemon-reload
-    systemctl enable --now gallery-dl-webui-update.path
 fi
+
+systemctl enable --now gallery-dl-webui-update.path
 
 # ---- Ensure service user can read its own journal (one-time) --------------
 #

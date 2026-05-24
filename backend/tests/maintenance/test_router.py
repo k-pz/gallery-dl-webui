@@ -657,7 +657,7 @@ def test_update_lxc_writes_trigger_when_path_unit_enabled(
     """update_lxc should drop the trigger file inside DATA_DIR and complete."""
     from backend.maintenance import worker as worker_mod
 
-    monkeypatch.setattr(worker_mod, "_update_path_unit_enabled", lambda: True)
+    monkeypatch.setattr(worker_mod, "_update_path_unit_active", lambda: True)
 
     created = client.post("/api/maintenance/jobs", json={"kind": "update_lxc"})
     assert created.status_code == 200, created.json()
@@ -672,13 +672,39 @@ def test_update_lxc_writes_trigger_when_path_unit_enabled(
     assert trigger.read_text(encoding="utf-8") == "requested\n"
 
 
-def test_update_lxc_fails_when_path_unit_not_enabled(
+def test_update_lxc_writes_trigger_even_when_stale_file_exists(
     client: TestClient, settings, monkeypatch
 ) -> None:
-    """No path unit installed → job fails fast instead of leaving a stale file."""
+    """A leftover trigger from a previous run must not suppress the inotify
+    IN_CREATE — `_write_update_trigger` unlinks before writing."""
     from backend.maintenance import worker as worker_mod
 
-    monkeypatch.setattr(worker_mod, "_update_path_unit_enabled", lambda: False)
+    monkeypatch.setattr(worker_mod, "_update_path_unit_active", lambda: True)
+
+    stale = settings.data_dir / worker_mod.UPDATE_TRIGGER_FILENAME
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("stale\n", encoding="utf-8")
+    stale_inode = stale.stat().st_ino
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "update_lxc"})
+    assert created.status_code == 200, created.json()
+    job_id = created.json()["id"]
+
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "completed", done
+    assert stale.read_text(encoding="utf-8") == "requested\n"
+    # New inode confirms unlink+create rather than O_TRUNC overwrite — that's
+    # what gets systemd's PathExists to refire.
+    assert stale.stat().st_ino != stale_inode
+
+
+def test_update_lxc_fails_when_path_unit_inactive(
+    client: TestClient, settings, monkeypatch
+) -> None:
+    """Path unit dead → job fails fast instead of leaving a stale file."""
+    from backend.maintenance import worker as worker_mod
+
+    monkeypatch.setattr(worker_mod, "_update_path_unit_active", lambda: False)
 
     created = client.post("/api/maintenance/jobs", json={"kind": "update_lxc"})
     assert created.status_code == 200, created.json()
@@ -686,7 +712,7 @@ def test_update_lxc_fails_when_path_unit_not_enabled(
 
     done = _wait_for_completion(client, job_id)
     assert done["status"] == "failed", done
-    assert "update infrastructure not installed" in (done["error"] or "")
+    assert "is not active" in (done["error"] or "")
     assert not (settings.data_dir / worker_mod.UPDATE_TRIGGER_FILENAME).exists()
 
 
