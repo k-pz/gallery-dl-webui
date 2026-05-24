@@ -57,9 +57,7 @@ export function UpdateLxcCard({
     refetchInterval: 3000,
   });
   const trackedJob =
-    trackedJobId !== null
-      ? (jobs.data ?? []).find((j) => j.id === trackedJobId)
-      : undefined;
+    trackedJobId !== null ? (jobs.data ?? []).find((j) => j.id === trackedJobId) : undefined;
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: checkForUpdatesQueryKey() });
