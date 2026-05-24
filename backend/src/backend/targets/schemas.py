@@ -1,11 +1,23 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+import json
+from typing import Any
 
-from backend.targets.models import TargetSummary
+import aiosqlite
+from pydantic import BaseModel, field_validator
 
 
-class TargetOut(BaseModel):
+class Target(BaseModel):
+    """A row from the `targets` table, optionally joined with summary stats.
+
+    The summary fields (`last_*`, `download_count`) are hydrated only when
+    the row came from `service.list_all` / `service.get_summary` (those
+    queries do the JOIN); otherwise they're None/0.
+
+    `tags` round-trips through a JSON-encoded TEXT column; the field
+    validator parses the raw string back into a list of strings.
+    """
+
     id: int
     url: str
     name: str | None
@@ -15,36 +27,44 @@ class TargetOut(BaseModel):
     watch_period: str | None
     last_polled_at: str | None
     created_at: str
-    last_download_id: int | None
-    last_status: str | None
-    last_finished_at: str | None
-    last_created_at: str | None
-    download_count: int
-    tags: list[str]
-    reading_direction: str | None
-    series_status: str | None
+    tags: list[str] = []
+    reading_direction: str | None = None
+    series_status: str | None = None
+    # Joined summary fields (None/0 when not from the summary SELECT):
+    last_download_id: int | None = None
+    last_status: str | None = None
+    last_finished_at: str | None = None
+    last_created_at: str | None = None
+    download_count: int = 0
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _decode_tags(cls, v: Any) -> Any:
+        # The DB column is a JSON-encoded list-of-strings (or NULL); the
+        # router/service path may also pass an already-decoded list.
+        if v is None or v == "":
+            return []
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+            except json.JSONDecodeError:
+                return []
+            return parsed if isinstance(parsed, list) else []
+        return v
+
+    @field_validator("watched", mode="before")
+    @classmethod
+    def _coerce_watched(cls, v: Any) -> bool:
+        return bool(v)
+
+    @field_validator("download_count", mode="before")
+    @classmethod
+    def _coerce_download_count(cls, v: Any) -> int:
+        return int(v) if v is not None else 0
 
     @classmethod
-    def from_summary(cls, s: TargetSummary) -> TargetOut:
-        return cls(
-            id=s.target.id,
-            url=s.target.url,
-            name=s.target.name,
-            extractor=s.target.extractor,
-            output_dir=s.target.output_dir,
-            watched=s.target.watched,
-            watch_period=s.target.watch_period,
-            last_polled_at=s.target.last_polled_at,
-            created_at=s.target.created_at,
-            last_download_id=s.last_download_id,
-            last_status=s.last_status,
-            last_finished_at=s.last_finished_at,
-            last_created_at=s.last_created_at,
-            download_count=s.download_count,
-            tags=list(s.target.tags),
-            reading_direction=s.target.reading_direction,
-            series_status=s.target.series_status,
-        )
+    def from_row(cls, row: aiosqlite.Row) -> Target:
+        return cls.model_validate(dict(row))
 
 
 class TargetUpdate(BaseModel):

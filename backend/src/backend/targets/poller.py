@@ -21,7 +21,7 @@ from backend.downloads import service as downloads_service
 from backend.downloads.worker import Worker
 from backend.events import EventBus, downloads_event, targets_event
 from backend.targets import service as targets_service
-from backend.targets.models import Target
+from backend.targets.schemas import Target
 from backend.targets.utils import parse_duration
 
 logger = logging.getLogger(__name__)

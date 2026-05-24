@@ -78,7 +78,7 @@ async def _designated_output_dirs(db: aiosqlite.Connection, cfg: dict[str, objec
     # are kept verbatim — the user's exclusion rules are name-based.
     seen: dict[str, Path] = {}
     for summary in targets:
-        raw = summary.target.output_dir or default
+        raw = summary.output_dir or default
         if not raw:
             continue
         if raw in seen:
@@ -404,12 +404,11 @@ class MaintenanceWorker:
         if not targets:
             return out
         sink.step(f"rediscovering metadata for {len(targets)} target(s)…")
-        for summary in targets:
+        for target in targets:
             if self._should_cancel():
                 # Rediscovery is best-effort; cancellation aborts the loop and
                 # the regen still runs on whatever was rediscovered so far.
                 break
-            target = summary.target
             if not target.url:
                 continue
             try:
@@ -505,7 +504,7 @@ class MaintenanceWorker:
         # target row so output_dir + tags + reading_direction stick — only the
         # download history is gone.
         enqueued = 0
-        for summary in targets:
+        for target in targets:
             if self._should_cancel():
                 raise MaintenanceCancelled(
                     {
@@ -515,7 +514,6 @@ class MaintenanceWorker:
                         "enqueued": enqueued,
                     }
                 )
-            target = summary.target
             await downloads_service.insert_pending(
                 self._db,
                 target.url,
@@ -558,9 +556,9 @@ class MaintenanceWorker:
         # targets are still counted (and skipped with a clear log line) so the
         # totals make sense.
         candidates: list[TargetForPush] = [
-            TargetForPush(name=t.target.name, series_status=t.target.series_status or "")
+            TargetForPush(name=t.name, series_status=t.series_status or "")
             for t in targets
-            if t.target.name
+            if t.name
         ]
 
         sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
@@ -642,8 +640,7 @@ class MaintenanceWorker:
         CBZ-on-disk back to the user's tags + reading direction + series status."""
         targets = await targets_service.list_all(self._db)
         result: dict[str, SeriesMetadata] = {}
-        for summary in targets:
-            target = summary.target
+        for target in targets:
             if not target.name:
                 continue
             key = sanitize(target.name).lower()

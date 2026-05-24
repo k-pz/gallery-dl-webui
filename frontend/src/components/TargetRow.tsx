@@ -16,7 +16,7 @@ import {
   pollTargetMutation,
   updateTargetMutation,
 } from "../api/@tanstack/react-query.gen";
-import type { TargetOut } from "../api/types.gen";
+import type { Target } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
 import { READING_DIRECTION_OPTIONS } from "../lib/readingDirection";
@@ -28,7 +28,7 @@ import { IconArrowUpRight, IconChevronDown, IconEye, IconPlay, IconTrash } from 
 import { InlineConfirm } from "./InlineConfirm";
 import { Pill } from "./Pill";
 
-export function recencyKey(t: TargetOut): number {
+export function recencyKey(t: Target): number {
   const candidates = [t.last_finished_at, t.last_created_at, t.created_at];
   for (const v of candidates) {
     if (!v) continue;
@@ -45,7 +45,7 @@ export function TargetRow({
   expanded,
   onToggle,
 }: {
-  target: TargetOut;
+  target: Target;
   defaultPeriod: string;
   onOpenJob?: (jobId: number) => void;
   expanded: boolean;

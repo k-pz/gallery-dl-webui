@@ -2,7 +2,7 @@ import { Card, Group, SegmentedControl, Select, Stack, Text } from "@mantine/cor
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { getConfigOptions, listTargetsOptions } from "../api/@tanstack/react-query.gen";
-import type { TargetOut } from "../api/types.gen";
+import type { Target } from "../api/types.gen";
 import { makeNeedleMatcher } from "../lib/listFilters";
 import { usePagination } from "../lib/pagination";
 import { REFETCH_LIST_MS } from "../lib/polling";
@@ -43,7 +43,7 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
 
   const visible = useMemo(() => {
     if (!targets) return [];
-    const matchesNeedle = makeNeedleMatcher<TargetOut>(
+    const matchesNeedle = makeNeedleMatcher<Target>(
       search,
       (t) => t.name,
       (t) => t.url,

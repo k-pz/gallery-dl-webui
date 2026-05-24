@@ -367,9 +367,9 @@ export type ProgressOut = {
 };
 
 /**
- * TargetOut
+ * Target
  */
-export type TargetOut = {
+export type Target = {
     /**
      * Id
      */
@@ -728,7 +728,7 @@ export type ListTargetsResponses = {
      *
      * Successful Response
      */
-    200: Array<TargetOut>;
+    200: Array<Target>;
 };
 
 export type ListTargetsResponse = ListTargetsResponses[keyof ListTargetsResponses];
@@ -792,7 +792,7 @@ export type GetTargetResponses = {
     /**
      * Successful Response
      */
-    200: TargetOut;
+    200: Target;
 };
 
 export type GetTargetResponse = GetTargetResponses[keyof GetTargetResponses];
@@ -822,7 +822,7 @@ export type UpdateTargetResponses = {
     /**
      * Successful Response
      */
-    200: TargetOut;
+    200: Target;
 };
 
 export type UpdateTargetResponse = UpdateTargetResponses[keyof UpdateTargetResponses];
@@ -852,7 +852,7 @@ export type PollTargetResponses = {
     /**
      * Successful Response
      */
-    200: TargetOut;
+    200: Target;
 };
 
 export type PollTargetResponse = PollTargetResponses[keyof PollTargetResponses];
