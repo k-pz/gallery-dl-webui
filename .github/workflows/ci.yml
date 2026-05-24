@@ -8,8 +8,8 @@ name: ci
 #
 # Toolchain versions (python / uv / node) live in mise.toml — never
 # duplicate them here. `jdx/mise-action` reads mise.toml and installs the
-# pinned versions; corepack activates the pnpm version pinned in
-# frontend/package.json's `packageManager` field. Lint/typecheck steps
+# pinned versions; `pnpm/action-setup` reads the `packageManager` field
+# in frontend/package.json for the pnpm version. Lint/typecheck steps
 # call `mise run <task>` so the exact same commands run locally and in CI.
 
 on:
@@ -103,23 +103,14 @@ jobs:
         with:
           cache: true
 
-      - name: Activate pnpm via corepack
-        # pnpm version comes from frontend/package.json's "packageManager"
-        # field — same pattern as the local `mise run install` task. The
-        # env var skips corepack's interactive "Y/n" download prompt, which
-        # otherwise swallows stdout on the first pnpm invocation in CI.
-        # Calling `pnpm --version` after enable forces the pinned version
-        # to actually download, so later steps don't race the install.
-        env:
-          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-        run: |
-          corepack enable
-          pnpm --version
+      - name: Setup pnpm
+        # `packageManager` in frontend/package.json is the single source of
+        # truth for the pnpm version — no explicit `version:` here.
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
 
       - name: Cache pnpm store
-        # `~/.local/share/pnpm/store` is pnpm's default store-dir on Linux
-        # runners (XDG_DATA_HOME). Hardcoding it avoids a separate
-        # `pnpm store path` lookup step that races corepack's first download.
         uses: actions/cache@v4
         with:
           path: ~/.local/share/pnpm/store
@@ -195,12 +186,10 @@ jobs:
         with:
           cache: true
 
-      - name: Activate pnpm via corepack
-        env:
-          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-        run: |
-          corepack enable
-          pnpm --version
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
 
       - name: Cache uv package downloads
         uses: actions/cache@v4
