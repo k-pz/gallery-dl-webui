@@ -178,7 +178,12 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
               </Tooltip>
             )}
           </Group>
-          <Group justify="space-between" align="flex-start" wrap="nowrap">
+          <Group
+            className="active-job-head"
+            justify="space-between"
+            align="flex-start"
+            wrap="nowrap"
+          >
             <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
               <Title order={3} style={{ wordBreak: "break-word" }}>
                 {displayName}
@@ -189,7 +194,7 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
                 </Anchor>
               )}
             </Stack>
-            <Group gap="xs">
+            <Group className="active-job-head-actions" gap="xs">
               {(canCancel || showCancelling) && (
                 <Button
                   size="xs"
