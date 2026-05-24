@@ -26,6 +26,7 @@ from backend.app_config import service as app_config_service
 from backend.app_config.constants import READING_DIRECTIONS
 from backend.dependencies import DbDep
 from backend.downloads.postprocess import SERIES_STATUSES, normalize_tags
+from backend.exceptions import BadRequestError
 from backend.library import service
 from backend.library.constants import SCHEMA_VERSION
 from backend.library.schemas import LibraryImportResult
@@ -51,24 +52,24 @@ async def export_library(db: DbDep) -> PlainTextResponse:
 async def _parse_yaml_body(request: Request) -> Any:
     raw = await request.body()
     if not raw:
-        raise HTTPException(status_code=400, detail="request body is empty")
+        raise BadRequestError("request body is empty")
     try:
         return yaml.safe_load(raw)
     except yaml.YAMLError as exc:
-        raise HTTPException(status_code=400, detail=f"invalid YAML: {exc}") from exc
+        raise BadRequestError(f"invalid YAML: {exc}") from exc
 
 
 @router.post("/library/import", operation_id="importLibrary")
 async def import_library(request: Request, db: DbDep, poller: PollerDep) -> LibraryImportResult:
     parsed = await _parse_yaml_body(request)
     if not isinstance(parsed, dict):
-        raise HTTPException(status_code=400, detail="top-level YAML must be a mapping")
+        raise BadRequestError("top-level YAML must be a mapping")
     version = parsed.get("version")
     if version not in (None, SCHEMA_VERSION):
-        raise HTTPException(status_code=400, detail=f"unsupported schema version: {version!r}")
+        raise BadRequestError(f"unsupported schema version: {version!r}")
     series = parsed.get("series")
     if not isinstance(series, list):
-        raise HTTPException(status_code=400, detail="'series' must be a list")
+        raise BadRequestError("'series' must be a list")
 
     cfg = await app_config_service.get_all(db)
     root_raw = cfg.get("postprocess_root")

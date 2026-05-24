@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from backend.dependencies import DbDep
+from backend.exceptions import BadRequestError
 from backend.output_dirs import service
 from backend.output_dirs.schemas import DirCreate, DirEntry
 from backend.output_dirs.utils import validate_under_root
@@ -26,7 +27,7 @@ async def create_output_dir(body: DirCreate, db: DbDep) -> DirEntry:
     root = await service.resolve_root(db)
     raw = body.path.strip()
     if not raw:
-        raise HTTPException(status_code=400, detail="path is required")
+        raise BadRequestError("path is required")
     raw_path = Path(raw)
     # The picker only ever creates direct children of the root, so we accept
     # either a single relative segment ("manga") or an absolute path whose
@@ -37,18 +38,12 @@ async def create_output_dir(body: DirCreate, db: DbDep) -> DirEntry:
         root_resolved = root.resolve()
         parent_resolved = raw_path.parent.resolve()
         if parent_resolved != root_resolved:
-            raise HTTPException(
-                status_code=400,
-                detail=f"path must be a direct child of root ({root_resolved})",
-            )
+            raise BadRequestError(f"path must be a direct child of root ({root_resolved})")
         target = raw_path
     else:
         cleaned = raw.strip("/")
         if "/" in cleaned or cleaned in ("", ".", ".."):
-            raise HTTPException(
-                status_code=400,
-                detail="path must be a single folder name (no separators)",
-            )
+            raise BadRequestError("path must be a single folder name (no separators)")
         target = root / cleaned
     resolved = validate_under_root(str(target), root, field="path")
     return DirEntry(path=str(resolved), name=resolved.name, depth=1)
