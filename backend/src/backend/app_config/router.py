@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from backend.app_config import service
 from backend.app_config.constants import (
@@ -18,6 +18,7 @@ from backend.app_config.schemas import AppConfigIn, AppConfigOut
 from backend.dependencies import DbDep, EventBusDep
 from backend.downloads.postprocess import validate_chapter_naming_template
 from backend.events import config_event
+from backend.exceptions import BadRequestError
 from backend.output_dirs.utils import coerce_optional, validate_root, validate_under_root
 from backend.targets.utils import parse_duration
 
@@ -108,25 +109,19 @@ async def put_config(body: AppConfigIn, db: DbDep, bus: EventBusDep) -> AppConfi
     try:
         parse_duration(period_raw)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise BadRequestError(str(exc)) from exc
     template_raw = coerce_optional(body.chapter_naming_template) or DEFAULT_CHAPTER_NAMING_TEMPLATE
     try:
         validate_chapter_naming_template(template_raw)
     except Exception as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"invalid chapter_naming_template: {exc}",
-        ) from exc
+        raise BadRequestError(f"invalid chapter_naming_template: {exc}") from exc
     direction_raw = (
         coerce_optional(body.default_reading_direction) or DEFAULT_READING_DIRECTION
     ).lower()
     if direction_raw not in READING_DIRECTIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"invalid default_reading_direction: {direction_raw!r}; "
-                f"expected one of {sorted(READING_DIRECTIONS)}"
-            ),
+        raise BadRequestError(
+            f"invalid default_reading_direction: {direction_raw!r}; "
+            f"expected one of {sorted(READING_DIRECTIONS)}"
         )
 
     # When the root changes, drop the remembered dirs — they may no longer be valid.
