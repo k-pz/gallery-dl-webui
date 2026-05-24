@@ -4,25 +4,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.downloads.postprocess import ChapterRecord, build_comicinfo_xml
-
-
-def _write_cbz(path: Path, series: str, chapter: str, title: str = "") -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    ch = ChapterRecord(
-        manga=series,
-        chapter=chapter,
-        title=title,
-        volume="",
-        lang="",
-        author="",
-        date="",
-        dir=path.parent,
-        pages=[Path("/x/001.jpg")],
-    )
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("ComicInfo.xml", build_comicinfo_xml(ch))
-        zf.writestr("001.jpg", b"x")
+from .._helpers import write_cbz_with_comicinfo as _write_cbz
 
 
 def _wait_for_completion(client: TestClient, job_id: int) -> dict[str, object]:
