@@ -1,3 +1,9 @@
+## v1.12.0 (2026-05-24)
+
+### Feat
+
+- **frontend**: let maintenance job log expand on mobile
+
 ## v1.11.0 (2026-05-24)
 
 ### Feat
