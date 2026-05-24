@@ -48,15 +48,12 @@ jobs:
         with:
           cache: true
 
-      - name: Activate pnpm via corepack
-        # See ci.yml for why the env var + explicit `pnpm --version` are
-        # needed alongside `corepack enable`.
-        env:
-          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-        working-directory: frontend
-        run: |
-          corepack enable
-          pnpm --version
+      - name: Setup pnpm
+        # `packageManager` in frontend/package.json is the single source of
+        # truth for the pnpm version — no explicit `version:` here.
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
 
       - name: Cache uv package downloads
         uses: actions/cache@v4
