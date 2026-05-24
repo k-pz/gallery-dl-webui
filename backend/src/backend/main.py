@@ -24,6 +24,7 @@ from backend.maintenance import service as maintenance_service
 from backend.maintenance.live_progress import MaintenanceLiveProgress
 from backend.maintenance.router import router as maintenance_router
 from backend.maintenance.worker import MaintenanceWorker
+from backend.middleware import request_event_collector_middleware
 from backend.output_dirs.router import router as output_dirs_router
 from backend.realtime.router import router as realtime_router
 from backend.targets.poller import Poller
@@ -113,6 +114,13 @@ def create_app(
     app.include_router(realtime_router, prefix="/api")
     app.include_router(logs_router, prefix="/api")
 
+    # Collects events `EventBus.publish` emits during a request and ships
+    # them back as the `X-Events` response header — the mutating client
+    # invalidates its TanStack caches synchronously instead of waiting for
+    # the same events to arrive over the websocket. Registered before CORS
+    # so the CORS layer can expose the header on cross-origin responses.
+    app.middleware("http")(request_event_collector_middleware)
+
     cors_origins = list(settings.cors_origins)
     # In dev mode the Vite proxy origin needs CORS; in prod the SPA is
     # same-origin and only env-configured origins (e.g. a browser extension)
@@ -126,6 +134,7 @@ def create_app(
             allow_origin_regex=settings.cors_origin_regex,
             allow_methods=["*"],
             allow_headers=["*"],
+            expose_headers=["X-Events"],
         )
 
     if serve_frontend and FRONTEND_DIST.is_dir():
