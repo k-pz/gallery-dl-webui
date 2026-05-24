@@ -3,8 +3,8 @@
 Companion to the top-level [`README.md`](../README.md) — the README covers
 "how do I run it"; everything here covers "how does it actually work".
 
-These pages also feed the [auto-published wiki](https://github.com/k-pz/gallery-dl-webui/wiki)
-via `scripts/build-wiki.py` on every push to `main`.
+These pages also feed the [auto-published docs site](https://k-pz.github.io/gallery-dl-webui/)
+via `.github/workflows/docs.yml` on every push to `main`.
 
 > **Disclaimer — AI-authored code.** Substantially all of the source in this
 > repository, including these docs, was written by
