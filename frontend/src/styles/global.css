@@ -862,6 +862,32 @@ a {
   }
 }
 
+/* Maintenance log expand/collapse toggle. Hidden on desktop where the
+   default 240px scrollarea reads comfortably; surfaced on phones so the
+   log can grow to fill the viewport when the user wants more room. */
+.maint-log-toggle {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--mantine-radius-sm);
+  border: 1px solid var(--app-border-subtle);
+}
+.maint-log-toggle:hover {
+  background: var(--app-surface-muted);
+}
+.maint-log-toggle-chev {
+  transition: transform 120ms ease;
+}
+.maint-log-toggle[data-expanded="true"] .maint-log-toggle-chev {
+  transform: rotate(180deg);
+}
+@media (max-width: 640px) {
+  .maint-log-toggle {
+    display: inline-flex;
+  }
+}
+
 /* Hamburger trigger in the header. Desktop tabs handle nav at >=768px, so
    the button hides up there. Keeps the 44px touch target on phones. */
 .mob-menu-btn {

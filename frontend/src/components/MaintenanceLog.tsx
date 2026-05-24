@@ -1,9 +1,20 @@
-import { Badge, Box, Group, Progress, ScrollArea, Stack, Text } from "@mantine/core";
+import {
+  Badge,
+  Box,
+  Group,
+  Progress,
+  ScrollArea,
+  Stack,
+  Text,
+  UnstyledButton,
+} from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { getMaintenanceJobProgressOptions } from "../api/@tanstack/react-query.gen";
 import { useEta } from "../hooks/useEta";
 import { formatEta } from "../lib/eta";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
+import { IconChevronDown } from "./Icons";
 
 const TERMINAL_STATUSES = new Set(["completed", "failed"]);
 
@@ -29,6 +40,7 @@ export function MaintenanceLog({
       return status && TERMINAL_STATUSES.has(status) ? false : REFETCH_ACTIVE_MS;
     },
   });
+  const [expanded, setExpanded] = useState(false);
 
   const terminal = data ? TERMINAL_STATUSES.has(data.status) : false;
   const eta = useEta({
@@ -66,9 +78,23 @@ export function MaintenanceLog({
             {data.status}
           </Badge>
         </Group>
-        <Text size="sm" c="dimmed" ff="monospace">
-          {counter}
-        </Text>
+        <Group gap="sm" align="center">
+          <Text size="sm" c="dimmed" ff="monospace">
+            {counter}
+          </Text>
+          <UnstyledButton
+            className="maint-log-toggle"
+            onClick={() => setExpanded((e) => !e)}
+            aria-expanded={expanded}
+            aria-label={expanded ? "Collapse job log" : "Expand job log"}
+            data-expanded={expanded ? "true" : undefined}
+          >
+            <Text size="xs" c="dimmed" ff="monospace">
+              {expanded ? "collapse" : "expand"}
+            </Text>
+            <IconChevronDown size={14} className="maint-log-toggle-chev" />
+          </UnstyledButton>
+        </Group>
       </Group>
       <Progress value={pct} size="md" radius="sm" striped={!terminal} animated={!terminal} />
       <Box
@@ -79,7 +105,7 @@ export function MaintenanceLog({
           overflow: "hidden",
         }}
       >
-        <ScrollArea h={240} type="auto">
+        <ScrollArea h={expanded ? "70vh" : 240} type="auto">
           <Box
             component="pre"
             m={0}
