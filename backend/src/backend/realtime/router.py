@@ -27,7 +27,7 @@ async def events_stream(ws: WebSocket) -> None:
     # fresh snapshot of state or wait for the next event.
     try:
         await ws.send_json(Event(topic="system", type="connected").to_json())
-    except WebSocketDisconnect, RuntimeError:
+    except (WebSocketDisconnect, RuntimeError):
         return
 
     async with bus.subscribe() as queue:
@@ -43,18 +43,18 @@ async def events_stream(ws: WebSocket) -> None:
                     # close the idle socket.
                     try:
                         await ws.send_json(Event(topic="system", type="ping").to_json())
-                    except WebSocketDisconnect, RuntimeError:
+                    except (WebSocketDisconnect, RuntimeError):
                         break
                     continue
                 try:
                     await ws.send_json(event.to_json())
-                except WebSocketDisconnect, RuntimeError:
+                except (WebSocketDisconnect, RuntimeError):
                     break
         finally:
             receive_task.cancel()
             try:
                 await receive_task
-            except asyncio.CancelledError, Exception:
+            except (asyncio.CancelledError, Exception):
                 pass
 
 
