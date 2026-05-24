@@ -3,9 +3,6 @@
 Invoked by `mkdocs-gen-files` at build time. Emits one Markdown page under
 `reference/python/` per backend domain, each containing a `::: backend.<pkg>`
 directive that `mkdocstrings` expands into a typed reference.
-
-The DOMAINS table mirrors the wiki-era grouping from the deleted
-`build-wiki.py` so the new site preserves the same per-domain page layout.
 """
 
 from __future__ import annotations

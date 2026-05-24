@@ -6,10 +6,8 @@ docs tree:
   reference/http-api.md   ← human-readable endpoint + schema reference
   reference/api-spec.json ← raw OpenAPI spec (importable into Postman etc.)
 
-The rendering helpers (`_render_*`, `_schema_type`) are lifted verbatim from
-the legacy `scripts/build-wiki.py` so the output is byte-equivalent to the
-prior wiki page — preserving per-tag grouping, schema $ref anchor cross-refs,
-and the anyOf/oneOf/allOf union handling.
+The rendering helpers cover per-tag grouping, schema $ref anchor cross-refs,
+and anyOf/oneOf/allOf union handling.
 """
 
 from __future__ import annotations
