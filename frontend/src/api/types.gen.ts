@@ -161,9 +161,9 @@ export type DownloadCreate = {
 };
 
 /**
- * DownloadOut
+ * Download
  */
-export type DownloadOut = {
+export type Download = {
     /**
      * Id
      */
@@ -565,7 +565,7 @@ export type ListDownloadsResponses = {
      *
      * Successful Response
      */
-    200: Array<DownloadOut>;
+    200: Array<Download>;
 };
 
 export type ListDownloadsResponse = ListDownloadsResponses[keyof ListDownloadsResponses];
@@ -590,7 +590,7 @@ export type CreateDownloadResponses = {
     /**
      * Successful Response
      */
-    200: DownloadOut;
+    200: Download;
 };
 
 export type CreateDownloadResponse = CreateDownloadResponses[keyof CreateDownloadResponses];
@@ -620,7 +620,7 @@ export type GetDownloadResponses = {
     /**
      * Successful Response
      */
-    200: DownloadOut;
+    200: Download;
 };
 
 export type GetDownloadResponse = GetDownloadResponses[keyof GetDownloadResponses];
@@ -650,7 +650,7 @@ export type CancelDownloadResponses = {
     /**
      * Successful Response
      */
-    200: DownloadOut;
+    200: Download;
 };
 
 export type CancelDownloadResponse = CancelDownloadResponses[keyof CancelDownloadResponses];
@@ -680,7 +680,7 @@ export type RequeueDownloadResponses = {
     /**
      * Successful Response
      */
-    200: DownloadOut;
+    200: Download;
 };
 
 export type RequeueDownloadResponse = RequeueDownloadResponses[keyof RequeueDownloadResponses];

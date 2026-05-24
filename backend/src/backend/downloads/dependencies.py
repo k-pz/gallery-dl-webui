@@ -9,7 +9,7 @@ from backend.downloads import service
 from backend.downloads.exceptions import DownloadNotFound
 from backend.downloads.gallery import Gallery
 from backend.downloads.live_progress import LiveProgress
-from backend.downloads.models import Download
+from backend.downloads.schemas import Download
 
 if TYPE_CHECKING:
     from backend.downloads.worker import Worker

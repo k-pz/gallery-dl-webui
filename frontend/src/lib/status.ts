@@ -1,6 +1,6 @@
-import type { DownloadOut } from "../api/types.gen";
+import type { Download } from "../api/types.gen";
 
-export type Status = DownloadOut["status"];
+export type Status = Download["status"];
 
 // UI-only intermediate label shown after a cancel is requested but before the
 // worker has reflected it in the persisted status. Not a backend status.

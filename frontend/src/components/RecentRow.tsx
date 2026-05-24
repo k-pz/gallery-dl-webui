@@ -1,10 +1,10 @@
 import { Box, Group, Stack, Text, Tooltip } from "@mantine/core";
-import type { DownloadOut } from "../api/types.gen";
+import type { Download } from "../api/types.gen";
 import { CANCELLING_LABEL, isCancellable, isTerminal, jobStep, statusTone } from "../lib/status";
 import { IconRefresh, IconX } from "./Icons";
 import { Pill } from "./Pill";
 
-function chapterCountLabel(item: DownloadOut): string {
+function chapterCountLabel(item: Download): string {
   const total = item.chapters_total;
   if (total == null) return "—";
   const packed = item.postprocess_chapters_packed;
@@ -23,7 +23,7 @@ export function RecentRow({
   onCancel,
   onRequeue,
 }: {
-  item: DownloadOut;
+  item: Download;
   selected: boolean;
   cancelling: boolean;
   inflight: boolean;

@@ -2,14 +2,14 @@ import { Box, Card, Group, Stack, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { listDownloadsOptions } from "../api/@tanstack/react-query.gen";
-import type { DownloadOut } from "../api/types.gen";
+import type { Download } from "../api/types.gen";
 import { useEta } from "../hooks/useEta";
 import { downloadEtaDimension, formatEta } from "../lib/eta";
 import { REFETCH_LIST_MS } from "../lib/polling";
 import { isRunning, isScheduled, isTerminal, jobStep, statusTone } from "../lib/status";
 import { Pill } from "./Pill";
 
-function progressLabel(item: DownloadOut): string {
+function progressLabel(item: Download): string {
   const total = item.chapters_total;
   if (total != null) {
     const packed = item.postprocess_chapters_packed;
@@ -81,7 +81,7 @@ function RunningRow({
   selected,
   onSelect,
 }: {
-  item: DownloadOut;
+  item: Download;
   selected: boolean;
   onSelect: (id: number) => void;
 }) {
