@@ -88,31 +88,35 @@ async def _designated_output_dirs(db: aiosqlite.Connection, cfg: dict[str, objec
 
 
 def _write_update_trigger(path: Path) -> None:
-    """Create or refresh the systemd path-unit trigger file.
+    """Create the systemd path-unit trigger file.
 
-    The update.service's ExecStartPre removes the file before each run, so a
-    plain write is enough to fire the path unit. Overwriting an existing
-    file (e.g. a stale trigger left behind when the path unit was disabled)
-    is fine — the next time the unit is enabled, PathExists fires again.
+    `PathExists=` is edge-triggered on the file appearing: a write that
+    `O_TRUNC`s an already-existing file emits IN_MODIFY but not IN_CREATE,
+    so systemd doesn't refire. Unlink first to guarantee a fresh create —
+    matters when a previous run's trigger lingered (path unit was inactive,
+    service crashed before ExecStartPre, etc.).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
+    path.unlink(missing_ok=True)
     path.write_text("requested\n", encoding="utf-8")
 
 
-def _update_path_unit_enabled() -> bool:
-    """Best-effort check: is gallery-dl-webui-update.path enabled?
+def _update_path_unit_active() -> bool:
+    """Best-effort check: is gallery-dl-webui-update.path actually watching?
 
-    `systemctl is-enabled` exits 0 only for enabled units, non-zero otherwise
-    (disabled, masked, not-found, no systemd available). Any failure mode is
-    treated as "not ready", which matches what users actually want: a clear
-    error instead of a silent no-op when the host-side units are missing.
+    `is-active` returns 0 for active states (waiting/running), non-zero
+    when the unit is inactive/failed/not-found. We want is-active, not
+    is-enabled — a unit can be enabled (linked into multi-user.target.wants)
+    while sitting dead, in which case writing the trigger silently goes
+    nowhere because nothing is on inotify watch. is-enabled would return 0
+    in that state and let the job claim success.
     """
     systemctl = shutil.which("systemctl")
     if systemctl is None:
         return False
     try:
         result = subprocess.run(
-            [systemctl, "is-enabled", UPDATE_PATH_UNIT],
+            [systemctl, "is-active", UPDATE_PATH_UNIT],
             capture_output=True,
             text=True,
             timeout=5,
@@ -636,15 +640,17 @@ class MaintenanceWorker:
         sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
 
         # Pre-check: refuse to leave a useless trigger file if the path unit
-        # isn't installed (older CTs that pre-date this feature). Surfacing the
-        # mismatch here keeps the UI from claiming "done" when nothing
-        # actually fires. `systemctl is-enabled` returns 0 only for enabled
-        # units; on hosts without systemd it errors out and we skip too.
-        if not await asyncio.to_thread(_update_path_unit_enabled):
+        # isn't actively watching. `is-active` catches both "never installed"
+        # (older CTs pre-dating this feature) and "installed but inactive"
+        # (boot transient, manual stop, prior service crash) — both result in
+        # the same user-visible failure mode if we go ahead and write the
+        # file: no inotify watcher, no service fired, UI claims success.
+        if not await asyncio.to_thread(_update_path_unit_active):
             raise ValueError(
-                "update infrastructure not installed: enable "
-                f"{UPDATE_PATH_UNIT} (run /usr/local/bin/update once from the "
-                "LXC console to install it)"
+                f"{UPDATE_PATH_UNIT} is not active — start it from the LXC "
+                f"console (`systemctl start {UPDATE_PATH_UNIT}`) and retry, "
+                "or run /usr/local/bin/update directly to re-install the "
+                "trigger units"
             )
 
         trigger = self._settings.data_dir / UPDATE_TRIGGER_FILENAME

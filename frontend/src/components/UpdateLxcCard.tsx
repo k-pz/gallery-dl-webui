@@ -1,9 +1,14 @@
 import { Box, Button, Card, Group, Stack, Text, Title } from "@mantine/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { checkForUpdatesOptions, checkForUpdatesQueryKey } from "../api/@tanstack/react-query.gen";
-import type { UpdateCheckOut } from "../api/types.gen";
-import { IconArrowUp, IconInfo } from "./Icons";
+import {
+  checkForUpdatesOptions,
+  checkForUpdatesQueryKey,
+  listMaintenanceJobsOptions,
+} from "../api/@tanstack/react-query.gen";
+import type { MaintenanceJobOut, UpdateCheckOut } from "../api/types.gen";
+import { extractErrorMessage } from "../lib/apiError";
+import { IconAlertTriangle, IconArrowUp, IconInfo } from "./Icons";
 
 /**
  * Pulls the latest source from upstream, rebuilds, and restarts the LXC.
@@ -16,17 +21,26 @@ import { IconArrowUp, IconInfo } from "./Icons";
  * Two-stage confirm (no type-to-confirm): scheduling restarts the service, so
  * we want one extra click to prevent stray taps, but the action itself isn't
  * destructive enough to warrant the rebuild-library word-typing dance.
+ *
+ * Post-schedule state is *derived from the maintenance jobs list*, not flipped
+ * to "queued" locally — otherwise an async failure (path unit dead, etc.) is
+ * invisible: the API call succeeds (job created), the worker marks it failed,
+ * and a local-only banner would still say "queued" forever.
  */
 export function UpdateLxcCard({
   scheduling,
   onSchedule,
 }: {
   scheduling: boolean;
-  onSchedule: () => void;
+  onSchedule: () => Promise<MaintenanceJobOut>;
 }) {
   const qc = useQueryClient();
   const [armed, setArmed] = useState(false);
-  const [scheduled, setScheduled] = useState(false);
+  // Id of the job we just scheduled — not "latest update_lxc job", which
+  // could be a stale failure from a previous session and would otherwise
+  // flash an error banner the moment the user clicks the button.
+  const [trackedJobId, setTrackedJobId] = useState<number | null>(null);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
 
   // The backend caches results for 60 s; polling the UI every 5 min keeps the
   // status reasonably fresh without pinging GitHub on every render.
@@ -36,6 +50,17 @@ export function UpdateLxcCard({
     staleTime: 60 * 1000,
   });
 
+  // Shared cache with MaintenancePanel's identical query — react-query dedupes
+  // so this is a free subscription, not an extra request.
+  const jobs = useQuery({
+    ...listMaintenanceJobsOptions(),
+    refetchInterval: 3000,
+  });
+  const trackedJob =
+    trackedJobId !== null
+      ? (jobs.data ?? []).find((j) => j.id === trackedJobId)
+      : undefined;
+
   const refresh = () => {
     qc.invalidateQueries({ queryKey: checkForUpdatesQueryKey() });
     // Bypass the in-process backend cache too, so the user can force-pull on
@@ -43,11 +68,26 @@ export function UpdateLxcCard({
     qc.fetchQuery({ ...checkForUpdatesOptions({ query: { force: true } }) });
   };
 
-  const confirm = () => {
-    onSchedule();
+  const confirm = async () => {
+    setScheduleError(null);
     setArmed(false);
-    setScheduled(true);
+    try {
+      const created = await onSchedule();
+      setTrackedJobId(created.id);
+    } catch (err) {
+      setScheduleError(extractErrorMessage(err));
+    }
   };
+
+  const retry = () => {
+    setTrackedJobId(null);
+    setScheduleError(null);
+  };
+
+  // Show the queued banner as soon as the schedule call resolves, even before
+  // the jobs query catches up — otherwise there's a flicker back to the
+  // button between mutateAsync resolving and the next refetch landing.
+  const showStatus = trackedJobId !== null;
 
   return (
     <Card>
@@ -66,7 +106,35 @@ export function UpdateLxcCard({
           </Text>
         </Stack>
         <UpdateAvailabilityBanner check={updateCheck.data} onRefresh={refresh} />
-        {scheduled ? (
+        {scheduleError ? (
+          <Box className="app-alert">
+            <IconAlertTriangle size={16} className="alert-icon" />
+            <Stack gap={2}>
+              <Text size="sm" fw={500}>
+                Couldn't schedule the update
+              </Text>
+              <Text size="xs" c="dimmed">
+                {scheduleError}
+              </Text>
+            </Stack>
+          </Box>
+        ) : null}
+        {trackedJob?.status === "failed" ? (
+          <Box className="app-alert">
+            <IconAlertTriangle size={16} className="alert-icon" />
+            <Stack gap={2} style={{ flex: 1 }}>
+              <Text size="sm" fw={500}>
+                Update failed
+              </Text>
+              <Text size="xs" c="dimmed">
+                {trackedJob.error ?? "(no error message)"}
+              </Text>
+            </Stack>
+            <Button variant="subtle" size="compact-xs" onClick={retry}>
+              Try again
+            </Button>
+          </Box>
+        ) : showStatus ? (
           <Box className="app-alert" data-tone="info">
             <IconInfo size={16} className="alert-icon" />
             <Stack gap={2}>
