@@ -1,4 +1,4 @@
-import { api, ApiError } from "../lib/api.js";
+import { api, apiErrorMessage } from "../lib/api.js";
 import { loadSettings, normalizeBackendUrl, saveSettings } from "../lib/storage.js";
 
 const el = (id) => document.getElementById(id);
@@ -48,8 +48,7 @@ async function onTest() {
     await api.health(raw);
     setStatus("success", `OK — ${raw} responded.`);
   } catch (err) {
-    const msg = err instanceof ApiError ? err.message : String(err);
-    setStatus("error", `Failed: ${msg}`);
+    setStatus("error", `Failed: ${apiErrorMessage(err)}`);
   } finally {
     btn.disabled = false;
   }

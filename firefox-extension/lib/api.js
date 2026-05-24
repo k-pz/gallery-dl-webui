@@ -6,6 +6,12 @@ export class ApiError extends Error {
   }
 }
 
+/** Pull a user-facing message from a thrown value — ApiError keeps its own
+ *  message; anything else falls back to String(err). */
+export function apiErrorMessage(err) {
+  return err instanceof ApiError ? err.message : String(err);
+}
+
 async function request(backendUrl, method, path, body) {
   if (!backendUrl) {
     throw new ApiError("Backend URL is not configured. Open the extension options to set it.");
