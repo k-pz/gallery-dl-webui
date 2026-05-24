@@ -1,0 +1,98 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/src/**"
+      - "backend/pyproject.toml"
+      - "backend/uv.lock"
+      - "frontend/src/**"
+      - "frontend/.storybook/**"
+      - "frontend/package.json"
+      - "frontend/pnpm-lock.yaml"
+      - "frontend/typedoc.json"
+      - "frontend/tsconfig*.json"
+      - "frontend/vite.config.ts"
+      - "scripts/gen_*.py"
+      - "docs/**"
+      - "README.md"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+# Pages only allows one deploy at a time; serialize regenerations.
+concurrency:
+  group: docs
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install Python (via uv)
+        working-directory: backend
+        run: uv python install
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Sync backend with docs group
+        working-directory: backend
+        run: uv sync --frozen --group docs
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate TypeScript reference (TypeDoc)
+        working-directory: frontend
+        run: pnpm run docs
+
+      - name: Build MkDocs site
+        working-directory: backend
+        run: uv run --group docs mkdocs build --strict -f ../mkdocs.yml
+
+      - name: Build Storybook
+        working-directory: frontend
+        run: pnpm run build-storybook
+
+      - name: Assemble combined Pages tree
+        run: mv frontend/storybook-static site/storybook
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
