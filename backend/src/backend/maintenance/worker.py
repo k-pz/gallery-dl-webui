@@ -201,7 +201,6 @@ class MaintenanceWorker:
         downloads_worker: Worker | None = None,
         gallery: Gallery | None = None,
         event_bus: EventBus | None = None,
-        db_lock: asyncio.Lock | None = None,
     ) -> None:
         self._db = db
         self._live = live
@@ -216,7 +215,6 @@ class MaintenanceWorker:
         self._gallery = gallery
         self._bus = event_bus
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._db_lock = db_lock or asyncio.Lock()
         self._wakeup = asyncio.Event()
         self._stop = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -272,8 +270,7 @@ class MaintenanceWorker:
     async def _run(self) -> None:
         while not self._stop.is_set():
             self._wakeup.clear()
-            async with self._db_lock:
-                job = await service.claim_next_pending(self._db)
+            job = await service.claim_next_pending(self._db)
             if job is None:
                 await self._wakeup.wait()
                 continue
@@ -286,8 +283,7 @@ class MaintenanceWorker:
             except MaintenanceCancelled as cancelled:
                 logger.info("maintenance job %d cancelled", job.id)
                 self._live.record(job.id, f"cancelled: {cancelled.partial}")
-                async with self._db_lock:
-                    await service.mark_cancelled(self._db, job.id, cancelled.partial)
+                await service.mark_cancelled(self._db, job.id, cancelled.partial)
                 self._live.clear(job.id)
                 self._current_id = None
                 self._cancel_requested = False
@@ -297,8 +293,7 @@ class MaintenanceWorker:
             except Exception as exc:
                 logger.exception("maintenance job %d failed", job.id)
                 self._live.record(job.id, f"failed: {exc!r}")
-                async with self._db_lock:
-                    await service.mark_failed(self._db, job.id, repr(exc))
+                await service.mark_failed(self._db, job.id, repr(exc))
                 self._live.clear(job.id)
                 self._current_id = None
                 self._cancel_requested = False
@@ -306,8 +301,7 @@ class MaintenanceWorker:
                 self._emit("updated", id=job.id, status="failed")
                 continue
             self._live.record(job.id, f"done: {result}")
-            async with self._db_lock:
-                await service.mark_completed(self._db, job.id, result)
+            await service.mark_completed(self._db, job.id, result)
             self._live.clear(job.id)
             self._current_id = None
             self._cancel_requested = False
@@ -333,8 +327,7 @@ class MaintenanceWorker:
         return await getattr(self, method_name)(job_id)
 
     async def _run_rename(self, job_id: int) -> dict[str, int]:
-        async with self._db_lock:
-            cfg = await app_config_service.get_all(self._db)
+        cfg = await app_config_service.get_all(self._db)
         root_str = cfg.get("postprocess_root")
         if not isinstance(root_str, str) or not root_str:
             raise ValueError("postprocess_root is not configured")
@@ -343,8 +336,7 @@ class MaintenanceWorker:
             template = DEFAULT_CHAPTER_NAMING_TEMPLATE
         sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
         exclude_dirs = _exclude_dirs(cfg)
-        async with self._db_lock:
-            output_roots = await _designated_output_dirs(self._db, cfg)
+        output_roots = await _designated_output_dirs(self._db, cfg)
         result = await asyncio.to_thread(
             postprocess.rename_packed_chapters,
             output_roots,
@@ -356,8 +348,7 @@ class MaintenanceWorker:
         return asdict(result)
 
     async def _run_regenerate_metadata(self, job_id: int) -> dict[str, int]:
-        async with self._db_lock:
-            cfg = await app_config_service.get_all(self._db)
+        cfg = await app_config_service.get_all(self._db)
         root_str = cfg.get("postprocess_root")
         if not isinstance(root_str, str) or not root_str:
             raise ValueError("postprocess_root is not configured")
@@ -382,8 +373,7 @@ class MaintenanceWorker:
             return chapter_dates_by_series.get(key, {}).get(chapter)
 
         exclude_dirs = _exclude_dirs(cfg)
-        async with self._db_lock:
-            output_roots = await _designated_output_dirs(self._db, cfg)
+        output_roots = await _designated_output_dirs(self._db, cfg)
         result = await asyncio.to_thread(
             postprocess.regenerate_series_metadata,
             output_roots,
@@ -409,8 +399,7 @@ class MaintenanceWorker:
         """
         if self._gallery is None:
             return {}
-        async with self._db_lock:
-            targets = await targets_service.list_all(self._db)
+        targets = await targets_service.list_all(self._db)
         out: dict[str, dict[str, str]] = {}
         if not targets:
             return out
@@ -430,11 +419,9 @@ class MaintenanceWorker:
                 sink.step(f"rediscover failed: {target.url}: {exc!r}")
                 continue
             if meta.series_status:
-                async with self._db_lock:
-                    await targets_service.set_series_status(self._db, target.id, meta.series_status)
+                await targets_service.set_series_status(self._db, target.id, meta.series_status)
             if meta.series_tags:
-                async with self._db_lock:
-                    await targets_service.set_series_tags(self._db, target.id, meta.series_tags)
+                await targets_service.set_series_tags(self._db, target.id, meta.series_tags)
             if meta.chapter_dates:
                 # Index by sanitised series name so the regen lookup can
                 # match against the ComicInfo.xml `Series` field — same
@@ -455,15 +442,13 @@ class MaintenanceWorker:
         """
         if self._settings is None or self._downloads_worker is None:
             raise ValueError("rebuild_library requires settings + downloads worker")
-        async with self._db_lock:
-            cfg = await app_config_service.get_all(self._db)
+        cfg = await app_config_service.get_all(self._db)
         excluded = {name.lower() for name in _exclude_dirs(cfg)}
 
         sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
         # Snapshot the library first — the upcoming wipe touches downloads
         # only, but we still want the count up front for the progress bar.
-        async with self._db_lock:
-            targets = await targets_service.list_all(self._db)
+        targets = await targets_service.list_all(self._db)
         # 3 phases per target overhead (wipe, output-dir prune, re-enqueue) is
         # too lumpy for a meaningful total — surface a target-count instead.
         sink.total(len(targets))
@@ -471,8 +456,7 @@ class MaintenanceWorker:
         # Phase 1: wipe download history (preserves targets + app_config + the
         # in-flight maintenance job row).
         self._live.record(job_id, "wiping download history…")
-        async with self._db_lock:
-            deleted_downloads = await downloads_service.delete_all(self._db)
+        deleted_downloads = await downloads_service.delete_all(self._db)
         self._live.record(job_id, f"deleted {deleted_downloads} download rows")
         if self._should_cancel():
             raise MaintenanceCancelled(
@@ -503,8 +487,7 @@ class MaintenanceWorker:
         # designated dirs (no targets configured, no default), there's nothing
         # to wipe and the phase no-ops silently.
         output_removed = 0
-        async with self._db_lock:
-            output_roots = await _designated_output_dirs(self._db, cfg)
+        output_roots = await _designated_output_dirs(self._db, cfg)
         for output_dir in output_roots:
             removed = await asyncio.to_thread(_wipe_directory_contents, output_dir, excluded)
             output_removed += removed
@@ -533,18 +516,17 @@ class MaintenanceWorker:
                     }
                 )
             target = summary.target
-            async with self._db_lock:
-                await downloads_service.insert_pending(
-                    self._db,
-                    target.url,
-                    target.extractor,
-                    output_dir=target.output_dir,
-                    target_id=target.id,
-                )
-                # Same rationale as create_download: queuing here counts as a
-                # poll so the periodic poller doesn't re-queue the moment the
-                # rebuild's download finishes.
-                await targets_service.mark_polled(self._db, target.id)
+            await downloads_service.insert_pending(
+                self._db,
+                target.url,
+                target.extractor,
+                output_dir=target.output_dir,
+                target_id=target.id,
+            )
+            # Same rationale as create_download: queuing here counts as a
+            # poll so the periodic poller doesn't re-queue the moment the
+            # rebuild's download finishes.
+            await targets_service.mark_polled(self._db, target.id)
             enqueued += 1
             self._live.increment_done(job_id)
             self._live.record(job_id, f"enqueued: {target.url}")
@@ -571,8 +553,7 @@ class MaintenanceWorker:
         params = self._pending_params.pop(job_id, None)
         creds = validate_credentials(params)
 
-        async with self._db_lock:
-            targets = await targets_service.list_all(self._db)
+        targets = await targets_service.list_all(self._db)
         # Only push for targets that have a name to search by. Status-less
         # targets are still counted (and skipped with a clear log line) so the
         # totals make sense.
@@ -607,8 +588,7 @@ class MaintenanceWorker:
         no progress-loop checkpoint to honour a mid-run signal at.
         """
         sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
-        async with self._db_lock:
-            ids = await targets_service.unwatch_ended(self._db)
+        ids = await targets_service.unwatch_ended(self._db)
         sink.total(len(ids))
         for target_id in ids:
             sink.step(f"unwatched target {target_id}")
@@ -660,8 +640,7 @@ class MaintenanceWorker:
     async def _build_series_overrides(self, default_direction: str) -> dict[str, SeriesMetadata]:
         """Index targets by sanitized series name so the regen pass can map
         CBZ-on-disk back to the user's tags + reading direction + series status."""
-        async with self._db_lock:
-            targets = await targets_service.list_all(self._db)
+        targets = await targets_service.list_all(self._db)
         result: dict[str, SeriesMetadata] = {}
         for summary in targets:
             target = summary.target

@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -57,13 +56,6 @@ def create_app(
         db = await open_database(settings.jobs_db_path)
         gallery = gallery_factory(settings)
         event_bus = EventBus()
-        # Shared lock that serialises multi-statement DB sequences across the
-        # downloads worker pool, the maintenance worker, and the poller. We
-        # use one aiosqlite connection app-wide; an unclosed cursor from one
-        # coroutine otherwise blocks a `commit()` from another. The lock is
-        # held briefly — only for claim transactions and terminal updates —
-        # so request handlers remain responsive.
-        db_lock = asyncio.Lock()
 
         interrupted = await downloads_service.mark_interrupted_on_boot(db)
         if interrupted:
@@ -77,7 +69,7 @@ def create_app(
             )
 
         live_progress = LiveProgress()
-        worker = Worker(db, gallery, live_progress, event_bus=event_bus, db_lock=db_lock)
+        worker = Worker(db, gallery, live_progress, event_bus=event_bus)
         worker.start()
         maintenance_live = MaintenanceLiveProgress()
         maintenance_worker = MaintenanceWorker(
@@ -87,10 +79,9 @@ def create_app(
             downloads_worker=worker,
             gallery=gallery,
             event_bus=event_bus,
-            db_lock=db_lock,
         )
         maintenance_worker.start()
-        poller = Poller(db, worker, event_bus=event_bus, db_lock=db_lock)
+        poller = Poller(db, worker, event_bus=event_bus)
         poller.start()
 
         app.state.settings = settings
@@ -102,7 +93,6 @@ def create_app(
         app.state.maintenance_worker = maintenance_worker
         app.state.maintenance_live = maintenance_live
         app.state.event_bus = event_bus
-        app.state.db_lock = db_lock
 
         try:
             yield
