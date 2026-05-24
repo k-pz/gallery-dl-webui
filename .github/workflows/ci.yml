@@ -105,16 +105,24 @@ jobs:
 
       - name: Activate pnpm via corepack
         # pnpm version comes from frontend/package.json's "packageManager"
-        # field — same pattern as the local `mise run install` task.
-        run: corepack enable
-
-      - name: Resolve pnpm store path
-        run: echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+        # field — same pattern as the local `mise run install` task. The
+        # env var skips corepack's interactive "Y/n" download prompt, which
+        # otherwise swallows stdout on the first pnpm invocation in CI.
+        # Calling `pnpm --version` after enable forces the pinned version
+        # to actually download, so later steps don't race the install.
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: |
+          corepack enable
+          pnpm --version
 
       - name: Cache pnpm store
+        # `~/.local/share/pnpm/store` is pnpm's default store-dir on Linux
+        # runners (XDG_DATA_HOME). Hardcoding it avoids a separate
+        # `pnpm store path` lookup step that races corepack's first download.
         uses: actions/cache@v4
         with:
-          path: ${{ env.PNPM_STORE_PATH }}
+          path: ~/.local/share/pnpm/store
           key: pnpm-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
 
@@ -188,10 +196,11 @@ jobs:
           cache: true
 
       - name: Activate pnpm via corepack
-        run: corepack enable
-
-      - name: Resolve pnpm store path
-        run: echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: |
+          corepack enable
+          pnpm --version
 
       - name: Cache uv package downloads
         uses: actions/cache@v4
@@ -203,7 +212,7 @@ jobs:
       - name: Cache pnpm store
         uses: actions/cache@v4
         with:
-          path: ${{ env.PNPM_STORE_PATH }}
+          path: ~/.local/share/pnpm/store
           key: pnpm-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
           restore-keys: pnpm-${{ runner.os }}-
 
