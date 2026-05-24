@@ -11,8 +11,7 @@ import {
   Title,
   Tooltip,
 } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
   cancelDownloadMutation,
@@ -24,6 +23,7 @@ import { useDataInvalidators } from "../lib/invalidate";
 import { useOptimisticCancel } from "../lib/optimisticCancel";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
 import { isCancellable, isTerminal, JOB_STEPS, jobStep, statusTone } from "../lib/status";
+import { useNotifyingMutation } from "../lib/useNotifyingMutation";
 import { IconAlertTriangle, IconX } from "./Icons";
 import { Pill } from "./Pill";
 import { ProgressCard } from "./ProgressCard";
@@ -52,56 +52,54 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
     invalidate.download(jobId);
   };
 
-  const cancel = useMutation({
-    ...cancelDownloadMutation(),
-    onMutate: () => {
-      cancelIntent.mark();
+  const cancel = useNotifyingMutation(
+    {
+      ...cancelDownloadMutation(),
+      onMutate: () => {
+        cancelIntent.mark();
+      },
+      onSuccess: () => {
+        setActionError(null);
+        refresh();
+      },
+      onError: (err) => {
+        cancelIntent.clear();
+        setActionError(extractErrorMessage(err));
+      },
     },
-    onSuccess: () => {
-      setActionError(null);
-      notifications.show({
+    {
+      success: {
         title: "Cancel requested",
         message: `Job #${jobId} is being cancelled.`,
         color: "orange",
-      });
-      refresh();
+      },
+      error: { title: "Cancel failed" },
     },
-    onError: (err) => {
-      cancelIntent.clear();
-      const msg = extractErrorMessage(err);
-      setActionError(msg);
-      notifications.show({
-        title: "Cancel failed",
-        message: msg,
-        color: "red",
-      });
-    },
-  });
+  );
 
-  const requeue = useMutation({
-    ...requeueDownloadMutation(),
-    onMutate: () => {
-      cancelIntent.clear();
+  const requeue = useNotifyingMutation(
+    {
+      ...requeueDownloadMutation(),
+      onMutate: () => {
+        cancelIntent.clear();
+      },
+      onSuccess: () => {
+        setActionError(null);
+        refresh();
+      },
+      onError: (err) => {
+        setActionError(extractErrorMessage(err));
+      },
     },
-    onSuccess: () => {
-      setActionError(null);
-      notifications.show({
+    {
+      success: {
         title: "Requeued",
         message: `Job #${jobId} has been queued again.`,
         color: "blue",
-      });
-      refresh();
+      },
+      error: { title: "Requeue failed" },
     },
-    onError: (err) => {
-      const msg = extractErrorMessage(err);
-      setActionError(msg);
-      notifications.show({
-        title: "Requeue failed",
-        message: msg,
-        color: "red",
-      });
-    },
-  });
+  );
 
   if (isLoading || !job) {
     return (
