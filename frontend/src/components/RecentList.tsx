@@ -6,7 +6,7 @@ import {
   listDownloadsOptions,
   requeueDownloadMutation,
 } from "../api/@tanstack/react-query.gen";
-import type { DownloadOut } from "../api/types.gen";
+import type { Download } from "../api/types.gen";
 import { useDataInvalidators } from "../lib/invalidate";
 import { makeNeedleMatcher } from "../lib/listFilters";
 import { useOptimisticCancelMany } from "../lib/optimisticCancel";
@@ -118,7 +118,7 @@ export function RecentList({
 
   const visible = useMemo(() => {
     if (!data) return [];
-    const matchesNeedle = makeNeedleMatcher<DownloadOut>(
+    const matchesNeedle = makeNeedleMatcher<Download>(
       search,
       (d) => d.name,
       (d) => d.url,

@@ -5,12 +5,21 @@ from __future__ import annotations
 import aiosqlite
 
 from backend.database import insert_returning_id, now_iso
-from backend.downloads.models import Download, row_to_download
+from backend.downloads.schemas import Download
 
 # Bounds the race-loss retry inside `claim_next_pending`: each retry
 # costs one extra SELECT, so a tight loop in test setups can need a few
 # attempts. 8 has been more than enough in practice.
 _CLAIM_RETRY_ATTEMPTS = 8
+
+# Selects every column on `downloads` plus the joined target name so a
+# single fetch yields a fully-hydrated Download (name None when target_id
+# is NULL or the join misses).
+_SELECT = """
+SELECT d.*, t.name AS name
+FROM downloads d
+LEFT JOIN targets t ON t.id = d.target_id
+"""
 
 
 async def insert_pending(
@@ -28,40 +37,27 @@ async def insert_pending(
         (url, extractor, "pending", created_at, output_dir, target_id),
     )
     await db.commit()
-    return Download(
-        id=new_id,
-        url=url,
-        extractor=extractor,
-        status="pending",
-        created_at=created_at,
-        started_at=None,
-        finished_at=None,
-        exit_code=None,
-        files_downloaded=0,
-        files_expected=None,
-        chapters_total=None,
-        error=None,
-        postprocess_status=None,
-        postprocess_chapters_packed=None,
-        postprocess_error=None,
-        output_dir=output_dir,
-        target_id=target_id,
-    )
+    # Re-fetch so the joined `name` is populated for callers (the row was
+    # just inserted; the join cost is one row).
+    fetched = await get(db, new_id)
+    if fetched is None:
+        raise RuntimeError("inserted download vanished")
+    return fetched
 
 
 async def get(db: aiosqlite.Connection, id_: int) -> Download | None:
-    async with db.execute("SELECT * FROM downloads WHERE id = ?", (id_,)) as cur:
+    async with db.execute(f"{_SELECT} WHERE d.id = ?", (id_,)) as cur:
         row = await cur.fetchone()
-    return row_to_download(row) if row else None
+    return Download.from_row(row) if row else None
 
 
 async def list_recent(db: aiosqlite.Connection, limit: int = 50) -> list[Download]:
     async with db.execute(
-        "SELECT * FROM downloads ORDER BY created_at DESC, id DESC LIMIT ?",
+        f"{_SELECT} ORDER BY d.created_at DESC, d.id DESC LIMIT ?",
         (limit,),
     ) as cur:
         rows = await cur.fetchall()
-    return [row_to_download(r) for r in rows]
+    return [Download.from_row(r) for r in rows]
 
 
 async def claim_next_pending(db: aiosqlite.Connection) -> Download | None:
