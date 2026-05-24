@@ -1,3 +1,9 @@
+## v1.10.0 (2026-05-24)
+
+### Feat
+
+- **jobs**: auto-open the current job and follow it as work advances
+
 ## v1.9.1 (2026-05-24)
 
 ### Fix
