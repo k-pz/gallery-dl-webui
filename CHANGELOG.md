@@ -1,3 +1,10 @@
+## v1.9.0 (2026-05-24)
+
+### Feat
+
+- **frontend**: consume X-Events response header for sync cache invalidation
+- **backend**: emit per-request events as X-Events response header
+
 ## v1.8.6 (2026-05-24)
 
 ### Refactor
