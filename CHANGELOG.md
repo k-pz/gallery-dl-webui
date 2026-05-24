@@ -1,3 +1,9 @@
+## v1.8.2 (2026-05-24)
+
+### Fix
+
+- **ui**: only render mobile drawer shadow when drawer is open
+
 ## v1.8.1 (2026-05-24)
 
 ### Refactor
