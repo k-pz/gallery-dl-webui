@@ -80,11 +80,16 @@ Key properties:
   per-file callback raises `gallery_dl.exception.StopExtraction`, which the
   gallery-dl dispatcher catches and unwinds cleanly.
 - **Realtime UI**: state changes publish to an in-process `EventBus`
-  (`backend/events.py`). A websocket endpoint `/api/ws` fan-outs to every
-  connected browser; the React app pushes incoming events into the TanStack
-  Query cache so lists refresh without polling. The existing
-  `refetchInterval`s remain as a generous fallback when the socket is
-  disconnected.
+  (`backend/events.py`) and reach the React app two ways. (1) A websocket
+  endpoint `/api/ws` fan-outs every event to every connected browser, so two
+  tabs viewing the same data stay in sync. (2) A request-scoped middleware
+  (`backend/middleware.py`) collects the events emitted during one HTTP
+  request and ships them back as an `X-Events` response header — the
+  mutating client invalidates its TanStack caches synchronously instead of
+  waiting for the websocket roundtrip. Both paths feed the same dispatch
+  function in `frontend/src/lib/backendEvents.ts`. Component-level
+  `refetchInterval`s remain as a generous fallback when both paths are
+  disrupted.
 
 ### Deployment topology
 
