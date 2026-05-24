@@ -267,9 +267,9 @@ export type LibraryImportResult = {
 };
 
 /**
- * MaintenanceJobOut
+ * MaintenanceJob
  */
-export type MaintenanceJobOut = {
+export type MaintenanceJob = {
     /**
      * Id
      */
@@ -986,7 +986,7 @@ export type ListMaintenanceJobsResponses = {
      *
      * Successful Response
      */
-    200: Array<MaintenanceJobOut>;
+    200: Array<MaintenanceJob>;
 };
 
 export type ListMaintenanceJobsResponse = ListMaintenanceJobsResponses[keyof ListMaintenanceJobsResponses];
@@ -1011,7 +1011,7 @@ export type ScheduleMaintenanceJobResponses = {
     /**
      * Successful Response
      */
-    200: MaintenanceJobOut;
+    200: MaintenanceJob;
 };
 
 export type ScheduleMaintenanceJobResponse = ScheduleMaintenanceJobResponses[keyof ScheduleMaintenanceJobResponses];
@@ -1041,7 +1041,7 @@ export type CancelMaintenanceJobResponses = {
     /**
      * Successful Response
      */
-    200: MaintenanceJobOut;
+    200: MaintenanceJob;
 };
 
 export type CancelMaintenanceJobResponse = CancelMaintenanceJobResponses[keyof CancelMaintenanceJobResponses];
