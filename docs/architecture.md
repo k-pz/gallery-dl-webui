@@ -31,7 +31,7 @@ One uvicorn process hosts the FastAPI app. Inside that process:
 │   (request handlers)│         ▲                                                       │
 │                     ▼         │                                                       │
 │              ┌──────────────┐ │   asyncio.Event (wakeup) ┌────────────────┐           │
-│              │ Worker slots │ │ ◄──────────────────────── │  HTTP handlers │           │
+│              │   Worker     │ │ ◄──────────────────────── │  HTTP handlers │           │
 │              │ (downloads)  │ │ ────────────────────────► │ (notify/cancel)│           │
 │              └──────┬───────┘ │   request_cancel(id)     └────────────────┘           │
 │                     │         │                                                       │
@@ -41,7 +41,7 @@ One uvicorn process hosts the FastAPI app. Inside that process:
 │                     │                                                                 │
 │              ┌──────▼─────────┐                                                       │
 │              │ aiosqlite conn │  ◄── shared single connection (jobs.db)               │
-│              └────────────────┘     guarded by app.state.db_lock                      │
+│              └────────────────┘                                                       │
 │                                                                                       │
 │              ┌──────────────┐ TICK_SECONDS=30  + .notify() on watch-flag-on           │
 │              │  Poller task │                                                         │
@@ -57,10 +57,9 @@ One uvicorn process hosts the FastAPI app. Inside that process:
 
 Key properties:
 
-- **Worker pool**: `Worker` runs N slots (configurable via
-  `max_concurrent_downloads`, default 2) each draining the FIFO over
-  `downloads.id`. `claim_next_pending` is a guarded UPDATE so two slots can
-  never claim the same row. Per-job cancel flags live in a dict keyed by
+- **Strictly serial worker**: `Worker` runs one job at a time. `claim_next_pending`
+  is a guarded UPDATE so the worker's pick can't race the request-handler
+  `cancel_pending` route. Per-job cancel flags live in a dict keyed by
   download id.
 - **Parallel postprocess**: each job's CBZ packing runs through an
   `asyncio.Semaphore` (`max_parallel_postprocess`, default 3) — chapter
@@ -68,14 +67,14 @@ Key properties:
   don't collide.
 - **No background process / Celery / Redis** — the asyncio event loop is the
   only scheduler.
-- **One aiosqlite connection**: every domain shares `app.state.db`. A
-  process-wide `db_lock` serialises multi-statement transactions across the
-  download slots, the poller, and the maintenance worker so concurrent
-  cursors never block another coroutine's `commit()`.
+- **One aiosqlite connection**: every domain shares `app.state.db`. With one
+  serial worker, the writers (worker, poller, maintenance worker, request
+  handlers) all share the loop and the SQL they emit is either
+  single-statement or atomic-by-WHERE-clause — no app-level lock is needed.
 - **No HTTP-server lifecycle for state**: app state lives on `app.state`
   (`db`, `settings`, `gallery`, `worker`, `poller`, `live_progress`,
-  `event_bus`, `db_lock`), populated by the FastAPI `lifespan` context
-  manager and torn down on shutdown.
+  `event_bus`), populated by the FastAPI `lifespan` context manager and torn
+  down on shutdown.
 - **gallery-dl runs on a worker thread** via `asyncio.to_thread(...)`.
   Cancellation is cooperative: a bool flag the worker reads inside its
   per-file callback raises `gallery_dl.exception.StopExtraction`, which the
