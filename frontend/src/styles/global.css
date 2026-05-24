@@ -949,7 +949,6 @@ a {
   width: min(78vw, 360px);
   background: var(--app-bg-elevated);
   border-left: 1px solid var(--app-border);
-  box-shadow: -20px 0 40px -10px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
   transform: translateX(100%);
@@ -960,6 +959,7 @@ a {
 }
 .mob-drawer-root[data-open="true"] .mob-drawer {
   transform: translateX(0);
+  box-shadow: -20px 0 40px -10px rgba(0, 0, 0, 0.5);
 }
 
 .mob-drawer-head {
