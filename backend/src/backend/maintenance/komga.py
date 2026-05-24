@@ -1,12 +1,12 @@
 """Komga REST API client used by the `push_komga_series_status` maintenance kind.
 
 Kept deliberately narrow: we only need to (a) authenticate against a Komga
-instance with username + password, (b) search series by name, and (c) PATCH
-the series metadata `status` field. Everything else is out of scope.
+instance with an API key, (b) search series by name, and (c) PATCH the series
+metadata `status` field. Everything else is out of scope.
 
-Credentials reach this module via the maintenance worker, which stashes them
-in memory keyed by job id at schedule time. They are never persisted to the
-SQLite app_config / job tables — process restart drops them on the floor.
+Credentials live in `app_config` under `komga_base_url` + `komga_api_key`
+(set via the Config tab). The worker loads them at job-start time; a missing
+or malformed pair fails the job up front with a user-visible message.
 """
 
 from __future__ import annotations
@@ -31,8 +31,7 @@ LOCAL_TO_KOMGA_STATUS: dict[str, str] = {
 @dataclass(frozen=True)
 class KomgaCredentials:
     base_url: str
-    username: str
-    password: str
+    api_key: str
 
 
 @dataclass(frozen=True)
@@ -74,34 +73,28 @@ ProgressLine = Callable[[str], None]
 ShouldCancel = Callable[[], bool]
 
 
-def validate_credentials(params: dict[str, Any] | None) -> KomgaCredentials:
-    """Coerce the loosely-typed `params` payload into a `KomgaCredentials`.
+def load_credentials(cfg: dict[str, Any]) -> KomgaCredentials:
+    """Pull Komga creds out of the app_config dict, validating shape.
 
-    Raises `ValueError` (caught by the worker → marks the job failed) with a
-    user-visible message when a required field is missing or blank. Strips
-    trailing slashes from the base URL so per-request paths can be joined
-    verbatim.
+    Raises `ValueError` (caught by the router for a 400, or by the worker to
+    mark the job failed) with a user-visible message when either field is
+    missing or malformed. Strips trailing slashes from the base URL so
+    per-request paths can be joined verbatim.
     """
-    if not params:
-        raise ValueError("push_komga_series_status requires params (base_url, username, password)")
-    missing: list[str] = []
-    values: dict[str, str] = {}
-    for key in ("base_url", "username", "password"):
-        raw = params.get(key)
-        if not isinstance(raw, str) or not raw.strip():
-            missing.append(key)
-        else:
-            values[key] = raw.strip() if key != "password" else raw
-    if missing:
-        raise ValueError(f"push_komga_series_status missing params: {', '.join(missing)}")
-    base_url = values["base_url"].rstrip("/")
+    base_url_raw = cfg.get("komga_base_url")
+    api_key_raw = cfg.get("komga_api_key")
+    if not isinstance(base_url_raw, str) or not base_url_raw.strip():
+        raise ValueError(
+            "Komga is not configured — set komga_base_url + komga_api_key in the Config tab"
+        )
+    if not isinstance(api_key_raw, str) or not api_key_raw.strip():
+        raise ValueError(
+            "Komga is not configured — set komga_base_url + komga_api_key in the Config tab"
+        )
+    base_url = base_url_raw.strip().rstrip("/")
     if not (base_url.startswith("http://") or base_url.startswith("https://")):
-        raise ValueError("push_komga_series_status base_url must start with http:// or https://")
-    return KomgaCredentials(
-        base_url=base_url,
-        username=values["username"],
-        password=values["password"],
-    )
+        raise ValueError("komga_base_url must start with http:// or https://")
+    return KomgaCredentials(base_url=base_url, api_key=api_key_raw.strip())
 
 
 async def push_series_statuses(
@@ -137,10 +130,10 @@ async def push_series_statuses(
     def cancelled() -> bool:
         return bool(should_cancel and should_cancel())
 
-    auth = httpx.BasicAuth(creds.username, creds.password)
+    headers = {"X-API-Key": creds.api_key}
 
     def _default_factory() -> httpx.AsyncClient:
-        return httpx.AsyncClient(base_url=creds.base_url, auth=auth, timeout=30.0)
+        return httpx.AsyncClient(base_url=creds.base_url, headers=headers, timeout=30.0)
 
     factory = client_factory or _default_factory
 

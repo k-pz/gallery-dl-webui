@@ -22,6 +22,8 @@ type ConfigShape = {
   chapter_naming_template: string;
   default_reading_direction: string;
   max_parallel_postprocess: number;
+  komga_base_url: string | null;
+  komga_api_key: string | null;
 };
 
 const emptyConfig: ConfigShape = {
@@ -34,6 +36,8 @@ const emptyConfig: ConfigShape = {
   chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
   default_reading_direction: "ltr",
   max_parallel_postprocess: 3,
+  komga_base_url: null,
+  komga_api_key: null,
 };
 
 function configHandler(state: { current: ConfigShape }) {
@@ -132,6 +136,8 @@ describe("ConfigPanel", () => {
       default_reading_direction: "ltr",
       postprocess_excluded_dir_names: [],
       max_parallel_postprocess: 3,
+      komga_base_url: null,
+      komga_api_key: null,
     });
     await screen.findByText(/saved/i);
   });
@@ -212,6 +218,8 @@ describe("ConfigPanel", () => {
         chapter_naming_template: "{{ series }} - c{{ chapter_number }}",
         default_reading_direction: "ltr",
         max_parallel_postprocess: 3,
+        komga_base_url: null,
+        komga_api_key: null,
       },
     };
     const fetchSpy = mockFetch(configHandler(state));
@@ -240,6 +248,8 @@ describe("ConfigPanel", () => {
       default_reading_direction: "ltr",
       postprocess_excluded_dir_names: [],
       max_parallel_postprocess: 3,
+      komga_base_url: null,
+      komga_api_key: null,
     });
   });
 });

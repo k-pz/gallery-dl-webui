@@ -4,6 +4,7 @@ import json
 
 from fastapi import APIRouter, Request
 
+from backend.app_config import service as app_config_service
 from backend.dependencies import DbDep, EventBusDep
 from backend.events import maintenance_event
 from backend.exceptions import BadRequestError, ConflictError, NotFoundError
@@ -27,11 +28,6 @@ SUPPORTED_KINDS = {
     "unwatch_ended_series",
 }
 
-# Kinds whose schedule request must carry credentials in `params`. We stash
-# those params in worker memory before creating the DB row so the SQLite
-# table never sees them.
-KINDS_REQUIRING_PARAMS = {"push_komga_series_status"}
-
 
 @router.get("/maintenance/jobs", operation_id="listMaintenanceJobs")
 async def list_maintenance_jobs(db: DbDep) -> list[MaintenanceJob]:
@@ -47,21 +43,19 @@ async def schedule_maintenance_job(
 ) -> MaintenanceJob:
     if body.kind not in SUPPORTED_KINDS:
         raise BadRequestError(f"unsupported maintenance kind: {body.kind}")
-    if body.kind in KINDS_REQUIRING_PARAMS:
+    if body.kind == "push_komga_series_status":
         # Fail fast before persisting a pending row that the worker would
-        # immediately mark failed for the same reason.
-        from backend.maintenance.komga import validate_credentials
+        # immediately mark failed for the same reason. Credentials live in
+        # app_config (Config tab → Komga sync); the worker re-reads them when
+        # the job is claimed.
+        from backend.maintenance.komga import load_credentials
 
+        cfg = await app_config_service.get_all(db)
         try:
-            validate_credentials(body.params)
+            load_credentials(cfg)
         except ValueError as exc:
             raise BadRequestError(str(exc)) from exc
     created = await service.create_pending(db, body.kind)
-    if body.kind in KINDS_REQUIRING_PARAMS:
-        # Stash *after* the row exists so the worker can never claim a job
-        # whose params we forgot to register. The params dict lives only in
-        # the worker's process memory and is dropped on terminal transition.
-        request.app.state.maintenance_worker.stash_params(created.id, body.params or {})
     request.app.state.maintenance_worker.notify()
     bus.publish(maintenance_event("created", id=created.id))
     return created
@@ -83,8 +77,6 @@ async def cancel_maintenance_job(
     # gets a soft signal that the worker checks at the top of each iteration.
     if job.status == "pending":
         await service.cancel_pending(db, job_id)
-        # Drop any stashed credentials for a job that will never run.
-        request.app.state.maintenance_worker.drop_params(job_id)
     else:
         request.app.state.maintenance_worker.request_cancel(job_id)
     refreshed = await service.get_job(db, job_id)

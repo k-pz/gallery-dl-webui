@@ -544,33 +544,42 @@ def test_regenerate_metadata_ignores_archives_outside_designated_output_dirs(
     assert not (unrelated_dir / "series.json").exists()
 
 
-def test_push_komga_status_missing_params_is_rejected(client: TestClient) -> None:
+def test_push_komga_status_without_config_is_rejected(client: TestClient) -> None:
     resp = client.post("/api/maintenance/jobs", json={"kind": "push_komga_series_status"})
     assert resp.status_code == 400
-    assert "params" in resp.json()["detail"]
+    assert "not configured" in resp.json()["detail"]
 
 
-def test_push_komga_status_blank_field_is_rejected(client: TestClient) -> None:
-    resp = client.post(
-        "/api/maintenance/jobs",
+def test_push_komga_status_partial_config_is_rejected(client: TestClient) -> None:
+    # URL set but no API key — still unusable.
+    cfg = client.put(
+        "/api/config",
         json={
-            "kind": "push_komga_series_status",
-            "params": {"base_url": "http://k", "username": "u", "password": ""},
+            "postprocess_root": None,
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "komga_base_url": "http://komga.local",
+        },
+    )
+    assert cfg.status_code == 200, cfg.json()
+    resp = client.post("/api/maintenance/jobs", json={"kind": "push_komga_series_status"})
+    assert resp.status_code == 400
+    assert "not configured" in resp.json()["detail"]
+
+
+def test_config_rejects_bad_komga_base_url(client: TestClient) -> None:
+    resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": None,
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "komga_base_url": "ftp://nope",
+            "komga_api_key": "k",
         },
     )
     assert resp.status_code == 400
-    assert "password" in resp.json()["detail"]
-
-
-def test_push_komga_status_bad_base_url_is_rejected(client: TestClient) -> None:
-    resp = client.post(
-        "/api/maintenance/jobs",
-        json={
-            "kind": "push_komga_series_status",
-            "params": {"base_url": "ftp://nope", "username": "u", "password": "p"},
-        },
-    )
-    assert resp.status_code == 400
+    assert "http" in resp.json()["detail"]
 
 
 def test_push_komga_status_end_to_end(
@@ -579,12 +588,13 @@ def test_push_komga_status_end_to_end(
     """Schedule the job and watch it push a target's status to a fake Komga.
 
     We swap `httpx.AsyncClient` for one backed by `MockTransport` so the worker
-    talks to an in-process fake. The schedule request still carries real-looking
-    credentials so the validation path runs.
+    talks to an in-process fake. Credentials are persisted via PUT /api/config
+    before the schedule, mirroring the user flow (Config tab → Komga sync).
     """
     import httpx
 
-    # Stage a target with a series_status set.
+    # Stage a target with a series_status set; persist Komga creds at the
+    # same time so the schedule + worker both find them in app_config.
     cfg_resp = client.put(
         "/api/config",
         json={
@@ -592,6 +602,8 @@ def test_push_komga_status_end_to_end(
             "postprocess_default_output_dir": None,
             "delete_raw_after_pack": True,
             "default_watch_period": "1d",
+            "komga_base_url": "http://komga.local",
+            "komga_api_key": "secret",
         },
     )
     assert cfg_resp.status_code == 200, cfg_resp.json()
@@ -608,8 +620,10 @@ def test_push_komga_status_end_to_end(
     client.patch(f"/api/targets/{target_id}", json={"series_status": "Hiatus"})
 
     patches: list[tuple[str, str]] = []
+    seen_auth: list[str | None] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        seen_auth.append(request.headers.get("X-API-Key"))
         if request.method == "GET" and request.url.path == "/api/v1/series":
             assert request.url.params.get("search") == "Series"
             return httpx.Response(200, json={"content": [{"id": "k-series-id", "name": "Series"}]})
@@ -633,14 +647,7 @@ def test_push_komga_status_end_to_end(
 
     created = client.post(
         "/api/maintenance/jobs",
-        json={
-            "kind": "push_komga_series_status",
-            "params": {
-                "base_url": "http://komga.local",
-                "username": "user",
-                "password": "pw",
-            },
-        },
+        json={"kind": "push_komga_series_status"},
     )
     assert created.status_code == 200, created.json()
     job_id = created.json()["id"]
@@ -649,6 +656,8 @@ def test_push_komga_status_end_to_end(
     assert done["status"] == "completed", done
     assert done["result"]["updated"] == 1
     assert patches == [("/api/v1/series/k-series-id/metadata", "HIATUS")]
+    # Confirm the configured API key reached the request as `X-API-Key`.
+    assert seen_auth and all(h == "secret" for h in seen_auth)
 
 
 def test_update_lxc_writes_trigger_when_path_unit_enabled(

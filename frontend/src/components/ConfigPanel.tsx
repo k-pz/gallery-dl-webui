@@ -9,6 +9,7 @@ import {
   Loader,
   type MantineColorScheme,
   NumberInput,
+  PasswordInput,
   SegmentedControl,
   Select,
   Stack,
@@ -40,6 +41,8 @@ export function ConfigPanel() {
   const [readingDirection, setReadingDirection] = useState("ltr");
   const [excludedDirsRaw, setExcludedDirsRaw] = useState("");
   const [maxPostprocess, setMaxPostprocess] = useState<number>(3);
+  const [komgaBaseUrl, setKomgaBaseUrl] = useState("");
+  const [komgaApiKey, setKomgaApiKey] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
@@ -53,6 +56,8 @@ export function ConfigPanel() {
       setReadingDirection(data.default_reading_direction ?? "ltr");
       setExcludedDirsRaw((data.postprocess_excluded_dir_names ?? []).join(", "));
       setMaxPostprocess(data.max_parallel_postprocess ?? 3);
+      setKomgaBaseUrl(data.komga_base_url ?? "");
+      setKomgaApiKey(data.komga_api_key ?? "");
     }
   }, [data]);
 
@@ -86,6 +91,8 @@ export function ConfigPanel() {
       deleteRaw !== data.delete_raw_after_pack ||
       readingDirection !== (data.default_reading_direction ?? "ltr") ||
       maxPostprocess !== (data.max_parallel_postprocess ?? 3) ||
+      (komgaBaseUrl.trim() || null) !== (data.komga_base_url ?? null) ||
+      (komgaApiKey.trim() || null) !== (data.komga_api_key ?? null) ||
       excludedDirty);
 
   const save = () => {
@@ -101,6 +108,8 @@ export function ConfigPanel() {
         default_reading_direction: readingDirection,
         postprocess_excluded_dir_names: parsedExcluded,
         max_parallel_postprocess: maxPostprocess,
+        komga_base_url: komgaBaseUrl.trim() || null,
+        komga_api_key: komgaApiKey.trim() || null,
       },
     });
   };
@@ -241,6 +250,38 @@ export function ConfigPanel() {
               max={16}
               disabled={mutation.isPending}
               w={240}
+            />
+          </FormSection>
+
+          <Divider />
+
+          <FormSection
+            kicker="komga sync"
+            title="Komga"
+            description={
+              <>
+                Used by the <Code>Push series status to Komga</Code> maintenance job. Generate an
+                API key in Komga under Account Settings → API keys.
+              </>
+            }
+          >
+            <TextInput
+              label="Komga base URL"
+              placeholder="https://komga.example.com"
+              description="Trailing slash is stripped. Must start with http:// or https://."
+              value={komgaBaseUrl}
+              onChange={(e) => setKomgaBaseUrl(e.currentTarget.value)}
+              disabled={mutation.isPending}
+              styles={{ input: { fontFamily: "var(--app-mono)" } }}
+            />
+            <PasswordInput
+              label="Komga API key"
+              description="Sent as the X-API-Key header. Stored in the local app database; never sent anywhere besides your Komga instance."
+              value={komgaApiKey}
+              onChange={(e) => setKomgaApiKey(e.currentTarget.value)}
+              disabled={mutation.isPending}
+              autoComplete="off"
+              styles={{ input: { fontFamily: "var(--app-mono)" } }}
             />
           </FormSection>
 

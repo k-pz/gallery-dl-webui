@@ -13,6 +13,8 @@ class AppConfigOut(BaseModel):
     chapter_naming_template: str
     default_reading_direction: str
     max_parallel_postprocess: int
+    komga_base_url: str | None
+    komga_api_key: str | None
 
 
 class AppConfigIn(BaseModel):
@@ -24,3 +26,5 @@ class AppConfigIn(BaseModel):
     default_reading_direction: str | None = None
     postprocess_excluded_dir_names: list[str] | None = None
     max_parallel_postprocess: int | None = None
+    komga_base_url: str | None = None
+    komga_api_key: str | None = None
