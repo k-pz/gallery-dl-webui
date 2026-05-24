@@ -6,7 +6,7 @@ import json
 
 import aiosqlite
 
-from backend.database import now_iso
+from backend.database import insert_returning_id, now_iso
 from backend.targets.models import (
     UNSET,
     Target,
@@ -81,7 +81,8 @@ async def upsert(
         return row_to_target(row)
 
     created_at = now_iso()
-    cursor = await db.execute(
+    new_id = await insert_returning_id(
+        db,
         "INSERT INTO targets(url, extractor, output_dir, watched, created_at, "
         "tags, reading_direction) VALUES(?, ?, ?, ?, ?, ?, ?)",
         (
@@ -95,8 +96,6 @@ async def upsert(
         ),
     )
     await db.commit()
-    new_id = cursor.lastrowid
-    assert new_id is not None
     return Target(
         id=new_id,
         url=url,

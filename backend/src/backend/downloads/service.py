@@ -4,8 +4,13 @@ from __future__ import annotations
 
 import aiosqlite
 
-from backend.database import now_iso
+from backend.database import insert_returning_id, now_iso
 from backend.downloads.models import Download, row_to_download
+
+# Bounds the race-loss retry inside `claim_next_pending`: each retry
+# costs one extra SELECT, so a tight loop in test setups can need a few
+# attempts. 8 has been more than enough in practice.
+_CLAIM_RETRY_ATTEMPTS = 8
 
 
 async def insert_pending(
@@ -16,14 +21,13 @@ async def insert_pending(
     target_id: int | None = None,
 ) -> Download:
     created_at = now_iso()
-    cursor = await db.execute(
+    new_id = await insert_returning_id(
+        db,
         "INSERT INTO downloads(url, extractor, status, created_at, output_dir, target_id) "
         "VALUES(?, ?, ?, ?, ?, ?)",
         (url, extractor, "pending", created_at, output_dir, target_id),
     )
     await db.commit()
-    new_id = cursor.lastrowid
-    assert new_id is not None
     return Download(
         id=new_id,
         url=url,
@@ -67,7 +71,7 @@ async def claim_next_pending(db: aiosqlite.Connection) -> Download | None:
     the UPDATE includes `status = 'pending'` so a slot that lost the race
     sees `rowcount == 0` and retries — at worst we make one more SELECT.
     """
-    for _ in range(8):
+    for _ in range(_CLAIM_RETRY_ATTEMPTS):
         async with db.execute(
             "SELECT id FROM downloads WHERE status = 'pending' ORDER BY id ASC LIMIT 1"
         ) as cur:

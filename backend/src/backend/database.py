@@ -7,6 +7,7 @@ migrations live in this one place so the DB shape has a single source of truth.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -83,6 +84,21 @@ CREATE INDEX IF NOT EXISTS idx_maintenance_jobs_created_at ON maintenance_jobs(c
 
 def now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+async def insert_returning_id(
+    db: aiosqlite.Connection, sql: str, params: Iterable[object]
+) -> int:
+    """Run an INSERT and return its lastrowid, failing loud if it's missing.
+
+    Centralises the cursor.lastrowid dance so callers never have to assert
+    (asserts get stripped under `python -O`; the DB layer should fail loud).
+    """
+    cursor = await db.execute(sql, tuple(params))
+    new_id = cursor.lastrowid
+    if new_id is None:
+        raise RuntimeError("INSERT returned no lastrowid")
+    return new_id
 
 
 async def open_database(path: Path) -> aiosqlite.Connection:

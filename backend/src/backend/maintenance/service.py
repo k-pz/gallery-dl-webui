@@ -5,7 +5,7 @@ from typing import Any
 
 import aiosqlite
 
-from backend.database import now_iso
+from backend.database import insert_returning_id, now_iso
 from backend.maintenance.models import MaintenanceJob
 
 
@@ -24,14 +24,12 @@ def _row_to_job(row: aiosqlite.Row) -> MaintenanceJob:
 
 async def create_pending(db: aiosqlite.Connection, kind: str) -> MaintenanceJob:
     created = now_iso()
-    cur = await db.execute(
+    row_id = await insert_returning_id(
+        db,
         "INSERT INTO maintenance_jobs(kind, status, created_at) VALUES (?, 'pending', ?)",
         (kind, created),
     )
     await db.commit()
-    row_id = cur.lastrowid
-    if row_id is None:
-        raise RuntimeError("failed to create maintenance job row")
     return MaintenanceJob(
         id=row_id,
         kind=kind,
