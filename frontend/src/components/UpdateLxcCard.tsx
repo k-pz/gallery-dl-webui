@@ -6,7 +6,7 @@ import {
   checkForUpdatesQueryKey,
   listMaintenanceJobsOptions,
 } from "../api/@tanstack/react-query.gen";
-import type { MaintenanceJobOut, UpdateCheckOut } from "../api/types.gen";
+import type { MaintenanceJob, UpdateCheckOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { IconAlertTriangle, IconArrowUp, IconInfo } from "./Icons";
 
@@ -32,7 +32,7 @@ export function UpdateLxcCard({
   onSchedule,
 }: {
   scheduling: boolean;
-  onSchedule: () => Promise<MaintenanceJobOut>;
+  onSchedule: () => Promise<MaintenanceJob>;
 }) {
   const qc = useQueryClient();
   const [armed, setArmed] = useState(false);
