@@ -40,10 +40,10 @@ router = APIRouter(tags=["library"])
 
 @router.get("/library/export", operation_id="exportLibrary", response_class=PlainTextResponse)
 async def export_library(db: DbDep) -> PlainTextResponse:
-    summaries = await targets_service.list_all(db)
+    targets = await targets_service.list_all(db)
     payload = {
         "version": SCHEMA_VERSION,
-        "series": [service.series_to_dict(s.target) for s in summaries],
+        "series": [service.series_to_dict(t) for t in targets],
     }
     body = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
     return PlainTextResponse(content=body, media_type="application/yaml")

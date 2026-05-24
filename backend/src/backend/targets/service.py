@@ -7,14 +7,14 @@ import json
 import aiosqlite
 
 from backend.database import insert_returning_id, now_iso
-from backend.targets.models import (
-    UNSET,
-    Target,
-    TargetSummary,
-    Unset,
-    row_to_target,
-    row_to_target_summary,
-)
+from backend.targets.schemas import Target
+
+
+class Unset:
+    """Sentinel allowing `update` to distinguish "leave as-is" from "set to NULL"."""
+
+
+UNSET = Unset()
 
 
 def _encode_tags(tags: list[str] | None) -> str | None:
@@ -23,6 +23,13 @@ def _encode_tags(tags: list[str] | None) -> str | None:
     return json.dumps(list(tags), ensure_ascii=False)
 
 
+# Bare target columns — no summary join. Used by `get`, `get_by_url`,
+# `list_watched` and the upsert refetch.
+_BARE_SELECT = "SELECT * FROM targets"
+
+# Target columns plus the latest-download summary join (last_*, count).
+# Used by `list_all` and `get_summary`; the result row Pydantic-validates
+# back into Target with the summary fields populated.
 _SUMMARY_SELECT = """
 SELECT t.*,
        d.id AS last_download_id,
@@ -54,7 +61,7 @@ async def upsert(
     target currently has — last submit wins, so the user can re-submit to
     update series metadata.
     """
-    async with db.execute("SELECT * FROM targets WHERE url = ?", (url,)) as cur:
+    async with db.execute(f"{_BARE_SELECT} WHERE url = ?", (url,)) as cur:
         row = await cur.fetchone()
     if row is not None:
         updates: list[str] = []
@@ -75,10 +82,10 @@ async def upsert(
             params.append(row["id"])
             await db.execute(f"UPDATE targets SET {', '.join(updates)} WHERE id = ?", params)
             await db.commit()
-            async with db.execute("SELECT * FROM targets WHERE id = ?", (row["id"],)) as cur2:
+            async with db.execute(f"{_BARE_SELECT} WHERE id = ?", (row["id"],)) as cur2:
                 row = await cur2.fetchone()
         assert row is not None
-        return row_to_target(row)
+        return Target.from_row(row)
 
     created_at = now_iso()
     new_id = await insert_returning_id(
@@ -113,29 +120,29 @@ async def upsert(
 
 
 async def get(db: aiosqlite.Connection, id_: int) -> Target | None:
-    async with db.execute("SELECT * FROM targets WHERE id = ?", (id_,)) as cur:
+    async with db.execute(f"{_BARE_SELECT} WHERE id = ?", (id_,)) as cur:
         row = await cur.fetchone()
-    return row_to_target(row) if row else None
+    return Target.from_row(row) if row else None
 
 
 async def get_by_url(db: aiosqlite.Connection, url: str) -> Target | None:
-    async with db.execute("SELECT * FROM targets WHERE url = ?", (url,)) as cur:
+    async with db.execute(f"{_BARE_SELECT} WHERE url = ?", (url,)) as cur:
         row = await cur.fetchone()
-    return row_to_target(row) if row else None
+    return Target.from_row(row) if row else None
 
 
-async def list_all(db: aiosqlite.Connection) -> list[TargetSummary]:
-    """List every target with a tiny summary of its latest download."""
+async def list_all(db: aiosqlite.Connection) -> list[Target]:
+    """List every target with the joined summary of its latest download."""
     async with db.execute(_SUMMARY_SELECT + " ORDER BY t.created_at DESC, t.id DESC") as cur:
         rows = await cur.fetchall()
-    return [row_to_target_summary(r) for r in rows]
+    return [Target.from_row(r) for r in rows]
 
 
-async def get_summary(db: aiosqlite.Connection, id_: int) -> TargetSummary | None:
-    """Single-row equivalent of list_all — for routes that return one summary."""
+async def get_summary(db: aiosqlite.Connection, id_: int) -> Target | None:
+    """Single-row equivalent of list_all — joined with the latest download."""
     async with db.execute(_SUMMARY_SELECT + " WHERE t.id = ?", (id_,)) as cur:
         row = await cur.fetchone()
-    return row_to_target_summary(row) if row else None
+    return Target.from_row(row) if row else None
 
 
 async def update(
@@ -243,9 +250,9 @@ async def mark_polled(db: aiosqlite.Connection, id_: int) -> None:
 
 
 async def list_watched(db: aiosqlite.Connection) -> list[Target]:
-    async with db.execute("SELECT * FROM targets WHERE watched = 1 ORDER BY id ASC") as cur:
+    async with db.execute(f"{_BARE_SELECT} WHERE watched = 1 ORDER BY id ASC") as cur:
         rows = await cur.fetchall()
-    return [row_to_target(r) for r in rows]
+    return [Target.from_row(r) for r in rows]
 
 
 async def unwatch_ended(db: aiosqlite.Connection) -> list[int]:
