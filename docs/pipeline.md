@@ -60,7 +60,7 @@ while not stop:
 6. If `exit_code == 0` and not cancelled, run `_run_postprocess(...)`:
    - Look up `postprocess_root` and `output_dir` from app_config / the job.
    - Re-validate the output dir is under the root.
-   - `postprocess.run(...)` — see [Postprocessing → CBZ](#postprocessing--cbz).
+   - `postprocess.run(...)` — see [Postprocessing → CBZ](#postprocessing-cbz).
    - Persist `postprocess_status`, `postprocess_chapters_packed`,
      `postprocess_error`.
 

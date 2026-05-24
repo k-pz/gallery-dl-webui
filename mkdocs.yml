@@ -8,11 +8,13 @@ edit_uri: edit/main/docs/
 docs_dir: docs
 site_dir: site
 
-# README.md inside docs/ is a sidebar for GitHub browsers — the docs site uses
-# the generated index.md instead, so this prevents a collision under MkDocs'
-# `use_directory_urls`. design/ holds source images for screenshots, not pages.
+# docs/README.md is a sidebar for GitHub browsers — the docs site uses the
+# generated index.md instead, so this prevents a collision under MkDocs'
+# `use_directory_urls`. The leading slash anchors the pattern to docs/ so
+# nested README.md files (e.g. inside the typedoc output tree) aren't also
+# swept up. design/ holds source images for screenshots, not pages.
 exclude_docs: |
-  README.md
+  /README.md
   design/
 
 # Don't fail the strict build on relative links inherited from README.md that
@@ -54,7 +56,8 @@ plugins:
         - scripts/gen_index.py
         - scripts/gen_python_ref.py
         - scripts/gen_http_api.py
-  - literate-nav
+  - literate-nav:
+      implicit_index: true
   - mkdocstrings:
       handlers:
         python:
@@ -105,5 +108,5 @@ nav:
           - App config: reference/python/app-config.md
           - Output dirs: reference/python/output-dirs.md
           - Health: reference/python/health.md
-      - Frontend: reference/frontend/README.md
+      - Frontend: reference/frontend/
   - Components: https://k-pz.github.io/gallery-dl-webui/storybook/
