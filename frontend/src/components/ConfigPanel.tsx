@@ -5,9 +5,7 @@ import {
   Card,
   Code,
   Divider,
-  FileButton,
   Group,
-  List,
   Loader,
   type MantineColorScheme,
   NumberInput,
@@ -17,45 +15,17 @@ import {
   Switch,
   Text,
   TextInput,
-  Title,
   useMantineColorScheme,
 } from "@mantine/core";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { getConfigOptions, putConfigMutation } from "../api/@tanstack/react-query.gen";
-import type { LibraryImportResult } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
-import { exportLibrary, importLibrary } from "../lib/libraryBackup";
 import { READING_DIRECTION_OPTIONS } from "../lib/readingDirection";
 import { DirectoryPicker } from "./DirectoryPicker";
-
-function Section({
-  kicker,
-  title,
-  description,
-  children,
-}: {
-  kicker: string;
-  title: string;
-  description?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <Stack gap="md">
-      <Stack gap={4}>
-        <span className="app-section-kicker">{kicker}</span>
-        <Title order={4}>{title}</Title>
-        {description && (
-          <Text size="sm" c="dimmed">
-            {description}
-          </Text>
-        )}
-      </Stack>
-      {children}
-    </Stack>
-  );
-}
+import { FormSection } from "./FormSection";
+import { LibraryBackup } from "./LibraryBackup";
 
 export function ConfigPanel() {
   const { data, isLoading } = useQuery(getConfigOptions());
@@ -155,7 +125,7 @@ export function ConfigPanel() {
   return (
     <Stack gap="lg">
       <Card>
-        <Section
+        <FormSection
           kicker="appearance"
           title="Theme"
           description="Auto follows your system preference."
@@ -170,12 +140,12 @@ export function ConfigPanel() {
               { label: "Dark", value: "dark" },
             ]}
           />
-        </Section>
+        </FormSection>
       </Card>
 
       <Card>
         <Stack gap="xl">
-          <Section
+          <FormSection
             kicker="postprocessing"
             title="CBZ packing"
             description={
@@ -238,11 +208,11 @@ export function ConfigPanel() {
               disabled={mutation.isPending}
               styles={{ input: { fontFamily: "var(--app-mono)" } }}
             />
-          </Section>
+          </FormSection>
 
           <Divider />
 
-          <Section
+          <FormSection
             kicker="watching"
             title="Polling cadence"
             description="Per-target overrides win; otherwise watched targets re-poll on this cadence."
@@ -257,11 +227,11 @@ export function ConfigPanel() {
               maw={260}
               styles={{ input: { fontFamily: "var(--app-mono)" } }}
             />
-          </Section>
+          </FormSection>
 
           <Divider />
 
-          <Section
+          <FormSection
             kicker="concurrency"
             title="Parallelism"
             description="Applied at startup. Bumping these speeds up queue-heavy sessions but adds load on the source extractor and on disk I/O."
@@ -288,7 +258,7 @@ export function ConfigPanel() {
                 w={240}
               />
             </Group>
-          </Section>
+          </FormSection>
 
           {(dirty || mutation.isPending || savedAt !== null || submitError) && (
             <Stack gap="sm">
@@ -315,7 +285,7 @@ export function ConfigPanel() {
           {data.postprocess_known_output_dirs.length > 0 && (
             <>
               <Divider />
-              <Section kicker="cache" title="Remembered output directories">
+              <FormSection kicker="cache" title="Remembered output directories">
                 <Box
                   style={{
                     background: "var(--app-surface-muted)",
@@ -332,105 +302,21 @@ export function ConfigPanel() {
                     ))}
                   </Stack>
                 </Box>
-              </Section>
+              </FormSection>
             </>
           )}
         </Stack>
       </Card>
 
       <Card>
-        <Section
+        <FormSection
           kicker="library backup"
           title="Export / import"
           description="Save and restore the library as a YAML file (URL, name, output dir, watch state)."
         >
           <LibraryBackup />
-        </Section>
+        </FormSection>
       </Card>
-    </Stack>
-  );
-}
-
-function LibraryBackup() {
-  const invalidate = useDataInvalidators();
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
-  const [importBusy, setImportBusy] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
-  const [importResult, setImportResult] = useState<LibraryImportResult | null>(null);
-
-  const doExport = async () => {
-    setExporting(true);
-    setExportError(null);
-    try {
-      await exportLibrary();
-    } catch (err) {
-      setExportError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const doImport = async (file: File | null) => {
-    if (!file) return;
-    setImportBusy(true);
-    setImportError(null);
-    setImportResult(null);
-    try {
-      const result = await importLibrary(file);
-      setImportResult(result);
-      invalidate.targets();
-    } catch (err) {
-      setImportError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setImportBusy(false);
-    }
-  };
-
-  return (
-    <Stack gap="md">
-      <Group>
-        <Button variant="light" onClick={doExport} loading={exporting}>
-          Export library
-        </Button>
-        <FileButton onChange={doImport} accept=".yaml,.yml,application/yaml,text/yaml,text/plain">
-          {(props) => (
-            <Button variant="light" loading={importBusy} {...props}>
-              Import library…
-            </Button>
-          )}
-        </FileButton>
-      </Group>
-      {exportError && (
-        <Alert color="red" variant="light">
-          Export failed: {exportError}
-        </Alert>
-      )}
-      {importError && (
-        <Alert color="red" variant="light">
-          Import failed: {importError}
-        </Alert>
-      )}
-      {importResult && (
-        <Alert
-          color={importResult.errors.length > 0 ? "yellow" : "green"}
-          variant="light"
-          title={`Imported ${importResult.imported}, updated ${importResult.updated}`}
-        >
-          {importResult.errors.length === 0 ? (
-            <Text size="sm">Done.</Text>
-          ) : (
-            <Stack gap={4}>
-              <Text size="sm">{importResult.errors.length} entries had problems:</Text>
-              <List size="sm" withPadding>
-                {importResult.errors.map((e) => (
-                  <List.Item key={e}>{e}</List.Item>
-                ))}
-              </List>
-            </Stack>
-          )}
-        </Alert>
-      )}
     </Stack>
   );
 }
