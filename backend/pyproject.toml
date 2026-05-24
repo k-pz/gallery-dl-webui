@@ -32,14 +32,15 @@ dev = [
     "ruff>=0.15.13",
     "ty>=0.0.37",
 ]
-# Build-time only — pydoc-markdown produces the per-module reference for the
-# GitHub wiki (CI: .github/workflows/wiki.yml, local: `mise run wiki:build`).
-# It must share the backend venv so it can import the live package.
+# Build-time only — MkDocs Material renders the docs site (CI:
+# .github/workflows/docs.yml, local: `mise run docs:serve`). The group must
+# share the backend venv so the gen-files hooks can import `backend` (used
+# for OpenAPI rendering) and so `mkdocstrings[python]` can introspect it.
 docs = [
-    "pydoc-markdown>=4.8",
-    # Transitive via pydoc-markdown -> docspec-python; pinned to dodge
-    # GHSA-fj7x-q9j7-g6q6 (file write) and GHSA-mc65-7v3q-3vp3 (ReDoS).
-    "black>=26.3.1",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.27",
+    "mkdocs-gen-files>=0.5",
+    "mkdocs-literate-nav>=0.6",
 ]
 
 [tool.ruff]
