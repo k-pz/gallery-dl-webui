@@ -84,11 +84,15 @@ async def test_push_updates_single_matching_series(creds: KomgaCredentials) -> N
     )
     assert result.updated == 1
     assert result.total == 1
-    assert patched == [("/api/v1/series/abc123/metadata", {"status": "HIATUS"})]
+    # `statusLock: True` pins the field so Komga's next library scan can't
+    # silently revert our REST value via the Mylar series.json importer.
+    assert patched == [
+        ("/api/v1/series/abc123/metadata", {"status": "HIATUS", "statusLock": True}),
+    ]
 
 
 async def test_push_maps_all_known_statuses(creds: KomgaCredentials) -> None:
-    sent_statuses: list[str] = []
+    sent_payloads: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "GET":
@@ -96,7 +100,7 @@ async def test_push_maps_all_known_statuses(creds: KomgaCredentials) -> None:
             return httpx.Response(200, json={"content": [{"id": f"id-{name}", "name": name}]})
         import json
 
-        sent_statuses.append(json.loads(request.content)["status"])
+        sent_payloads.append(json.loads(request.content))
         return httpx.Response(204)
 
     targets = [
@@ -107,7 +111,8 @@ async def test_push_maps_all_known_statuses(creds: KomgaCredentials) -> None:
     ]
     result = await push_series_statuses(creds, targets, client_factory=_make_factory(handler))
     assert result.updated == 4
-    assert sent_statuses == ["ONGOING", "ENDED", "HIATUS", "ABANDONED"]
+    assert [p["status"] for p in sent_payloads] == ["ONGOING", "ENDED", "HIATUS", "ABANDONED"]
+    assert all(p["statusLock"] is True for p in sent_payloads)
 
 
 async def test_push_skips_zero_matches(creds: KomgaCredentials) -> None:
@@ -163,6 +168,46 @@ async def test_push_filters_substring_matches_from_komga_search(creds: KomgaCred
     result = await push_series_statuses(
         creds,
         [TargetForPush(name="One Piece", series_status="Ongoing")],
+        client_factory=_make_factory(handler),
+    )
+    assert result.updated == 1
+
+
+async def test_push_matches_against_sanitized_directory_name(creds: KomgaCredentials) -> None:
+    """A target name with filename-illegal chars matches Komga's sanitized series name.
+
+    Komga shows the on-disk directory name (post-`sanitize`) when series.json
+    hasn't been imported yet, so the match must succeed even though Komga's
+    `name` differs from the raw target name (`:` → `_`, `?` stripped, etc.).
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"content": [{"id": "abc", "name": "Re_Zero kara Hajimeru"}]},
+            )
+        return httpx.Response(204)
+
+    result = await push_series_statuses(
+        creds,
+        [TargetForPush(name="Re:Zero kara Hajimeru", series_status="Ongoing")],
+        client_factory=_make_factory(handler),
+    )
+    assert result.updated == 1
+
+
+async def test_push_matches_with_unicode_casefold(creds: KomgaCredentials) -> None:
+    """Match should use Unicode case folding (e.g. ß ↔ SS) rather than ASCII .lower()."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json={"content": [{"id": "x", "name": "Straße"}]})
+        return httpx.Response(204)
+
+    result = await push_series_statuses(
+        creds,
+        [TargetForPush(name="STRASSE", series_status="Ongoing")],
         client_factory=_make_factory(handler),
     )
     assert result.updated == 1
