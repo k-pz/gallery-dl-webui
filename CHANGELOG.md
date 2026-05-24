@@ -1,3 +1,9 @@
+## v1.8.0 (2026-05-24)
+
+### Feat
+
+- **downloads**: replace lengthy manifest sim with quick metadata pull
+
 ## v1.7.0 (2026-05-22)
 
 ### Feat
