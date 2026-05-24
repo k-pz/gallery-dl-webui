@@ -6,8 +6,8 @@ import pytest
 
 from backend.database import open_database
 from backend.targets import service as targets_service
-from backend.targets.models import Target
 from backend.targets.poller import _parse_iso, is_due
+from backend.targets.schemas import Target
 
 
 @pytest.fixture

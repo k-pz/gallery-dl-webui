@@ -7,7 +7,7 @@ from fastapi import Depends, Request
 from backend.dependencies import DbDep
 from backend.targets import service
 from backend.targets.exceptions import TargetNotFound
-from backend.targets.models import Target
+from backend.targets.schemas import Target
 
 if TYPE_CHECKING:
     from backend.targets.poller import Poller

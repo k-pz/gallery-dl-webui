@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.targets.models import Target
+from backend.targets.schemas import Target
 
 
 def series_to_dict(target: Target) -> dict[str, Any]:

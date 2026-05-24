@@ -21,25 +21,24 @@ from backend.targets.exceptions import (
     TargetHasActiveDownloadOnDelete,
     TargetNotFound,
 )
-from backend.targets.models import UNSET, Unset
-from backend.targets.schemas import TargetOut, TargetUpdate
+from backend.targets.schemas import Target, TargetUpdate
+from backend.targets.service import UNSET, Unset
 from backend.targets.utils import parse_duration
 
 router = APIRouter(tags=["targets"])
 
 
 @router.get("/targets", operation_id="listTargets")
-async def list_targets(db: DbDep) -> list[TargetOut]:
-    rows = await service.list_all(db)
-    return [TargetOut.from_summary(s) for s in rows]
+async def list_targets(db: DbDep) -> list[Target]:
+    return await service.list_all(db)
 
 
 @router.get("/targets/{target_id}", operation_id="getTarget")
-async def get_target(target: TargetDep, db: DbDep) -> TargetOut:
+async def get_target(target: TargetDep, db: DbDep) -> Target:
     summary = await service.get_summary(db, target.id)
     if summary is None:
         raise TargetNotFound()
-    return TargetOut.from_summary(summary)
+    return summary
 
 
 @router.patch("/targets/{target_id}", operation_id="updateTarget")
@@ -49,7 +48,7 @@ async def update_target(
     db: DbDep,
     poller: PollerDep,
     bus: EventBusDep,
-) -> TargetOut:
+) -> Target:
     new_watched = target.watched if body.watched is None else body.watched
     new_period: str | None | Unset = UNSET
     new_output_dir: str | None | Unset = UNSET
@@ -125,13 +124,11 @@ async def update_target(
     if summary is None:
         raise TargetNotFound()
     bus.publish(targets_event("updated", id=target.id))
-    return TargetOut.from_summary(summary)
+    return summary
 
 
 @router.post("/targets/{target_id}/poll", operation_id="pollTarget")
-async def poll_target(
-    target: TargetDep, db: DbDep, worker: WorkerDep, bus: EventBusDep
-) -> TargetOut:
+async def poll_target(target: TargetDep, db: DbDep, worker: WorkerDep, bus: EventBusDep) -> Target:
     if await downloads_service.has_active_for_target(db, target.id):
         raise TargetHasActiveDownload()
     download = await downloads_service.insert_pending(
@@ -144,7 +141,7 @@ async def poll_target(
     summary = await service.get_summary(db, target.id)
     if summary is None:
         raise TargetNotFound()
-    return TargetOut.from_summary(summary)
+    return summary
 
 
 @router.delete("/targets/{target_id}", operation_id="deleteTarget")
