@@ -1,3 +1,9 @@
+## v1.8.4 (2026-05-24)
+
+### Fix
+
+- **frontend**: approve esbuild build script via pnpm-workspace.yaml
+
 ## v1.8.3 (2026-05-24)
 
 ### Refactor
