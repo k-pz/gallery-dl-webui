@@ -3,7 +3,7 @@
 ## Local
 
 `mise install && mise run install && mise run dev`. See the top-level
-[`README.md`](../README.md) and `mise.toml`.
+[`README.md`](index.md) and `mise.toml`.
 
 ## Proxmox LXC
 

@@ -17,5 +17,13 @@
   "githubPages": false,
   "hideBreadcrumbs": true,
   "skipErrorChecking": true,
-  "tsconfig": "./tsconfig.app.json"
+  "tsconfig": "./tsconfig.app.json",
+  "entryFileName": "index",
+  "intentionallyNotExported": [
+    "Download",
+    "LibraryImportResult",
+    "PillTone",
+    "ErrorNotice",
+    "SuccessNotice"
+  ]
 }
