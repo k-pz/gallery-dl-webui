@@ -1,0 +1,21 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/lib", "src/hooks", "src/theme.ts"],
+  "entryPointStrategy": "expand",
+  "exclude": [
+    "**/*.test.*",
+    "**/*.stories.*",
+    "src/api/**",
+    "src/components/**",
+    "src/test/**",
+    "src/App.tsx",
+    "src/main.tsx"
+  ],
+  "out": "../docs/reference/frontend",
+  "plugin": ["typedoc-plugin-markdown"],
+  "readme": "none",
+  "githubPages": false,
+  "hideBreadcrumbs": true,
+  "skipErrorChecking": true,
+  "tsconfig": "./tsconfig.app.json"
+}
