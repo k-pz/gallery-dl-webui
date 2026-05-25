@@ -16,6 +16,14 @@ of the Mantine components, all auto-published on every push to `main`.
 Source for the guides lives in [`docs/`](docs/); see the [Docs](#docs)
 section below for the index.
 
+## Branching
+
+Trimmed gitflow: `develop` is the integration branch, `main` holds
+released code only (and is what the LXC deploy script tracks). All work
+goes on short-lived branches off `develop`; releases are cut by merging
+`develop` into `main` via PR — see [`CONTRIBUTING.md`](CONTRIBUTING.md)
+for the full flow + commit-message rules.
+
 ## Stack
 
 - **Backend** — Python 3.14, FastAPI, `aiosqlite` for the job queue,

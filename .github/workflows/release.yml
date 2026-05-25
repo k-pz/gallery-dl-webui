@@ -1,16 +1,27 @@
 name: release
 
-# On every push to main, run `cz bump` against the conventional-commit log
-# since the last v$version tag. If any commits warrant a bump, commitizen
-# rewrites the `version` line in the files listed in .cz.toml, updates
-# CHANGELOG.md, creates a new `bump:` commit, tags it `v$version`, and we
-# push both back to main.
+# Cuts a release when `develop` is merged into `main` (the only sanctioned
+# path to ship under the trimmed gitflow used by this repo — see
+# CONTRIBUTING.md). Listens to PR-close events on `main` and runs only when
+# the merged PR's head branch was `develop`.
 #
-# If no bump-worthy commits exist (or HEAD is already a bump commit), cz
-# exits with code 21 (NoCommitsFoundError) and we treat that as a no-op.
+# On a matching merge:
+#   1. `cz bump` walks the conventional commits since the last v$version tag.
+#   2. If a bump is warranted, version literals listed in `.cz.toml` get
+#      rewritten, CHANGELOG.md gets an entry, a `bump:` commit is created
+#      and tagged `v$version`, and both get pushed back to main.
+#   3. A GitHub Release is created with the new CHANGELOG section as body.
+#
+# Direct pushes to main (e.g. hotfixes the human applies straight to main
+# without going through develop) do NOT trigger this workflow — use
+# `workflow_dispatch` if you want a manual bump in that case.
+#
+# If no bump-worthy commits exist, cz exits with code 21 (NoCommitsFoundError)
+# or 3 (NoCommitsIncrement) and we treat that as a no-op.
 
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches: [main]
   workflow_dispatch:
 
@@ -21,8 +32,15 @@ concurrency:
 
 jobs:
   bump:
-    # Skip the run that the bump itself just pushed, otherwise we'd loop.
-    if: "!startsWith(github.event.head_commit.message, 'bump:')"
+    # Only run when:
+    #   - manually dispatched, OR
+    #   - the closing event is a real merge (not a "closed without merging")
+    #     of a PR whose head was `develop` and base was `main`.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.head.ref == 'develop' &&
+       github.event.pull_request.base.ref == 'main')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -30,6 +48,9 @@ jobs:
       - name: Checkout main
         uses: actions/checkout@v5
         with:
+          # PR-close events default to the merge commit ref, not the branch
+          # tip — force `main` so the push at the end has somewhere to land.
+          ref: main
           # cz reads the full history to find the previous tag.
           fetch-depth: 0
           # Default GITHUB_TOKEN can push to main as long as branch protection
@@ -46,10 +67,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Sync with tip of origin/main
-        # The trigger SHA can lag tip-of-main if another push raced ahead
-        # between trigger and workflow start. Fetch + fast-forward before
-        # bumping so the new commit applies on top of everything, and the
-        # final push has nothing to reject.
+        # Another develop→main PR could land between this job's trigger and
+        # checkout. Fetch + fast-forward before bumping so the new commit
+        # applies on top of everything, and the final push has nothing to
+        # reject.
         run: |
           git fetch origin main --tags
           git pull --ff-only origin main
