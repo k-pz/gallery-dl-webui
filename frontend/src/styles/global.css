@@ -490,6 +490,16 @@ a {
   color: var(--app-text-muted);
 }
 
+/* Update LXC changelog entry — separator + spacing between Release notes. */
+.changelog-entry {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+.changelog-entry:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
 /* Empty state — glyph + title + body + (optional) action. */
 .app-empty {
   border: 1.5px dashed color-mix(in srgb, var(--app-border) 80%, transparent);

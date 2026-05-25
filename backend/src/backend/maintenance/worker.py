@@ -48,6 +48,14 @@ logger = logging.getLogger(__name__)
 # `gallery-dl-webui-update.service`. The update service removes the file in
 # ExecStartPre so a future write re-arms the trigger.
 UPDATE_TRIGGER_FILENAME = ".update-request"
+# Sidecar file the webapp writes alongside the trigger when a preview ref
+# has been configured. `scripts/lxc-update.sh` checks for it and, if
+# present, exports its contents as REPO_REF before cloning — so the next
+# update pulls the user-chosen branch/tag/SHA instead of `main`. Old
+# updaters (pre this feature) ignore the file and continue to pull main,
+# which the UI flags as a bootstrap caveat.
+UPDATE_REF_FILENAME = ".update-ref"
+UPDATE_PREVIEW_REF_KEY = "update_preview_ref"
 UPDATE_PATH_UNIT = "gallery-dl-webui-update.path"
 
 
@@ -99,6 +107,21 @@ def _write_update_trigger(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.unlink(missing_ok=True)
     path.write_text("requested\n", encoding="utf-8")
+
+
+def _write_update_ref(path: Path, ref: str | None) -> None:
+    """Persist the preview ref next to the trigger file, or wipe it.
+
+    The updater script reads this sidecar before cloning and exports
+    REPO_REF off its contents (one line, trimmed). When `ref` is None
+    the file is removed so the updater falls back to its `main` default;
+    otherwise the new ref overwrites whatever was there.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if ref is None:
+        path.unlink(missing_ok=True)
+        return
+    path.write_text(f"{ref}\n", encoding="utf-8")
 
 
 def _update_path_unit_active() -> bool:
@@ -615,6 +638,23 @@ class MaintenanceWorker:
                 "trigger units"
             )
 
+        # Pick up the preview ref (if any) so the updater clones the
+        # user-selected branch/tag/SHA instead of `main`. Always write
+        # the sidecar first — including a delete-on-default — so a
+        # previous preview doesn't bleed into a subsequent default-track
+        # update if the user cleared it in between.
+        cfg = await app_config_service.get_all(self._db)
+        preview_ref_raw = cfg.get(UPDATE_PREVIEW_REF_KEY)
+        preview_ref = (
+            preview_ref_raw if isinstance(preview_ref_raw, str) and preview_ref_raw else None
+        )
+        ref_file = self._settings.data_dir / UPDATE_REF_FILENAME
+        if preview_ref is None:
+            sink.step("no preview ref — updater will pull main")
+        else:
+            sink.step(f"writing preview ref: {preview_ref}")
+        await asyncio.to_thread(_write_update_ref, ref_file, preview_ref)
+
         trigger = self._settings.data_dir / UPDATE_TRIGGER_FILENAME
         sink.step(f"writing update trigger: {trigger}")
         await asyncio.to_thread(_write_update_trigger, trigger)
@@ -623,7 +663,11 @@ class MaintenanceWorker:
             "the webapp will be restarted at the end of the update; "
             "reload this page once it comes back"
         )
-        return {"status": "kicked_off", "trigger": str(trigger)}
+        return {
+            "status": "kicked_off",
+            "trigger": str(trigger),
+            "ref": preview_ref or "main",
+        }
 
     async def _build_series_overrides(self, default_direction: str) -> dict[str, SeriesMetadata]:
         """Index targets by sanitized series name so the regen pass can map

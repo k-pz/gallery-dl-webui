@@ -1,12 +1,28 @@
-import { Box, Button, Card, Group, Stack, Text, Title } from "@mantine/core";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import {
+  Anchor,
+  Badge,
+  Box,
+  Button,
+  Card,
+  Collapse,
+  Group,
+  ScrollArea,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import {
   checkForUpdatesOptions,
   checkForUpdatesQueryKey,
+  getUpdatePreviewRefOptions,
+  getUpdatePreviewRefQueryKey,
   listMaintenanceJobsOptions,
+  setUpdatePreviewRefMutation,
 } from "../api/@tanstack/react-query.gen";
-import type { MaintenanceJob, UpdateCheckOut } from "../api/types.gen";
+import type { ChangelogEntryOut, MaintenanceJob, UpdateCheckOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { IconAlertTriangle, IconArrowUp, IconInfo } from "./Icons";
 
@@ -26,6 +42,11 @@ import { IconAlertTriangle, IconArrowUp, IconInfo } from "./Icons";
  * to "queued" locally — otherwise an async failure (path unit dead, etc.) is
  * invisible: the API call succeeds (job created), the worker marks it failed,
  * and a local-only banner would still say "queued" forever.
+ *
+ * The "Track a specific ref" input under the banner persists a preview ref to
+ * app_config; the worker writes it alongside the trigger file so the in-CT
+ * updater pulls that branch / tag / SHA instead of `main`. Cleared input ==
+ * default tracking.
  */
 export function UpdateLxcCard({
   scheduling,
@@ -94,16 +115,20 @@ export function UpdateLxcCard({
           <span className="app-section-kicker">deployment</span>
           <Title order={3}>Update LXC from upstream</Title>
           <Text size="sm" c="dimmed">
-            Pulls the latest <span className="code-chip">main</span> branch, refreshes the
-            backend/frontend toolchains, rebuilds the bundle, and restarts the service. The webapp
-            will be unreachable for a few minutes during the install — reload this page once it
-            comes back. Requires the LXC to have been provisioned by{" "}
+            Pulls the latest <span className="code-chip">main</span> branch (or the preview ref set
+            below), refreshes the backend/frontend toolchains, rebuilds the bundle, and restarts the
+            service. The webapp will be unreachable for a few minutes during the install — reload
+            this page once it comes back. Requires the LXC to have been provisioned by{" "}
             <span className="code-chip">scripts/proxmox-install.sh</span> (or refreshed by{" "}
             <span className="code-chip">/usr/local/bin/update</span>) so the helper systemd units
             are present.
           </Text>
         </Stack>
         <UpdateAvailabilityBanner check={updateCheck.data} onRefresh={refresh} />
+        <PreviewRefControl
+          defaultBranch={updateCheck.data?.branch ?? null}
+          currentTrackedRef={updateCheck.data?.tracked_ref ?? null}
+        />
         {scheduleError ? (
           <Box className="app-alert">
             <IconAlertTriangle size={16} className="alert-icon" />
@@ -181,12 +206,24 @@ export function UpdateLxcCard({
   );
 }
 
+/** Always render tags with a leading `v` for display, no matter the source. */
+function asVersionTag(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return value.startsWith("v") ? value : `v${value}`;
+}
+
+function shortSha(sha: string | null | undefined): string | null {
+  return sha ? sha.slice(0, 7) : null;
+}
+
 /**
- * Compact status line above the Update LXC button.
+ * Compact status block above the Update LXC button.
  *
- * Renders one of: "checking…", "update available <short sha> · <subject>",
- * "up to date", or a "couldn't check" line with the reason. Inline so the
- * card stays low-key when nothing is interesting.
+ * Renders one of: "checking…", a version-based "Update available" panel with
+ * an expandable changelog, a "Tracking preview ref" panel (commit list under
+ * the same toggle), "Up to date", or a "couldn't check" line. The whole panel
+ * stays low-key when nothing's interesting (up-to-date) and unfurls when the
+ * user has a decision to make.
  */
 function UpdateAvailabilityBanner({
   check,
@@ -195,6 +232,8 @@ function UpdateAvailabilityBanner({
   check: UpdateCheckOut | undefined;
   onRefresh: () => void;
 }) {
+  const [changelogOpen, setChangelogOpen] = useState(false);
+
   if (check === undefined) {
     return (
       <Text size="xs" c="dimmed">
@@ -203,25 +242,54 @@ function UpdateAvailabilityBanner({
     );
   }
 
-  const shortSha = (sha: string | null) => (sha ? sha.slice(0, 7) : null);
+  const installedVersion = asVersionTag(check.current_version);
+  const latestVersion = asVersionTag(check.latest_version);
 
   if (check.behind === true) {
+    const isPreview = !check.tracked_ref_is_default;
     return (
       <Box className="app-alert" data-tone="info">
         <IconInfo size={16} className="alert-icon" />
-        <Stack gap={2} style={{ flex: 1 }}>
-          <Text size="sm" fw={500}>
-            Update available — {shortSha(check.latest_sha)}
-          </Text>
-          {check.latest_message && (
+        <Stack gap={6} style={{ flex: 1 }}>
+          <Group gap="xs" wrap="wrap">
+            <Text size="sm" fw={500}>
+              Update available
+            </Text>
+            {isPreview ? (
+              <Badge color="grape" variant="light" size="sm">
+                preview · {check.tracked_ref}
+              </Badge>
+            ) : null}
+          </Group>
+          {!isPreview && latestVersion ? (
             <Text size="xs" c="dimmed">
-              {check.latest_message}
+              {installedVersion ?? shortSha(check.current_sha) ?? "unknown"} →{" "}
+              <span className="code-chip">{latestVersion}</span>
+            </Text>
+          ) : (
+            <Text size="xs" c="dimmed">
+              Installed{" "}
+              <span className="code-chip">
+                {installedVersion ?? shortSha(check.current_sha) ?? "unknown"}
+              </span>{" "}
+              → ref <span className="code-chip">{check.tracked_ref ?? check.branch ?? "main"}</span>{" "}
+              @ <span className="code-chip">{shortSha(check.latest_sha) ?? "?"}</span>
+              {check.latest_message ? ` · ${check.latest_message}` : ""}
             </Text>
           )}
-          <Text size="xs" c="dimmed">
-            Installed: <span className="code-chip">{shortSha(check.current_sha)}</span> on{" "}
-            <span className="code-chip">{check.branch}</span>
-          </Text>
+          <Group gap="xs">
+            <Button
+              variant="subtle"
+              size="compact-xs"
+              onClick={() => setChangelogOpen((v) => !v)}
+              disabled={check.changelog.length === 0}
+            >
+              {changelogOpen ? "Hide changelog" : `Show changelog (${check.changelog.length})`}
+            </Button>
+          </Group>
+          <Collapse expanded={changelogOpen}>
+            <ChangelogList entries={check.changelog} isPreview={isPreview} />
+          </Collapse>
         </Stack>
         <Button variant="subtle" size="compact-xs" onClick={onRefresh}>
           Refresh
@@ -234,8 +302,11 @@ function UpdateAvailabilityBanner({
     return (
       <Group gap="xs" wrap="nowrap">
         <Text size="xs" c="dimmed" style={{ flex: 1 }}>
-          Up to date — installed <span className="code-chip">{shortSha(check.current_sha)}</span> on{" "}
-          <span className="code-chip">{check.branch}</span>
+          Up to date — installed{" "}
+          <span className="code-chip">
+            {installedVersion ?? shortSha(check.current_sha) ?? "unknown"}
+          </span>{" "}
+          on <span className="code-chip">{check.tracked_ref ?? check.branch ?? "main"}</span>
         </Text>
         <Button variant="subtle" size="compact-xs" onClick={onRefresh}>
           Refresh
@@ -250,16 +321,186 @@ function UpdateAvailabilityBanner({
     <Group gap="xs" wrap="nowrap">
       <Text size="xs" c="dimmed" style={{ flex: 1 }}>
         Couldn't check for updates ({check.reason ?? "unknown"})
-        {check.current_sha && (
+        {installedVersion || check.current_sha ? (
           <>
             {" "}
-            — installed <span className="code-chip">{shortSha(check.current_sha)}</span>
+            — installed{" "}
+            <span className="code-chip">
+              {installedVersion ?? shortSha(check.current_sha) ?? "unknown"}
+            </span>
           </>
-        )}
+        ) : null}
       </Text>
       <Button variant="subtle" size="compact-xs" onClick={onRefresh}>
         Retry
       </Button>
     </Group>
+  );
+}
+
+/**
+ * Vertical changelog list rendered inside the "Update available" panel.
+ *
+ * For default-branch tracking each entry is a GitHub Release: the body is the
+ * markdown notes we render as plain text (no parsing — the source is
+ * conventional-commit bullets which read fine as-is). For a preview ref the
+ * list is one item per commit between the installed SHA and the ref's HEAD.
+ */
+function ChangelogList({
+  entries,
+  isPreview,
+}: {
+  entries: readonly ChangelogEntryOut[];
+  isPreview: boolean;
+}) {
+  if (entries.length === 0) {
+    return (
+      <Text size="xs" c="dimmed">
+        No changelog entries.
+      </Text>
+    );
+  }
+  // Cap the changelog at ~320px regardless of entry count; longer logs become
+  // scrollable rather than pushing the Update button below the fold.
+  return (
+    <ScrollArea h={Math.min(320, Math.max(120, entries.length * 80))} type="auto">
+      <Stack gap="sm">
+        {entries.map((entry) => (
+          <Box key={`${entry.ref}-${entry.title}`} className="changelog-entry">
+            <Group gap="xs" wrap="wrap" align="baseline">
+              <Text size="xs" fw={600}>
+                {isPreview ? entry.title : entry.title}
+              </Text>
+              {entry.html_url ? (
+                <Anchor href={entry.html_url} target="_blank" rel="noreferrer" size="xs" c="dimmed">
+                  <span className="code-chip">{isPreview ? shortSha(entry.ref) : entry.ref}</span>
+                </Anchor>
+              ) : (
+                <span className="code-chip">{isPreview ? shortSha(entry.ref) : entry.ref}</span>
+              )}
+              {entry.published_at ? (
+                <Text size="xs" c="dimmed">
+                  {new Date(entry.published_at).toLocaleDateString()}
+                </Text>
+              ) : null}
+            </Group>
+            {entry.body ? (
+              <Text size="xs" c="dimmed" style={{ whiteSpace: "pre-wrap", marginTop: 4 }}>
+                {entry.body.trim()}
+              </Text>
+            ) : null}
+          </Box>
+        ))}
+      </Stack>
+    </ScrollArea>
+  );
+}
+
+/**
+ * Inline "Track a specific ref" input.
+ *
+ * Persists the preview ref via PUT /api/maintenance/update-ref. Clearing the
+ * field or "Reset to default" hits the same endpoint with null, which falls
+ * back to whatever's in `.git/HEAD` (`main` in production).
+ *
+ * The saved-ref query is also what drives the input default: if the user
+ * already has `develop` saved, the input pre-fills with it on reload. We
+ * don't surface validation errors inline — the next update-check will report
+ * `branch_not_on_remote` if the ref is wrong, which is more informative than
+ * a per-keystroke check.
+ */
+function PreviewRefControl({
+  defaultBranch,
+  currentTrackedRef,
+}: {
+  defaultBranch: string | null;
+  currentTrackedRef: string | null;
+}) {
+  const qc = useQueryClient();
+  const savedRef = useQuery(getUpdatePreviewRefOptions());
+  const setMutation = useMutation({
+    ...setUpdatePreviewRefMutation(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: getUpdatePreviewRefQueryKey() });
+      qc.invalidateQueries({ queryKey: checkForUpdatesQueryKey() });
+    },
+  });
+
+  // Local input state is decoupled from the persisted value so the user can
+  // type freely without each keystroke firing a request. We seed from the
+  // saved ref on first arrival and on refresh, but don't fight the user once
+  // they start typing (otherwise a refetch mid-type would clobber the input).
+  const [draft, setDraft] = useState<string>("");
+  const [hasTyped, setHasTyped] = useState(false);
+  useEffect(() => {
+    if (hasTyped) return;
+    setDraft(savedRef.data?.ref ?? "");
+  }, [savedRef.data, hasTyped]);
+
+  const trimmed = draft.trim();
+  const persistedRef = savedRef.data?.ref ?? null;
+  const isDirty = trimmed !== (persistedRef ?? "");
+  const fallback = defaultBranch ?? "main";
+
+  const save = () => {
+    const next = trimmed === "" || trimmed === fallback ? null : trimmed;
+    setMutation.mutate({ body: { ref: next } });
+    setHasTyped(false);
+  };
+
+  const reset = () => {
+    setDraft("");
+    setHasTyped(false);
+    setMutation.mutate({ body: { ref: null } });
+  };
+
+  const errorMessage = setMutation.isError ? extractErrorMessage(setMutation.error) : null;
+
+  return (
+    <Stack gap={6}>
+      <Group gap="sm" align="flex-end" wrap="wrap">
+        <TextInput
+          label="Track ref"
+          description={
+            persistedRef
+              ? `Currently tracking preview ref. Clear to reset to ${fallback}.`
+              : `Tracking the default branch (${fallback}). Type a branch / tag / SHA to preview.`
+          }
+          placeholder={fallback}
+          value={draft}
+          onChange={(e) => {
+            setHasTyped(true);
+            setDraft(e.currentTarget.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && isDirty) {
+              e.preventDefault();
+              save();
+            }
+          }}
+          style={{ flex: 1, minWidth: 220 }}
+          disabled={setMutation.isPending}
+        />
+        <Button variant="light" onClick={save} loading={setMutation.isPending} disabled={!isDirty}>
+          Save
+        </Button>
+        {persistedRef && (
+          <Button variant="subtle" color="gray" onClick={reset} disabled={setMutation.isPending}>
+            Reset to {fallback}
+          </Button>
+        )}
+      </Group>
+      {currentTrackedRef && persistedRef && currentTrackedRef !== persistedRef ? (
+        <Text size="xs" c="dimmed">
+          Saved <span className="code-chip">{persistedRef}</span>, currently checking{" "}
+          <span className="code-chip">{currentTrackedRef}</span> — refresh to re-poll.
+        </Text>
+      ) : null}
+      {errorMessage ? (
+        <Text size="xs" c="red">
+          {errorMessage}
+        </Text>
+      ) : null}
+    </Stack>
   );
 }

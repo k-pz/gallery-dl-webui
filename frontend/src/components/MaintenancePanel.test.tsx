@@ -15,23 +15,41 @@ type Job = {
   error: string | null;
 };
 
+type ChangelogEntry = {
+  title: string;
+  body: string | null;
+  ref: string;
+  published_at: string | null;
+  html_url: string | null;
+};
+
 type UpdateCheck = {
   branch: string | null;
   current_sha: string | null;
+  current_version: string | null;
+  tracked_ref: string | null;
+  tracked_ref_is_default: boolean;
   latest_sha: string | null;
   latest_message: string | null;
   latest_committed_at: string | null;
+  latest_version: string | null;
   behind: boolean | null;
+  changelog: ChangelogEntry[];
   reason: string | null;
 };
 
 const DEFAULT_UPDATE_CHECK: UpdateCheck = {
   branch: "main",
   current_sha: "abc1234567",
+  current_version: "1.0.0",
+  tracked_ref: "main",
+  tracked_ref_is_default: true,
   latest_sha: "abc1234567",
   latest_message: "feat: x",
   latest_committed_at: "2026-05-22T10:00:00Z",
+  latest_version: "v1.0.0",
   behind: false,
+  changelog: [],
   reason: null,
 };
 
@@ -41,11 +59,22 @@ function jobsHandler(opts: {
   progress: Record<number, { status: string; total: number; done: number; lines: string[] }>;
   postedKinds?: string[];
   updateCheck?: UpdateCheck;
+  previewRef?: string | null;
+  onPreviewRefSet?: (ref: string | null) => void;
 }) {
   return async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const u = urlOf(input);
     if (u.includes("/api/maintenance/update-check")) {
       return jsonResponse(opts.updateCheck ?? DEFAULT_UPDATE_CHECK);
+    }
+    if (u.includes("/api/maintenance/update-ref")) {
+      if (methodOf(input, init) === "PUT") {
+        const body = JSON.parse(await bodyOf(input, init));
+        const next: string | null = body.ref ?? null;
+        opts.onPreviewRefSet?.(next);
+        return jsonResponse({ ref: next });
+      }
+      return jsonResponse({ ref: opts.previewRef ?? null });
     }
     const progressMatch = u.match(/\/api\/maintenance\/jobs\/(\d+)\/progress/);
     if (progressMatch) {
@@ -192,7 +221,7 @@ describe("MaintenancePanel", () => {
     });
   });
 
-  it("surfaces 'update available' banner when behind is true", async () => {
+  it("surfaces 'update available' banner with version delta when behind is true", async () => {
     const nextId = { value: 1 };
     const jobs: Job[] = [];
     const progress: Record<
@@ -207,10 +236,23 @@ describe("MaintenancePanel", () => {
         updateCheck: {
           branch: "main",
           current_sha: "old1111",
+          current_version: "1.0.0",
+          tracked_ref: "main",
+          tracked_ref_is_default: true,
           latest_sha: "new2222abc",
           latest_message: "fix: shiny",
           latest_committed_at: "2026-05-22T10:00:00Z",
+          latest_version: "v1.1.0",
           behind: true,
+          changelog: [
+            {
+              title: "v1.1.0 — Shiny",
+              body: "## Fixes\n- fix: shiny",
+              ref: "v1.1.0",
+              published_at: "2026-05-22T10:00:00Z",
+              html_url: "https://example/release/v1.1.0",
+            },
+          ],
           reason: null,
         },
       }),
@@ -218,8 +260,60 @@ describe("MaintenancePanel", () => {
 
     renderWithProviders(<MaintenancePanel />);
 
-    await screen.findByText(/update available — new2222/i);
-    expect(screen.getByText("fix: shiny")).toBeInTheDocument();
+    // Headline is now a version delta, not a SHA.
+    await screen.findByText(/update available/i);
+    // The version chip is split across nodes — query a flat regex by joining.
+    await waitFor(() => {
+      const banner = document.body.textContent ?? "";
+      expect(banner).toMatch(/v1\.0\.0\s*→\s*v1\.1\.0/);
+    });
+    // Expand the changelog and confirm the release title surfaces.
+    fireEvent.click(screen.getByRole("button", { name: /show changelog/i }));
+    await screen.findByText("v1.1.0 — Shiny");
+  });
+
+  it("surfaces preview-ref banner when tracked_ref_is_default is false", async () => {
+    const nextId = { value: 1 };
+    const jobs: Job[] = [];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {};
+    mockFetch(
+      jobsHandler({
+        jobs,
+        nextId,
+        progress,
+        previewRef: "develop",
+        updateCheck: {
+          branch: "main",
+          current_sha: "old1111",
+          current_version: "1.0.0",
+          tracked_ref: "develop",
+          tracked_ref_is_default: false,
+          latest_sha: "tipsha7",
+          latest_message: "feat(preview): things",
+          latest_committed_at: "2026-05-22T10:00:00Z",
+          latest_version: null,
+          behind: true,
+          changelog: [
+            {
+              title: "feat(preview): things",
+              body: null,
+              ref: "tipsha7abcdef",
+              published_at: "2026-05-22T10:00:00Z",
+              html_url: "https://example/commit/tipsha7",
+            },
+          ],
+          reason: null,
+        },
+      }),
+    );
+
+    renderWithProviders(<MaintenancePanel />);
+
+    // "preview · develop" badge marks non-default tracking.
+    await screen.findByText(/preview · develop/i);
   });
 
   it("schedules update_lxc only after the second-stage confirm", async () => {

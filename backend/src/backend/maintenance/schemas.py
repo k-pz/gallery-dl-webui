@@ -56,18 +56,60 @@ class MaintenanceProgressOut(BaseModel):
     lines: list[str]
 
 
+class ChangelogEntryOut(BaseModel):
+    """One entry in the changelog list returned by `/api/maintenance/update-check`.
+
+    Default-branch tracking populates `body` with the GitHub Release notes;
+    preview-ref tracking leaves it None and `title` carries the commit
+    subject. `ref` is the tag (e.g. `v1.1.0`) or the full commit SHA.
+    """
+
+    title: str
+    body: str | None
+    ref: str
+    published_at: str | None
+    html_url: str | None
+
+
 class UpdateCheckOut(BaseModel):
     """Snapshot returned by `/api/maintenance/update-check`.
 
-    All fields are nullable because the underlying check has several
-    inert outcomes (no git metadata, network unreachable, non-GitHub
-    origin); `reason` carries the machine-readable label for those.
+    Almost every field is nullable because the underlying check has
+    several inert outcomes (no git metadata, network unreachable,
+    non-GitHub origin); `reason` carries the machine-readable label.
+    `changelog` is empty in those cases and on preview refs where the
+    compare API failed.
     """
 
     branch: str | None
     current_sha: str | None
+    current_version: str | None
+    tracked_ref: str | None
+    tracked_ref_is_default: bool
     latest_sha: str | None
     latest_message: str | None
     latest_committed_at: str | None
+    latest_version: str | None
     behind: bool | None
+    changelog: list[ChangelogEntryOut]
     reason: str | None
+
+
+class UpdateRefOut(BaseModel):
+    """Preview ref persisted in app_config under `update_preview_ref`.
+
+    `ref` is null when no preview is set — the checker falls back to the
+    branch read from `.git/HEAD` (`main` in production).
+    """
+
+    ref: str | None
+
+
+class UpdateRefIn(BaseModel):
+    """Mirror of UpdateRefOut for the PUT endpoint.
+
+    An empty / whitespace-only string is normalised to None on the
+    server so the user can clear the preview ref by emptying the input.
+    """
+
+    ref: str | None
