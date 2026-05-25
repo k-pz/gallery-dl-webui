@@ -1,9 +1,10 @@
 """Unit tests for backend.maintenance.update_check.
 
-The check has three moving parts: parsing `.git/` on disk, hitting the
-GitHub API over httpx, and an in-process TTL cache. We exercise each
-layer in isolation so a failure in any one of them produces a single
-clear test.
+The check has four moving parts: parsing `.git/` on disk, reading the
+installed version off pyproject.toml, hitting the GitHub API over httpx
+(commits / releases / compare), and an in-process TTL cache. We exercise
+each layer in isolation so a failure in any one of them produces a
+single clear test.
 """
 
 from __future__ import annotations
@@ -17,9 +18,19 @@ from backend.maintenance import update_check
 
 
 def _make_repo(
-    root: Path, *, head_sha: str, branch: str = "main", origin: str | None = None
+    root: Path,
+    *,
+    head_sha: str,
+    branch: str = "main",
+    origin: str | None = None,
+    version: str | None = None,
 ) -> None:
-    """Lay out a minimal .git/ that read_local_state can consume."""
+    """Lay out a minimal .git/ that read_local_state can consume.
+
+    `version` writes a matching `backend/pyproject.toml` so the version
+    reader has something to find — None skips it (mimics a repo without
+    cz on it).
+    """
     git = root / ".git"
     git.mkdir()
     (git / "HEAD").write_text(f"ref: refs/heads/{branch}\n", encoding="utf-8")
@@ -29,6 +40,24 @@ def _make_repo(
     if origin is not None:
         config += f'[remote "origin"]\n\turl = {origin}\n'
     (git / "config").write_text(config, encoding="utf-8")
+    if version is not None:
+        backend_dir = root / "backend"
+        backend_dir.mkdir(exist_ok=True)
+        (backend_dir / "pyproject.toml").write_text(
+            f'[project]\nname = "backend"\nversion = "{version}"\n', encoding="utf-8"
+        )
+
+
+def _patch_httpx(monkeypatch: pytest.MonkeyPatch, handler: object) -> None:
+    """Wire a MockTransport into every AsyncClient instantiation."""
+    transport = httpx.MockTransport(handler)
+    original = httpx.AsyncClient
+
+    def patched(*args, **kwargs):
+        kwargs["transport"] = transport
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", patched)
 
 
 @pytest.fixture(autouse=True)
@@ -104,75 +133,105 @@ def test_read_local_state_resolves_packed_refs(tmp_path: Path) -> None:
     assert state.current_sha == "deadbeef"
 
 
-async def test_check_for_updates_reports_behind(tmp_path: Path, monkeypatch) -> None:
-    _make_repo(tmp_path, head_sha="old", origin="https://github.com/o/r.git")
+def test_read_local_state_reads_pyproject_version(tmp_path: Path) -> None:
+    _make_repo(tmp_path, head_sha="abc", origin="https://github.com/o/r.git", version="1.2.3")
+    state, _ = update_check.read_local_state(tmp_path)
+    assert state is not None
+    assert state.current_version == "1.2.3"
+
+
+def test_read_local_state_handles_missing_pyproject(tmp_path: Path) -> None:
+    _make_repo(tmp_path, head_sha="abc", origin="https://github.com/o/r.git")
+    state, _ = update_check.read_local_state(tmp_path)
+    assert state is not None
+    assert state.current_version is None
+
+
+async def test_check_for_updates_reports_behind_with_changelog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _make_repo(tmp_path, head_sha="old", origin="https://github.com/o/r.git", version="1.0.0")
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/repos/o/r/commits/main"
-        return httpx.Response(
-            200,
-            json={
-                "sha": "new",
-                "commit": {
-                    "message": "feat: shiny\n\nbody text",
-                    "committer": {"date": "2026-05-22T10:00:00Z"},
+        path = request.url.path
+        if path == "/repos/o/r/commits/main":
+            return httpx.Response(
+                200,
+                json={
+                    "sha": "new",
+                    "commit": {
+                        "message": "feat: shiny\n\nbody text",
+                        "committer": {"date": "2026-05-22T10:00:00Z"},
+                    },
                 },
-            },
-        )
+            )
+        if path == "/repos/o/r/releases":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "tag_name": "v1.1.0",
+                        "name": "v1.1.0 — Shiny",
+                        "body": "## Features\n- feat: shiny",
+                        "published_at": "2026-05-22T10:00:00Z",
+                        "html_url": "https://github.com/o/r/releases/tag/v1.1.0",
+                    },
+                    {
+                        "tag_name": "v1.0.0",
+                        "name": "v1.0.0",
+                        "body": "Initial",
+                        "published_at": "2026-05-01T10:00:00Z",
+                        "html_url": "https://github.com/o/r/releases/tag/v1.0.0",
+                    },
+                ],
+            )
+        raise AssertionError(f"unexpected GitHub call to {path}")
 
-    transport = httpx.MockTransport(handler)
-    original = httpx.AsyncClient
-
-    def patched(*args, **kwargs):
-        kwargs["transport"] = transport
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(httpx, "AsyncClient", patched)
+    _patch_httpx(monkeypatch, handler)
 
     result = await update_check.check_for_updates(repo_root=tmp_path)
     assert result.behind is True
     assert result.current_sha == "old"
+    assert result.current_version == "1.0.0"
     assert result.latest_sha == "new"
+    assert result.latest_version == "v1.1.0"
+    assert result.tracked_ref == "main"
+    assert result.tracked_ref_is_default is True
     assert result.latest_message == "feat: shiny"
     assert result.latest_committed_at == "2026-05-22T10:00:00Z"
     assert result.reason is None
+    assert [e.ref for e in result.changelog] == ["v1.1.0"]
+    assert result.changelog[0].title == "v1.1.0 — Shiny"
 
 
-async def test_check_for_updates_reports_up_to_date(tmp_path: Path, monkeypatch) -> None:
-    _make_repo(tmp_path, head_sha="same", origin="https://github.com/o/r.git")
+async def test_check_for_updates_reports_up_to_date(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _make_repo(tmp_path, head_sha="same", origin="https://github.com/o/r.git", version="1.0.0")
 
-    def handler(_req: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"sha": "same", "commit": {"message": "x"}})
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/repos/o/r/commits/main":
+            return httpx.Response(200, json={"sha": "same", "commit": {"message": "x"}})
+        raise AssertionError(f"unexpected call to {request.url.path} (releases should be skipped)")
 
-    transport = httpx.MockTransport(handler)
-    original = httpx.AsyncClient
-
-    def patched(*args, **kwargs):
-        kwargs["transport"] = transport
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(httpx, "AsyncClient", patched)
+    _patch_httpx(monkeypatch, handler)
 
     result = await update_check.check_for_updates(repo_root=tmp_path)
     assert result.behind is False
     assert result.latest_sha == "same"
+    assert result.changelog == []
     assert result.reason is None
 
 
-async def test_check_for_updates_collapses_network_errors(tmp_path: Path, monkeypatch) -> None:
+async def test_check_for_updates_collapses_network_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _make_repo(tmp_path, head_sha="old", origin="https://github.com/o/r.git")
 
     def handler(_req: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("unreachable")
 
-    transport = httpx.MockTransport(handler)
-    original = httpx.AsyncClient
-
-    def patched(*args, **kwargs):
-        kwargs["transport"] = transport
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(httpx, "AsyncClient", patched)
+    _patch_httpx(monkeypatch, handler)
 
     result = await update_check.check_for_updates(repo_root=tmp_path)
     assert result.behind is None
@@ -188,28 +247,156 @@ async def test_check_for_updates_skips_when_no_git_dir(tmp_path: Path) -> None:
     assert result.current_sha is None
 
 
-async def test_check_for_updates_caches_repeated_calls(tmp_path: Path, monkeypatch) -> None:
+async def test_check_for_updates_caches_repeated_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _make_repo(tmp_path, head_sha="old", origin="https://github.com/o/r.git")
     calls = {"count": 0}
 
-    def handler(_req: httpx.Request) -> httpx.Response:
+    def handler(request: httpx.Request) -> httpx.Response:
         calls["count"] += 1
-        return httpx.Response(200, json={"sha": "new", "commit": {"message": "x"}})
+        if request.url.path == "/repos/o/r/commits/main":
+            return httpx.Response(200, json={"sha": "new", "commit": {"message": "x"}})
+        if request.url.path == "/repos/o/r/releases":
+            return httpx.Response(200, json=[])
+        raise AssertionError(f"unexpected call to {request.url.path}")
 
-    transport = httpx.MockTransport(handler)
-    original = httpx.AsyncClient
-
-    def patched(*args, **kwargs):
-        kwargs["transport"] = transport
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(httpx, "AsyncClient", patched)
+    _patch_httpx(monkeypatch, handler)
 
     first = await update_check.check_for_updates(repo_root=tmp_path)
     second = await update_check.check_for_updates(repo_root=tmp_path)
-    assert calls["count"] == 1
     assert first == second
+    cached_calls = calls["count"]
 
-    # force=True bypasses the cache.
+    # force=True bypasses the cache and re-issues both upstream calls.
     await update_check.check_for_updates(repo_root=tmp_path, force=True)
-    assert calls["count"] == 2
+    assert calls["count"] > cached_calls
+
+
+async def test_check_for_updates_ref_override_uses_compare_api(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Preview ref → commits queried from the override, changelog from /compare."""
+    _make_repo(tmp_path, head_sha="old", origin="https://github.com/o/r.git", version="1.0.0")
+
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        seen.append(path)
+        if path == "/repos/o/r/commits/develop":
+            return httpx.Response(
+                200,
+                json={
+                    "sha": "tip",
+                    "commit": {
+                        "message": "feat(preview): things",
+                        "committer": {"date": "2026-05-22T10:00:00Z"},
+                    },
+                },
+            )
+        if path == "/repos/o/r/compare/old...develop":
+            return httpx.Response(
+                200,
+                json={
+                    "commits": [
+                        {
+                            "sha": "mid",
+                            "commit": {
+                                "message": "feat(preview): mid commit",
+                                "committer": {"date": "2026-05-21T10:00:00Z"},
+                            },
+                            "html_url": "https://github.com/o/r/commit/mid",
+                        },
+                        {
+                            "sha": "tip",
+                            "commit": {
+                                "message": "feat(preview): things",
+                                "committer": {"date": "2026-05-22T10:00:00Z"},
+                            },
+                            "html_url": "https://github.com/o/r/commit/tip",
+                        },
+                    ]
+                },
+            )
+        if path == "/repos/o/r/releases":
+            raise AssertionError("releases endpoint should not be called on a preview ref")
+        raise AssertionError(f"unexpected GitHub call to {path}")
+
+    _patch_httpx(monkeypatch, handler)
+
+    result = await update_check.check_for_updates(repo_root=tmp_path, ref_override="develop")
+    assert result.behind is True
+    assert result.tracked_ref == "develop"
+    assert result.tracked_ref_is_default is False
+    # changelog comes back newest-first
+    assert [e.ref for e in result.changelog] == ["tip", "mid"]
+    assert result.changelog[0].title == "feat(preview): things"
+    assert "/repos/o/r/commits/develop" in seen
+    assert "/repos/o/r/compare/old...develop" in seen
+
+
+async def test_check_for_updates_ref_override_matching_branch_stays_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Setting ref_override to the same branch the .git/HEAD already tracks is a no-op."""
+    _make_repo(tmp_path, head_sha="old", origin="https://github.com/o/r.git", version="1.0.0")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/repos/o/r/commits/main":
+            return httpx.Response(200, json={"sha": "new", "commit": {"message": "x"}})
+        if request.url.path == "/repos/o/r/releases":
+            return httpx.Response(200, json=[])
+        raise AssertionError(f"unexpected GitHub call to {request.url.path}")
+
+    _patch_httpx(monkeypatch, handler)
+
+    result = await update_check.check_for_updates(repo_root=tmp_path, ref_override="main")
+    assert result.tracked_ref == "main"
+    assert result.tracked_ref_is_default is True
+
+
+def test_build_release_changelog_filters_to_newer_releases() -> None:
+    entries, latest = update_check._build_release_changelog(
+        [
+            {
+                "tag_name": "v1.2.0",
+                "name": "v1.2.0",
+                "body": "two",
+                "published_at": None,
+                "html_url": "https://example/2",
+            },
+            {
+                "tag_name": "v1.1.0",
+                "name": "v1.1.0",
+                "body": "one",
+                "published_at": None,
+                "html_url": "https://example/1",
+            },
+            {
+                "tag_name": "v1.0.0",
+                "name": "v1.0.0",
+                "body": "zero",
+                "published_at": None,
+                "html_url": "https://example/0",
+            },
+            # Non-semver tags are skipped entirely and never become "latest".
+            {"tag_name": "nightly", "body": "rolling"},
+        ],
+        current_version="1.0.0",
+    )
+    assert latest == "v1.2.0"
+    assert [e.ref for e in entries] == ["v1.2.0", "v1.1.0"]
+
+
+def test_build_release_changelog_passes_all_when_current_unknown() -> None:
+    """A dev install with no parseable version still gets every release listed."""
+    entries, latest = update_check._build_release_changelog(
+        [
+            {"tag_name": "v1.1.0", "body": "one", "name": None},
+            {"tag_name": "v1.0.0", "body": "zero", "name": None},
+        ],
+        current_version=None,
+    )
+    assert latest == "v1.1.0"
+    assert {e.ref for e in entries} == {"v1.1.0", "v1.0.0"}
