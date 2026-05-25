@@ -1,3 +1,9 @@
+## v1.13.1 (2026-05-25)
+
+### Fix
+
+- **komga**: emit Mylar-recognised status and harden REST push
+
 ## v1.13.0 (2026-05-25)
 
 ### Feat
