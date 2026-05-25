@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelDownload, cancelMaintenanceJob, checkForUpdates, createDownload, createOutputDir, deleteTarget, exportLibrary, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, putConfig, requeueDownload, scheduleMaintenanceJob, updateTarget } from '../sdk.gen';
-import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CancelMaintenanceJobData, CancelMaintenanceJobError, CancelMaintenanceJobResponse, CheckForUpdatesData, CheckForUpdatesError, CheckForUpdatesResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, ExportLibraryData, ExportLibraryResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetError, GetTargetResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
+import { cancelDownload, cancelMaintenanceJob, checkForUpdates, createDownload, createOutputDir, deleteTarget, exportLibrary, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, getUpdatePreviewRef, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, putConfig, requeueDownload, scheduleMaintenanceJob, setUpdatePreviewRef, updateTarget } from '../sdk.gen';
+import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CancelMaintenanceJobData, CancelMaintenanceJobError, CancelMaintenanceJobResponse, CheckForUpdatesData, CheckForUpdatesError, CheckForUpdatesResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, ExportLibraryData, ExportLibraryResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetError, GetTargetResponse, GetUpdatePreviewRefData, GetUpdatePreviewRefResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, SetUpdatePreviewRefData, SetUpdatePreviewRefError, SetUpdatePreviewRefResponse, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -423,6 +423,41 @@ export const checkForUpdatesOptions = (options?: Options<CheckForUpdatesData>) =
     },
     queryKey: checkForUpdatesQueryKey(options)
 });
+
+export const getUpdatePreviewRefQueryKey = (options?: Options<GetUpdatePreviewRefData>) => createQueryKey('getUpdatePreviewRef', options);
+
+/**
+ * Get Update Preview Ref
+ */
+export const getUpdatePreviewRefOptions = (options?: Options<GetUpdatePreviewRefData>) => queryOptions<GetUpdatePreviewRefResponse, DefaultError, GetUpdatePreviewRefResponse, ReturnType<typeof getUpdatePreviewRefQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getUpdatePreviewRef({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getUpdatePreviewRefQueryKey(options)
+});
+
+/**
+ * Set Update Preview Ref
+ */
+export const setUpdatePreviewRefMutation = (options?: Partial<Options<SetUpdatePreviewRefData>>): UseMutationOptions<SetUpdatePreviewRefResponse, SetUpdatePreviewRefError, Options<SetUpdatePreviewRefData>> => {
+    const mutationOptions: UseMutationOptions<SetUpdatePreviewRefResponse, SetUpdatePreviewRefError, Options<SetUpdatePreviewRefData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await setUpdatePreviewRef({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
 
 export const getMaintenanceJobProgressQueryKey = (options: Options<GetMaintenanceJobProgressData>) => createQueryKey('getMaintenanceJobProgress', options);
 

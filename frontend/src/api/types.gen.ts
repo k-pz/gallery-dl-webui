@@ -481,6 +481,32 @@ export type TargetUpdate = {
 };
 
 /**
+ * ChangelogEntryOut
+ */
+export type ChangelogEntryOut = {
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Body
+     */
+    body: string | null;
+    /**
+     * Ref
+     */
+    ref: string;
+    /**
+     * Published At
+     */
+    published_at: string | null;
+    /**
+     * Html Url
+     */
+    html_url: string | null;
+};
+
+/**
  * UpdateCheckOut
  */
 export type UpdateCheckOut = {
@@ -492,6 +518,18 @@ export type UpdateCheckOut = {
      * Current Sha
      */
     current_sha: string | null;
+    /**
+     * Current Version
+     */
+    current_version: string | null;
+    /**
+     * Tracked Ref
+     */
+    tracked_ref: string | null;
+    /**
+     * Tracked Ref Is Default
+     */
+    tracked_ref_is_default: boolean;
     /**
      * Latest Sha
      */
@@ -505,13 +543,41 @@ export type UpdateCheckOut = {
      */
     latest_committed_at: string | null;
     /**
+     * Latest Version
+     */
+    latest_version: string | null;
+    /**
      * Behind
      */
     behind: boolean | null;
     /**
+     * Changelog
+     */
+    changelog: Array<ChangelogEntryOut>;
+    /**
      * Reason
      */
     reason: string | null;
+};
+
+/**
+ * UpdateRefOut
+ */
+export type UpdateRefOut = {
+    /**
+     * Ref
+     */
+    ref: string | null;
+};
+
+/**
+ * UpdateRefIn
+ */
+export type UpdateRefIn = {
+    /**
+     * Ref
+     */
+    ref: string | null;
 };
 
 /**
@@ -1085,6 +1151,47 @@ export type CheckForUpdatesResponses = {
 };
 
 export type CheckForUpdatesResponse = CheckForUpdatesResponses[keyof CheckForUpdatesResponses];
+
+export type GetUpdatePreviewRefData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/maintenance/update-ref';
+};
+
+export type GetUpdatePreviewRefResponses = {
+    /**
+     * Successful Response
+     */
+    200: UpdateRefOut;
+};
+
+export type GetUpdatePreviewRefResponse = GetUpdatePreviewRefResponses[keyof GetUpdatePreviewRefResponses];
+
+export type SetUpdatePreviewRefData = {
+    body: UpdateRefIn;
+    path?: never;
+    query?: never;
+    url: '/api/maintenance/update-ref';
+};
+
+export type SetUpdatePreviewRefErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SetUpdatePreviewRefError = SetUpdatePreviewRefErrors[keyof SetUpdatePreviewRefErrors];
+
+export type SetUpdatePreviewRefResponses = {
+    /**
+     * Successful Response
+     */
+    200: UpdateRefOut;
+};
+
+export type SetUpdatePreviewRefResponse = SetUpdatePreviewRefResponses[keyof SetUpdatePreviewRefResponses];
 
 export type GetMaintenanceJobProgressData = {
     body?: never;

@@ -34,12 +34,23 @@ if [[ -z "${REPO_URL:-}" ]]; then
     done
     unset _k
 fi
-REPO_REF="${REPO_REF:-main}"
 
 APP_USER="${APP_USER:-gallery-dl}"
 APP_DIR="${APP_DIR:-/opt/gallery-dl-webui}"
 DATA_DIR="${DATA_DIR:-/var/lib/gallery-dl-webui}"
 SERVICE="${SERVICE:-gallery-dl-webui.service}"
+
+# If REPO_REF wasn't pinned via env, consult the webapp's preview-ref
+# sidecar — the Maintenance tab's "Track a specific ref" input writes it
+# alongside .update-request. The file is one line containing a branch /
+# tag / SHA. We consume + remove it so a one-shot preview run doesn't
+# silently stick around for the next update; the webapp re-creates it on
+# the next scheduled update if the preference is still set.
+if [[ -z "${REPO_REF:-}" ]] && [[ -f "$DATA_DIR/.update-ref" ]]; then
+    REPO_REF="$(head -n1 "$DATA_DIR/.update-ref" | tr -d '[:space:]')"
+    rm -f "$DATA_DIR/.update-ref"
+fi
+REPO_REF="${REPO_REF:-main}"
 
 # ---- Helpers --------------------------------------------------------------
 

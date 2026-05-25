@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CancelMaintenanceJobData, CancelMaintenanceJobErrors, CancelMaintenanceJobResponses, CheckForUpdatesData, CheckForUpdatesErrors, CheckForUpdatesResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, ExportLibraryData, ExportLibraryResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetMaintenanceJobProgressData, GetMaintenanceJobProgressErrors, GetMaintenanceJobProgressResponses, GetTargetData, GetTargetErrors, GetTargetResponses, ImportLibraryData, ImportLibraryResponses, ListDownloadsData, ListDownloadsResponses, ListMaintenanceJobsData, ListMaintenanceJobsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, ScheduleMaintenanceJobData, ScheduleMaintenanceJobErrors, ScheduleMaintenanceJobResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
+import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CancelMaintenanceJobData, CancelMaintenanceJobErrors, CancelMaintenanceJobResponses, CheckForUpdatesData, CheckForUpdatesErrors, CheckForUpdatesResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, ExportLibraryData, ExportLibraryResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetMaintenanceJobProgressData, GetMaintenanceJobProgressErrors, GetMaintenanceJobProgressResponses, GetTargetData, GetTargetErrors, GetTargetResponses, GetUpdatePreviewRefData, GetUpdatePreviewRefResponses, ImportLibraryData, ImportLibraryResponses, ListDownloadsData, ListDownloadsResponses, ListMaintenanceJobsData, ListMaintenanceJobsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, ScheduleMaintenanceJobData, ScheduleMaintenanceJobErrors, ScheduleMaintenanceJobResponses, SetUpdatePreviewRefData, SetUpdatePreviewRefErrors, SetUpdatePreviewRefResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -162,6 +162,16 @@ export const cancelMaintenanceJob = <ThrowOnError extends boolean = false>(optio
  * Check For Updates
  */
 export const checkForUpdates = <ThrowOnError extends boolean = false>(options?: Options<CheckForUpdatesData, ThrowOnError>) => (options?.client ?? client).get<CheckForUpdatesResponses, CheckForUpdatesErrors, ThrowOnError>({ url: '/api/maintenance/update-check', ...options });
+
+/**
+ * Get Update Preview Ref
+ */
+export const getUpdatePreviewRef = <ThrowOnError extends boolean = false>(options?: Options<GetUpdatePreviewRefData, ThrowOnError>) => (options?.client ?? client).get<GetUpdatePreviewRefResponses, never, ThrowOnError>({ url: '/api/maintenance/update-ref', ...options });
+
+/**
+ * Set Update Preview Ref
+ */
+export const setUpdatePreviewRef = <ThrowOnError extends boolean = false>(options: Options<SetUpdatePreviewRefData, ThrowOnError>) => (options.client ?? client).put<SetUpdatePreviewRefResponses, SetUpdatePreviewRefErrors, ThrowOnError>({ url: '/api/maintenance/update-ref', ...options });
 
 /**
  * Get Maintenance Job Progress

@@ -731,6 +731,77 @@ def test_update_lxc_unsupported_when_kind_typoed(client: TestClient) -> None:
     assert resp.status_code == 400
 
 
+def test_update_preview_ref_defaults_to_null(client: TestClient) -> None:
+    """A fresh install has no preview ref configured — endpoint returns null."""
+    resp = client.get("/api/maintenance/update-ref")
+    assert resp.status_code == 200, resp.json()
+    assert resp.json() == {"ref": None}
+
+
+def test_update_preview_ref_round_trips_through_app_config(client: TestClient) -> None:
+    """PUT persists the ref, GET reads it back — and clearing/normalising both work."""
+    set_resp = client.put("/api/maintenance/update-ref", json={"ref": "develop"})
+    assert set_resp.status_code == 200, set_resp.json()
+    assert set_resp.json() == {"ref": "develop"}
+
+    get_resp = client.get("/api/maintenance/update-ref")
+    assert get_resp.json() == {"ref": "develop"}
+
+    # Whitespace-only strings normalise to null so the user can clear the
+    # preview ref by emptying the input.
+    clear_resp = client.put("/api/maintenance/update-ref", json={"ref": "   "})
+    assert clear_resp.status_code == 200, clear_resp.json()
+    assert clear_resp.json() == {"ref": None}
+
+    # Explicit null also clears.
+    null_resp = client.put("/api/maintenance/update-ref", json={"ref": None})
+    assert null_resp.json() == {"ref": None}
+
+
+def test_update_lxc_writes_preview_ref_sidecar(client: TestClient, settings, monkeypatch) -> None:
+    """Preview ref configured → worker drops .update-ref alongside .update-request."""
+    from backend.maintenance import worker as worker_mod
+
+    monkeypatch.setattr(worker_mod, "_update_path_unit_active", lambda: True)
+
+    saved = client.put("/api/maintenance/update-ref", json={"ref": "feature/x"})
+    assert saved.status_code == 200, saved.json()
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "update_lxc"})
+    assert created.status_code == 200, created.json()
+    job_id = created.json()["id"]
+
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "completed", done
+    assert done["result"]["ref"] == "feature/x"
+
+    ref_file = settings.data_dir / worker_mod.UPDATE_REF_FILENAME
+    assert ref_file.is_file(), f"expected ref sidecar at {ref_file}"
+    assert ref_file.read_text(encoding="utf-8") == "feature/x\n"
+
+
+def test_update_lxc_clears_stale_preview_ref_sidecar(
+    client: TestClient, settings, monkeypatch
+) -> None:
+    """No preview ref configured → worker removes any stale .update-ref so the
+    in-CT updater falls back to main."""
+    from backend.maintenance import worker as worker_mod
+
+    monkeypatch.setattr(worker_mod, "_update_path_unit_active", lambda: True)
+
+    # Stale sidecar from a previous preview run.
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    stale = settings.data_dir / worker_mod.UPDATE_REF_FILENAME
+    stale.write_text("old-ref\n", encoding="utf-8")
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "update_lxc"})
+    job_id = created.json()["id"]
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "completed", done
+    assert done["result"]["ref"] == "main"
+    assert not stale.exists(), "stale ref sidecar should be cleared"
+
+
 def test_unwatch_ended_series_flips_only_ended_watched_targets(
     client: TestClient, gallery_config
 ) -> None:
