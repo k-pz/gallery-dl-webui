@@ -1,3 +1,9 @@
+## v1.13.0 (2026-05-25)
+
+### Feat
+
+- **maintenance**: switch Komga sync to API-key config
+
 ## v1.12.0 (2026-05-24)
 
 ### Feat
