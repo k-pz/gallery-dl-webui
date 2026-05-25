@@ -191,6 +191,13 @@ depends = ["docs:typescript"]
 env = { DISABLE_MKDOCS_2_WARNING = "true" }
 run = "uv run --group docs mkdocs build --strict -f {{config_root}}/mkdocs.yml"
 
+# ---- Release helpers -----------------------------------------------------
+
+[tasks."release:preview"]
+description = "Preview the next version commitizen would bump to (dry run, no writes)"
+dir = "{{config_root}}"
+run = "uv tool run --from commitizen cz bump --dry-run --yes"
+
 # ---- Cleanup -------------------------------------------------------------
 
 [tasks.clean]

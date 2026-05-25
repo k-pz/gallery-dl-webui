@@ -82,3 +82,17 @@ mise run docs:check  # strict mkdocs build
 ```
 
 CI runs the same commands; running them locally first avoids a round trip.
+
+## Previewing the next release
+
+Before opening a `develop → main` PR, run:
+
+```sh
+mise run release:preview
+```
+
+That invokes `cz bump --dry-run` against the current commit history and
+prints the version commitizen would compute (e.g. `1.0.0 → 1.1.0`) plus
+the CHANGELOG entries it would generate, without touching any files or
+tags. Useful for sanity-checking that the conventional-commit log on
+`develop` resolves to the version you expected.
