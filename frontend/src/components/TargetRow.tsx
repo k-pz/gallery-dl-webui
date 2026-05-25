@@ -134,34 +134,36 @@ export function TargetRow({
         onKeyDown={handleHeadKey}
       >
         <div className="lib-row-main">
-          <Text className="lib-row-name" size="sm" fw={500} ff="monospace" title={displayName}>
-            {displayName}
-          </Text>
-          <div className="lib-row-pills">
-            <Pill tone={tone}>{jobStatusLabel(status)}</Pill>
-            {target.series_status && (
-              <Pill tone={seriesStatusTone(target.series_status)}>{target.series_status}</Pill>
-            )}
-            {target.watched && (
-              <Group gap={4} wrap="nowrap" style={{ color: "var(--app-accent)" }}>
-                <IconEye size={11} />
-                <Text size="xs" component="span" style={{ color: "inherit" }}>
-                  watched
-                </Text>
-              </Group>
-            )}
+          <div className="lib-row-top">
+            <div className="lib-row-pills">
+              <Pill tone={tone}>{jobStatusLabel(status)}</Pill>
+              {target.series_status && (
+                <Pill tone={seriesStatusTone(target.series_status)}>{target.series_status}</Pill>
+              )}
+              {target.watched && (
+                <Group gap={4} wrap="nowrap" style={{ color: "var(--app-accent)" }}>
+                  <IconEye size={11} />
+                  <Text size="xs" component="span" style={{ color: "inherit" }}>
+                    watched
+                  </Text>
+                </Group>
+              )}
+            </div>
+            <Text className="lib-row-name" size="sm" fw={500} ff="monospace" title={displayName}>
+              {displayName}
+            </Text>
+            <Text
+              size="xs"
+              c="dimmed"
+              ff="monospace"
+              className="lib-row-meta"
+              style={{ letterSpacing: "0.04em" }}
+            >
+              {target.extractor ?? "—"} · {target.download_count}
+              {target.download_count === 1 ? " run" : " runs"} ·{" "}
+              {formatRel(target.last_finished_at) ?? "—"}
+            </Text>
           </div>
-          <Text
-            size="xs"
-            c="dimmed"
-            ff="monospace"
-            className="lib-row-meta"
-            style={{ letterSpacing: "0.04em" }}
-          >
-            {target.extractor ?? "—"} · {target.download_count}
-            {target.download_count === 1 ? " run" : " runs"} ·{" "}
-            {formatRel(target.last_finished_at) ?? "—"}
-          </Text>
           {target.tags.length > 0 && (
             <Group gap={4} wrap="wrap" className="lib-row-tags">
               {target.tags.slice(0, 3).map((t) => (
