@@ -636,29 +636,33 @@ a {
   transition: background-color 0.15s ease;
 }
 
-/* Library row inner layout. On desktop pills sit before the name on a single
-   line; meta and tags wrap below. On phones (≤540px) the name owns its own
-   line and everything else stacks under it so nothing is ellipsised down to
-   "I…". `order` keeps the pills-first reading order on desktop while
-   letting the name come first in DOM (so screen readers hit it first). */
+/* Library row inner layout. Two stable rows so the layout doesn't shift with
+   the presence of the "watched" indicator or the length of the tag list:
+     row 1 — pills, name (truncates), meta (right-aligned)
+     row 2 — tags
+   On phones (≤540px) the top row wraps: name on its own line, then pills,
+   then meta, so nothing is ellipsised down to "I…". */
 .lib-row-main {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 6px;
+}
+.lib-row-top {
+  display: flex;
   align-items: center;
-  gap: 6px 12px;
+  gap: 12px;
+  min-width: 0;
 }
 .lib-row-name {
-  order: 2;
-  flex: 1 1 180px;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .lib-row-pills {
-  order: 1;
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
@@ -666,13 +670,10 @@ a {
   flex-shrink: 0;
 }
 .lib-row-meta {
-  order: 3;
-  flex: 0 1 auto;
-  min-width: 0;
+  flex-shrink: 0;
+  text-align: right;
 }
 .lib-row-tags {
-  order: 4;
-  flex: 0 1 auto;
   min-width: 0;
 }
 .lib-row-actions {
@@ -680,8 +681,8 @@ a {
 }
 
 /* Phones: let the row head wrap so the action column slides under the name
-   when there isn't room for both side-by-side, and put the name on its own
-   line above the pills. */
+   when there isn't room for both side-by-side, and stack the top-row pieces
+   so the name owns its own line above the pills. */
 @media (max-width: 540px) {
   .lib-row-head {
     flex-wrap: wrap;
@@ -690,6 +691,9 @@ a {
   }
   .lib-row-main {
     flex-basis: 100%;
+  }
+  .lib-row-top {
+    flex-wrap: wrap;
     gap: 6px;
   }
   .lib-row-name {
@@ -703,15 +707,14 @@ a {
     order: 2;
     flex-basis: 100%;
   }
+  .lib-row-meta {
+    order: 3;
+    flex-basis: 100%;
+    text-align: left;
+    font-size: 11.5px;
+  }
   .lib-row-actions {
     margin-left: auto;
-  }
-  .lib-row-meta {
-    font-size: 11.5px;
-    flex-basis: 100%;
-  }
-  .lib-row-tags {
-    flex-basis: 100%;
   }
 }
 .lib-row-head:hover {
