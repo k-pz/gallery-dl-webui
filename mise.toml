@@ -151,10 +151,21 @@ run = "pnpm generate"
 
 # ---- Release helpers -----------------------------------------------------
 
+# `release:preview` is a safe, read-only check — run it locally to see what
+# `cz bump` would do on the current tip. `release:bump` is the real thing
+# (writes version files, appends CHANGELOG, commits, and creates `v$version`
+# tag). The release GH workflow (.github/workflows/release.yml) calls these
+# same tasks so local + CI behaviour stays identical.
+
 [tasks."release:preview"]
 description = "Preview the next version commitizen would bump to (dry run, no writes)"
 dir = "{{config_root}}"
 run = "uv tool run --from commitizen cz bump --dry-run --yes"
+
+[tasks."release:bump"]
+description = "Run `cz bump`: update version files, append CHANGELOG, commit, and tag `v$version`"
+dir = "{{config_root}}"
+run = "uv tool run --from commitizen cz bump --yes"
 
 # ---- Cleanup -------------------------------------------------------------
 

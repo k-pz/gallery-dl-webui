@@ -1,0 +1,67 @@
+name: release
+
+# Manually-triggered release: runs `mise run release:bump` on `main`, which
+# walks conventional commits since the last `v*` tag, computes the next
+# semver, rewrites version literals listed in `.cz.toml`, appends a
+# `CHANGELOG.md` entry, makes a `bump: …` commit, and tags it `v$version`.
+# We then push the commit + tag back to origin/main — the tag push is what
+# trips `.github/workflows/tag-release.yml` to publish the GitHub Release.
+#
+# No auto-trigger: ship cadence is a human decision. If `cz bump` finds no
+# bump-worthy commits since the last tag it exits with code 21 / 3 — we treat
+# either as a no-op (the `|| true` on the bump step).
+
+on:
+  workflow_dispatch:
+
+# Serialize bumps so two clicks can't race to tag the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          # cz reads the full history to find the previous tag.
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup mise toolchain (python + uv + node)
+        uses: jdx/mise-action@v2
+        with:
+          cache: true
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version (commitizen, via mise)
+        id: bump
+        # cz exits 21 (NoCommitsFoundError) or 3 (NoCommitsIncrement) when
+        # there's nothing to release — capture that as a no-op rather than
+        # failing the run.
+        run: |
+          set +e
+          mise run release:bump
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "bumped=true" >> "$GITHUB_OUTPUT"
+          elif [ "$rc" -eq 3 ] || [ "$rc" -eq 21 ]; then
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+            echo "No bump-worthy commits since last tag — nothing to release."
+          else
+            exit "$rc"
+          fi
+
+      - name: Push commit + tag
+        if: steps.bump.outputs.bumped == 'true'
+        run: git push --follow-tags origin main
