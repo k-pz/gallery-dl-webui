@@ -39,6 +39,32 @@ a {
   box-shadow: var(--app-shadow);
 }
 
+/* Skip-to-content link. Visually hidden until the user tabs onto it, then
+   anchors into the top-left so keyboard / screen-reader users can jump past
+   the header chrome straight into the page body. */
+.app-skip-link {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 100;
+  padding: 8px 12px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  text-decoration: none;
+  box-shadow: var(--app-shadow);
+  transform: translateY(-200%);
+  transition: transform 0.18s ease;
+}
+.app-skip-link:focus,
+.app-skip-link:focus-visible {
+  transform: translateY(0);
+  outline: none;
+  box-shadow: var(--app-ring);
+}
+
 /* App shell — sticky header with a hairline divider that follows the scheme.
    The previous blur-over-88%-bg looked great empty and got noisy on long
    config pages; the flat fill stays calm at any scroll position. */
@@ -63,6 +89,13 @@ a {
   align-items: baseline;
   gap: 0.55rem;
   user-select: none;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: color 0.15s ease;
 }
 
 .app-brand-mark {
@@ -80,6 +113,7 @@ a {
   line-height: 1;
   transform: translateY(0.15rem);
   font-feature-settings: "ss01" 1;
+  transition: transform 0.15s ease;
 }
 
 .app-brand-word {
@@ -104,6 +138,16 @@ a {
   border-left: 1px solid var(--app-border);
   margin-left: 0.1rem;
   white-space: nowrap;
+}
+.app-brand:hover .app-brand-word {
+  color: var(--app-accent);
+}
+.app-brand:hover .app-brand-mark {
+  transform: translateY(0.15rem) scale(1.06);
+}
+.app-brand:focus-visible {
+  outline: none;
+  box-shadow: var(--app-ring);
 }
 
 /* Tighten the header on phones — the "archive" tag is editorial filler that
