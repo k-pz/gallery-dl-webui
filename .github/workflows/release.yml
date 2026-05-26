@@ -109,15 +109,39 @@ jobs:
             exit "$rc"
           fi
 
+      - name: Sync backend/uv.lock to the bumped version
+        if: steps.bump.outputs.bumped == 'true'
+        # `cz bump` only rewrites the files listed in `.cz.toml`'s
+        # `version_files` — backend/pyproject.toml et al. It doesn't touch
+        # backend/uv.lock, whose top-level `[[package]] name = "backend"
+        # version = "…"` block carries the package version, so the lockfile
+        # drifts on every bump until the next `uv` invocation regenerates it.
+        # Run `uv lock` here so the synced lockfile ships in the same push as
+        # the bump commit. We follow it up with a separate `chore(release):
+        # sync uv.lock` commit (rather than amending the bump commit) so the
+        # `v$version` tag created by cz stays on its original SHA and we
+        # don't have to retag.
+        run: |
+          cd backend && uv lock
+          cd ..
+          if ! git diff --quiet -- backend/uv.lock; then
+            git add backend/uv.lock
+            git commit -m "chore(release): sync uv.lock"
+          fi
+
       - name: Push commit + tag
         if: steps.bump.outputs.bumped == 'true'
         run: git push --follow-tags origin main
 
       - name: Record published tag for downstream workflows
         if: steps.bump.outputs.bumped == 'true'
+        # `git describe --tags --abbrev=0` walks back from HEAD to the nearest
+        # tag — we can't use `--exact-match HEAD` here because the lockfile
+        # sync step above adds a `chore(release): sync uv.lock` commit on top
+        # of the tagged bump commit, so HEAD itself is no longer at the tag.
         run: |
           mkdir -p artifacts
-          git describe --tags --exact-match HEAD > artifacts/tag
+          git describe --tags --abbrev=0 > artifacts/tag
 
       - name: Upload release-tag artifact
         if: steps.bump.outputs.bumped == 'true'

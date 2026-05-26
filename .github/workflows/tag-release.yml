@@ -67,8 +67,16 @@ jobs:
         # A `-` in the version (e.g. `v1.2.0-rc.1`) marks a semver
         # prerelease — we surface that so the Release gets flagged as
         # a prerelease on GitHub.
+        #
+        # `${{ … }}` expressions are passed through `env:` and read as shell
+        # variables in `run:`, never interpolated directly into the script
+        # body — `inputs.tag` is attacker-controllable on workflow_dispatch,
+        # and even `github.event_name` goes through env on principle.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_TAG: ${{ inputs.tag }}
         run: |
-          case "${{ github.event_name }}" in
+          case "$EVENT_NAME" in
             workflow_run)
               if [ ! -f artifacts/tag ]; then
                 echo "Upstream release workflow did not produce a release-tag artifact — nothing to publish."
@@ -81,7 +89,7 @@ jobs:
               tag="${GITHUB_REF##*/}"
               ;;
             workflow_dispatch)
-              tag="${{ inputs.tag }}"
+              tag="$DISPATCH_TAG"
               ;;
           esac
           version="${tag#v}"
@@ -110,19 +118,22 @@ jobs:
         # Pull just this version's section out of CHANGELOG.md (between
         # this version's `## vX.Y.Z` heading and the next one). If the
         # CHANGELOG isn't present at this tag, fall back to a one-liner.
+        #
+        # Tag comes in via `env:` so the shell never sees raw `${{ … }}`
+        # interpolation — see the "Resolve tag" step above for the rationale.
+        env:
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
-          version="${{ steps.ver.outputs.version }}"
-          tag="${{ steps.ver.outputs.tag }}"
           out=release-notes.md
           if [ -f CHANGELOG.md ]; then
-            awk -v v="$tag" '
+            awk -v v="$TAG" '
               $0 ~ "^## " v "( |$)" { in_section=1; next }
               in_section && /^## v[0-9]/ { exit }
               in_section { print }
             ' CHANGELOG.md > "$out"
           fi
           if [ ! -s "$out" ]; then
-            echo "Release $tag" > "$out"
+            echo "Release $TAG" > "$out"
           fi
           echo "path=$out" >> "$GITHUB_OUTPUT"
 
@@ -157,8 +168,12 @@ jobs:
 
       - name: Forward release-tag artifact to docker-release
         if: steps.ver.outputs.skip != 'true'
+        # Same env-var pattern as the other steps: keep the tag value out of
+        # the inline shell script body.
+        env:
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
-          mkdir -p forward && echo "${{ steps.ver.outputs.tag }}" > forward/tag
+          mkdir -p forward && echo "$TAG" > forward/tag
 
       - name: Upload release-tag artifact
         if: steps.ver.outputs.skip != 'true'
