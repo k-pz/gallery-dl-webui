@@ -26,11 +26,18 @@ backend/                ← FastAPI app (uv project, src-layout)
     __main__.py         ← `python -m backend` entrypoint
     config.py           ← Settings + load_settings (env vars)
     database.py         ← aiosqlite connection lifecycle + schema + migrations
+    events.py           ← EventBus (in-process pub/sub for ws + X-Events)
+    middleware.py       ← per-request event collector → X-Events header
+    logging_setup.py    ← logging config (level, formatters, journald hooks)
     exceptions.py       ← shared HTTPException subclasses
     dependencies.py     ← cross-domain FastAPI deps (db, settings)
     downloads/          ← downloads domain (router, schemas, service, worker,
                           gallery, postprocess, live_progress, progress)
     targets/            ← watched targets (router, service, poller, durations)
+    maintenance/        ← maintenance jobs (rebuild library, Komga push,
+                          LXC update, …) + worker + live progress
+    realtime/           ← websocket fan-out of EventBus events
+    logs/               ← live journal tail endpoint (powers in-app log view)
     app_config/         ← app-wide config endpoint
     library/            ← library YAML import/export
     output_dirs/        ← output-dir picker
@@ -38,9 +45,12 @@ backend/                ← FastAPI app (uv project, src-layout)
 frontend/               ← Vite + React app
   src/
     App.tsx
-    components/         ← per-component files
+    components/         ← per-component files (incl. *.stories.tsx)
+    hooks/              ← reusable query/mutation/notification hooks
     lib/                ← status/polling/error helpers
     api/                ← generated, do not edit
+  e2e/                  ← Playwright specs (boots both servers in CI)
+  .storybook/           ← Storybook config (run `pnpm storybook`)
 data/                   ← local dev only; archive.db, jobs.db, downloads/
 ```
 
@@ -131,9 +141,67 @@ matching archive row first.
 
 ## Deployment
 
-Production runs on an unprivileged Debian LXC on Proxmox with a `systemd` unit
-that invokes `python -m backend`. The install/update scripts are kept outside
-this tree.
+Two supported targets — the same `python -m backend` entrypoint in both.
+
+### Docker / GHCR
+
+A multi-arch image (`linux/amd64`, `linux/arm64`) is published to GHCR on
+every `v*` tag via `.github/workflows/docker-release.yml`. Tags include the
+exact version (`vX.Y.Z`, `X.Y.Z`), the minor lineage (`X.Y`), and `latest`.
+
+```sh
+docker run -d \
+    --name gallery-dl-webui \
+    -p 8000:8000 \
+    -v /srv/gallery-dl-webui:/data \
+    ghcr.io/k-pz/gallery-dl-webui:latest
+```
+
+The container mounts `/data` as a volume and exposes `8000`. Override the
+defaults via `WEBUI_*` env vars (see [Configuration](#configuration)). If
+the CBZ output root lives outside `/data`, bind-mount it in and point the UI
+at it from the Config tab.
+
+To build locally:
+
+```sh
+docker build -t gallery-dl-webui .
+```
+
+### Proxmox LXC
+
+`scripts/proxmox-install.sh` creates an unprivileged Debian 13 LXC with a
+`systemd` unit that runs `mise run serve:backend`. Run it from the Proxmox
+host as root:
+
+```sh
+bash scripts/proxmox-install.sh
+```
+
+Common knobs (all overridable via env vars at invocation): `CTID`, `DISK_GB`,
+`RAM_MB`, `EXTRA_RW_PATHS` (extra `ReadWritePaths` for the systemd sandbox,
+e.g. a NAS mount), `NAS_SHARE`/`NAS_USER`/`NAS_PASS` (auto-mount a CIFS share
+on the host and bind-mount it into the CT). After install, the in-CT
+`update` command (`scripts/lxc-update.sh`) re-pulls the repo, rebuilds, and
+restarts the service — and the **Maintenance → Update LXC** tile in the UI
+fires the same updater via a systemd path unit.
+
+## Releases
+
+Versions are driven by Conventional Commits via
+[commitizen](https://commitizen-tools.github.io/commitizen/) — `.cz.toml`
+lists every file with a pinned `version` literal so a bump rewrites them all
+in lockstep.
+
+```sh
+mise run release:preview    # dry-run: what would `cz bump` choose?
+mise run release:bump       # write version files, append CHANGELOG, tag v$version
+```
+
+The `release` GH workflow (`workflow_dispatch`-only) does the same thing on
+`main` and pushes the tag back. The tag push then triggers `tag-release.yml`
+(publishes the GitHub Release with notes sliced from `CHANGELOG.md`) and
+`docker-release.yml` (publishes the GHCR image).
 
 ## Regenerating the API client
 
