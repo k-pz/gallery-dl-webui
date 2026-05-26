@@ -168,7 +168,12 @@ def test_regenerate_series_metadata_picks_up_target_series_status(
     client: TestClient, tmp_path: Path, gallery_config
 ) -> None:
     """A series_status on the target row should land in the regen'd series.json
-    via `_build_series_overrides` (which keys by sanitised target name)."""
+    via `_build_series_overrides` (which keys by sanitised target name).
+
+    Uses Ongoing → "Continuing" because that's the only round-trip Komga's
+    Mylar importer understands; Hiatus/Abandoned are intentionally omitted
+    from series.json and pushed via the REST `push_komga_series_status` job.
+    """
     import json
 
     root = tmp_path / "media"
@@ -201,7 +206,7 @@ def test_regenerate_series_metadata_picks_up_target_series_status(
             break
         time.sleep(0.05)
     target_id = client.get("/api/targets").json()[0]["id"]
-    client.patch(f"/api/targets/{target_id}", json={"series_status": "Hiatus"})
+    client.patch(f"/api/targets/{target_id}", json={"series_status": "Ongoing"})
 
     created = client.post("/api/maintenance/jobs", json={"kind": "regenerate_series_metadata"})
     job_id = created.json()["id"]
@@ -209,7 +214,7 @@ def test_regenerate_series_metadata_picks_up_target_series_status(
     assert done["status"] == "completed", done
 
     payload = json.loads((series_dir / "series.json").read_text())
-    assert payload["metadata"]["status"] == "Hiatus"
+    assert payload["metadata"]["status"] == "Continuing"
 
 
 def _read_comicinfo(cbz: Path) -> dict[str, str]:
@@ -263,8 +268,10 @@ def test_regenerate_rediscovers_series_metadata_via_gallery(
     target_id = client.get("/api/targets").json()[0]["id"]
 
     # Now upstream "discovers" status + tags + a chapter date. The regen pass
-    # should pick all three up via extract_metadata.
-    gallery_config.series_status_for["https://example/x"] = "Hiatus"
+    # should pick all three up via extract_metadata. "Ongoing" round-trips to
+    # the wire-level Mylar label "Continuing"; Hiatus/Abandoned are omitted
+    # from series.json by design.
+    gallery_config.series_status_for["https://example/x"] = "Ongoing"
     gallery_config.series_tags_for["https://example/x"] = ["Action", "Drama"]
     gallery_config.chapter_dates_for["https://example/x"] = {
         ("Series", "1"): "2025-03-14",
@@ -276,11 +283,11 @@ def test_regenerate_rediscovers_series_metadata_via_gallery(
     assert done["status"] == "completed", done
 
     payload = json.loads((series_dir / "series.json").read_text())
-    assert payload["metadata"]["status"] == "Hiatus"
+    assert payload["metadata"]["status"] == "Continuing"
     assert payload["metadata"]["tags"] == ["Action", "Drama"]
 
     target = client.get(f"/api/targets/{target_id}").json()
-    assert target["series_status"] == "Hiatus"
+    assert target["series_status"] == "Ongoing"
     assert target["tags"] == ["Action", "Drama"]
 
     ci = _read_comicinfo(series_dir / "Series - c001.cbz")
@@ -693,7 +700,18 @@ def test_update_lxc_writes_trigger_even_when_stale_file_exists(
     stale = settings.data_dir / worker_mod.UPDATE_TRIGGER_FILENAME
     stale.parent.mkdir(parents=True, exist_ok=True)
     stale.write_text("stale\n", encoding="utf-8")
-    stale_inode = stale.stat().st_ino
+
+    # Spy on Path.unlink to confirm the stale file is unlinked before the
+    # rewrite — comparing st_ino is unreliable since ext4/tmpfs routinely
+    # reuse freshly-freed inode numbers.
+    unlink_targets: list[str] = []
+    real_unlink = Path.unlink
+
+    def trace_unlink(self, *args, **kwargs):
+        unlink_targets.append(str(self))
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", trace_unlink)
 
     created = client.post("/api/maintenance/jobs", json={"kind": "update_lxc"})
     assert created.status_code == 200, created.json()
@@ -702,9 +720,9 @@ def test_update_lxc_writes_trigger_even_when_stale_file_exists(
     done = _wait_for_completion(client, job_id)
     assert done["status"] == "completed", done
     assert stale.read_text(encoding="utf-8") == "requested\n"
-    # New inode confirms unlink+create rather than O_TRUNC overwrite — that's
-    # what gets systemd's PathExists to refire.
-    assert stale.stat().st_ino != stale_inode
+    # Unlink-then-write is what gets systemd's PathExists to refire (IN_CREATE
+    # not IN_MODIFY).
+    assert str(stale) in unlink_targets
 
 
 def test_update_lxc_fails_when_path_unit_inactive(
