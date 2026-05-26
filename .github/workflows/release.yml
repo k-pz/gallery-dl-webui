@@ -4,8 +4,11 @@ name: release
 # walks conventional commits since the last `v*` tag, computes the next
 # semver, rewrites version literals listed in `.cz.toml`, appends a
 # `CHANGELOG.md` entry, makes a `bump: …` commit, and tags it `v$version`.
-# We then push the commit + tag back to origin/main — the tag push is what
-# trips `.github/workflows/tag-release.yml` to publish the GitHub Release.
+# We then push the commit + tag back to origin/main and upload the tag name
+# as a `release-tag` artifact. `tag-release.yml` chains off this workflow
+# via `workflow_run` and reads the artifact to know which tag to publish —
+# we can't rely on the tag-push event to trigger it because GitHub silently
+# suppresses workflow runs for events created by `GITHUB_TOKEN`.
 #
 # The `increment` input lets the human override commit-derived bump:
 #   - auto  → cz analyses conventional commits (default behaviour)
@@ -109,3 +112,18 @@ jobs:
       - name: Push commit + tag
         if: steps.bump.outputs.bumped == 'true'
         run: git push --follow-tags origin main
+
+      - name: Record published tag for downstream workflows
+        if: steps.bump.outputs.bumped == 'true'
+        run: |
+          mkdir -p artifacts
+          git describe --tags --exact-match HEAD > artifacts/tag
+
+      - name: Upload release-tag artifact
+        if: steps.bump.outputs.bumped == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-tag
+          path: artifacts/tag
+          if-no-files-found: error
+          retention-days: 7

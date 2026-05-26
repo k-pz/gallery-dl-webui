@@ -9,6 +9,11 @@ name: docker-release
 # the Release step fails, the `conclusion == 'success'` guard short-circuits
 # this run, so a tag whose Release fails never produces a half-shipped image.
 #
+# The tag to build is read from a `release-tag` artifact uploaded by
+# `tag-release.yml`. We can't use `workflow_run.head_branch` anymore because
+# `tag-release.yml` now runs on `main` (via workflow_run off `release.yml`)
+# rather than on a tag push, so `head_branch` would be `main`.
+#
 # `workflow_dispatch` is kept as a manual escape hatch — handy when a release
 # already exists (e.g. v1.0.0, which predates this fix) and we need to ship
 # its image after the fact, or to retry a build that failed mid-push.
@@ -30,6 +35,7 @@ on:
 permissions:
   contents: read
   packages: write
+  actions: read
 
 env:
   REGISTRY: ghcr.io
@@ -42,17 +48,26 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
+      - name: Download release-tag artifact (workflow_run path)
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-tag
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts
+
       - name: Resolve tag to build
         id: tag
-        # `workflow_run.head_branch` holds the short tag name (e.g. `v1.2.3`)
-        # when the upstream workflow was triggered by a tag push, which is
-        # the only way tag-release runs. For manual dispatch we take it
-        # straight from the input.
+        # tag-release forwards the published tag as a `release-tag` artifact;
+        # we can't use `workflow_run.head_branch` because tag-release now
+        # runs on `main` (via workflow_run off the release workflow) rather
+        # than on a tag push. For manual dispatch we take the tag from input.
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             tag="${{ inputs.tag }}"
           else
-            tag="${{ github.event.workflow_run.head_branch }}"
+            tag=$(cat artifacts/tag)
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
