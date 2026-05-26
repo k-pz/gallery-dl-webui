@@ -1,17 +1,31 @@
 name: docker-release
 
-# Builds and pushes the container image to GHCR whenever a Release is
-# published. Triggering on `release.published` (not the tag push) means
-# the image only ships once the Release exists, so a tag that fails its
-# Release step won't produce a half-shipped image.
+# Builds and pushes the container image to GHCR after `tag-release` finishes
+# publishing the GitHub Release. We chain via `workflow_run` instead of the
+# more obvious `on: release` because GitHub suppresses the `release.published`
+# event when the release is created by `GITHUB_TOKEN` (which is what
+# `tag-release.yml` uses) — so the release-triggered form silently never
+# fired. Chaining off tag-release also preserves the original guarantee: if
+# the Release step fails, the `conclusion == 'success'` guard short-circuits
+# this run, so a tag whose Release fails never produces a half-shipped image.
 #
-# Image is tagged with the release version (`vX.Y.Z`, plus the bare
-# semver), `X.Y` minor lineage, and `latest`. We also build a SHA tag
-# for traceability.
+# `workflow_dispatch` is kept as a manual escape hatch — handy when a release
+# already exists (e.g. v1.0.0, which predates this fix) and we need to ship
+# its image after the fact, or to retry a build that failed mid-push.
+#
+# Image is tagged with the release version (`vX.Y.Z`, plus the bare semver),
+# `X.Y` minor lineage, and `latest`. We also build a SHA tag for traceability.
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: [tag-release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing v* tag to (re)build, e.g. v1.0.0"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -23,12 +37,29 @@ env:
 
 jobs:
   build-and-push:
+    # On workflow_run, only proceed if the upstream tag-release succeeded.
+    # On workflow_dispatch, always proceed (operator explicitly asked).
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve tag to build
+        id: tag
+        # `workflow_run.head_branch` holds the short tag name (e.g. `v1.2.3`)
+        # when the upstream workflow was triggered by a tag push, which is
+        # the only way tag-release runs. For manual dispatch we take it
+        # straight from the input.
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${{ github.event.workflow_run.head_branch }}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       - name: Checkout (at the release tag)
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ steps.tag.outputs.tag }}
 
       - name: Set up QEMU (for cross-arch builds)
         uses: docker/setup-qemu-action@v3
@@ -54,9 +85,9 @@ jobs:
           #   - latest          ← floats on the newest release
           #   - sha-<short>     ← traceability back to the source commit
           tags: |
-            type=semver,pattern={{version}},value=${{ github.event.release.tag_name }}
-            type=semver,pattern=v{{version}},value=${{ github.event.release.tag_name }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ github.event.release.tag_name }}
+            type=semver,pattern={{version}},value=${{ steps.tag.outputs.tag }}
+            type=semver,pattern=v{{version}},value=${{ steps.tag.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }}
             type=raw,value=latest
             type=sha,prefix=sha-,format=short
 
