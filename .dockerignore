@@ -1,0 +1,44 @@
+# Keep the build context small. Anything below is *not* sent to the docker
+# daemon — speeds up COPY and prevents local-only state from leaking in.
+
+# Per-side build artefacts
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/.ty_cache/
+backend/tests/
+backend/htmlcov/
+backend/coverage.xml
+backend/logs/
+frontend/node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/coverage/
+frontend/logs/
+
+# Local dev state
+data/
+data-e2e/
+
+# Editor / VCS / OS noise
+.git/
+.gitignore
+.github/
+.idea/
+.vscode/
+.DS_Store
+
+# Repo-level dev tooling not needed at runtime
+.claude/
+.local/
+.ruff_cache/
+mise.toml
+.cz.toml
+scripts/
+README.md
+CLAUDE.md
+CHANGELOG.md
+LICENSE
