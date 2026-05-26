@@ -1,0 +1,65 @@
+name: tag-release
+
+# Publishes a GitHub Release whenever a `v*` tag is pushed (i.e. whenever
+# `cz bump` from the `release` workflow lands a new tag, or a human tags
+# manually). The Release body is the matching `CHANGELOG.md` section that
+# commitizen just appended.
+#
+# Decoupling the Release creation from the bump means an out-of-band tag
+# (e.g. a tag pushed by hand) also gets a Release, and we don't need
+# anything except `git push --tags` to ship.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (at the tagged commit)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: ver
+        # `refs/tags/vX.Y.Z` → `X.Y.Z`. Everything downstream wants the
+        # bare semver (CHANGELOG section heading, release body slice).
+        run: |
+          tag="${GITHUB_REF##*/}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        # Pull just this version's section out of CHANGELOG.md (between
+        # this version's `## vX.Y.Z` heading and the next one). If the
+        # CHANGELOG isn't present at this tag, fall back to a one-liner.
+        run: |
+          version="${{ steps.ver.outputs.version }}"
+          tag="${{ steps.ver.outputs.tag }}"
+          out=release-notes.md
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="$tag" '
+              $0 ~ "^## " v "( |$)" { in_section=1; next }
+              in_section && /^## v[0-9]/ { exit }
+              in_section { print }
+            ' CHANGELOG.md > "$out"
+          fi
+          if [ ! -s "$out" ]; then
+            echo "Release $tag" > "$out"
+          fi
+          echo "path=$out" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.ver.outputs.tag }}" \
+            --title "${{ steps.ver.outputs.tag }}" \
+            --notes-file "${{ steps.notes.outputs.path }}"
