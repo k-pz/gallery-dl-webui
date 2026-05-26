@@ -5,24 +5,9 @@ gallery URL and watch downloads progress in the browser. Backed by a FastAPI
 service that runs `gallery-dl` against a single-process worker queue.
 
 > **Disclaimer — AI-authored code.** Substantially all of the source in this
-> repository (backend, frontend, scripts, deployment glue, and these docs) was
-> written by [Claude Code](https://www.anthropic.com/claude-code), Anthropic's
-> AI coding assistant. Read and review accordingly.
-
-📖 **Docs:** the full site lives at
-<https://k-pz.github.io/gallery-dl-webui/> — topic guides, per-domain Python
-reference, HTTP API reference, and a [Storybook](https://k-pz.github.io/gallery-dl-webui/storybook/)
-of the Mantine components, all auto-published on every push to `main`.
-Source for the guides lives in [`docs/`](docs/); see the [Docs](#docs)
-section below for the index.
-
-## Branching
-
-Trimmed gitflow: `develop` is the integration branch, `main` holds
-released code only (and is what the LXC deploy script tracks). All work
-goes on short-lived branches off `develop`; releases are cut by merging
-`develop` into `main` via PR — see [`CONTRIBUTING.md`](CONTRIBUTING.md)
-for the full flow + commit-message rules.
+> repository (backend, frontend, scripts, and deployment glue) was written by
+> [Claude Code](https://www.anthropic.com/claude-code), Anthropic's AI coding
+> assistant. Read and review accordingly.
 
 ## Stack
 
@@ -56,8 +41,6 @@ frontend/               ← Vite + React app
     components/         ← per-component files
     lib/                ← status/polling/error helpers
     api/                ← generated, do not edit
-firefox-extension/      ← Firefox MV3 extension: "Add to library" from any tab
-docs/                   ← long-form docs (also published as the wiki)
 data/                   ← local dev only; archive.db, jobs.db, downloads/
 ```
 
@@ -108,8 +91,8 @@ with the `:backend` / `:frontend` suffix (e.g. `mise run test:backend`).
 | `WEBUI_DATA_DIR`           | `./data`      | Where `jobs.db`, `archive.db`, and `downloads/` live |
 | `WEBUI_HOST`               | `0.0.0.0`     | Bind host for `python -m backend`      |
 | `WEBUI_PORT`               | `8000`        | Bind port for `python -m backend`      |
-| `WEBUI_CORS_ORIGINS`       | _(empty)_     | Comma-separated extra CORS origins (e.g. for the [Firefox extension](firefox-extension/)) |
-| `WEBUI_CORS_ORIGIN_REGEX`  | _(empty)_     | Regex for CORS origins, e.g. `moz-extension://.*` |
+| `WEBUI_CORS_ORIGINS`       | _(empty)_     | Comma-separated extra CORS origins |
+| `WEBUI_CORS_ORIGIN_REGEX`  | _(empty)_     | Regex for CORS origins                |
 
 ### CBZ postprocessing (Komga)
 
@@ -146,35 +129,6 @@ toggling the delete-raw setting and resubmitting the same URL will not re-pack
 a chapter — `gallery-dl` will short-circuit. To force a re-pack, wipe the
 matching archive row first.
 
-## Firefox extension
-
-[`firefox-extension/`](firefox-extension/) ships a small Firefox MV3 extension
-that adds the page you're currently looking at to the library in one click.
-The toolbar popup mirrors the **Add a gallery** form (URL pre-filled, output
-dir + tags + reading direction + watch toggle).
-
-Quick install (development / unsigned):
-
-1. Make sure the backend allows the extension's CORS origin. Set
-   `WEBUI_CORS_ORIGIN_REGEX='moz-extension://.*'` (easiest), or
-   `WEBUI_CORS_ORIGINS=<exact moz-extension://… origin>` for a strict allow-list.
-2. In Firefox, open `about:debugging#/runtime/this-firefox` →
-   **Load Temporary Add-on…** and pick
-   [`firefox-extension/manifest.json`](firefox-extension/manifest.json).
-3. Click the new toolbar icon, then the gear (⚙) in the popup, and set the
-   **Backend URL** (e.g. `http://localhost:8000`). The **Test connection**
-   button hits `/api/health`.
-
-Temporary add-ons are uninstalled on browser restart. For a permanent
-install, [`firefox-extension/README.md`](firefox-extension/README.md) has
-step-by-step instructions for both paths:
-
-- **Option A** — self-distribute a signed `.xpi` via
-  [addons.mozilla.org](https://addons.mozilla.org) (private listing). Works
-  in every Firefox channel.
-- **Option B** — disable `xpinstall.signatures.required` in Firefox
-  Developer Edition or Nightly and install an unsigned `.xpi` directly.
-
 ## Deployment
 
 Production runs on an unprivileged Debian LXC on Proxmox with a `systemd` unit
@@ -187,46 +141,4 @@ After changing backend routes or schemas, with the backend running:
 
 ```sh
 mise run generate:client
-```
-
-## Docs
-
-The long-form docs live in [`docs/`](docs/) — one file per topic:
-
-- [`docs/architecture.md`](docs/architecture.md) — what it is, process model,
-  deploy topology, repo layout.
-- [`docs/backend.md`](docs/backend.md) — application factory, settings,
-  database, per-domain module shape.
-- [`docs/pipeline.md`](docs/pipeline.md) — worker, gallery-dl integration,
-  CBZ postprocessing, progress accounting.
-- [`docs/frontend.md`](docs/frontend.md) — stack, generated client,
-  components, state strategy.
-- [`docs/lifecycles.md`](docs/lifecycles.md) — end-to-end traces.
-- [`docs/testing.md`](docs/testing.md), [`docs/deployment.md`](docs/deployment.md),
-  [`docs/decisions.md`](docs/decisions.md).
-
-The same pages are rendered into a [MkDocs Material](https://squidfunk.github.io/mkdocs-material/)
-site at <https://k-pz.github.io/gallery-dl-webui/>, regenerated by
-`.github/workflows/docs.yml` on every push to `main`. The site bundles:
-
-- **Home** ← `README.md`.
-- **Architecture / Backend / Pipeline / Frontend / Lifecycles / Testing /
-  Deployment / Decisions** ← one page per `docs/*.md`.
-- **HTTP API** ← the FastAPI OpenAPI schema, rendered via
-  `scripts/gen_http_api.py`.
-- **Python — \<Domain\>** ← one page per backend domain, generated by
-  [`mkdocstrings`](https://mkdocstrings.github.io/) from type hints +
-  docstrings (stub pages emitted by `scripts/gen_python_ref.py`).
-- **Frontend** ← TypeScript reference for `lib/`, hooks, and theme,
-  rendered by [TypeDoc](https://typedoc.org/).
-- **Components** ← live [Storybook](https://k-pz.github.io/gallery-dl-webui/storybook/)
-  of the Mantine components with light/dark previews and prop tables.
-
-Preview locally:
-
-```sh
-mise run docs:serve         # MkDocs site on :8000 (live reload)
-mise run docs:storybook     # Storybook on :6006 (live reload)
-mise run docs:build         # assemble the combined Pages tree into ./site
-mise run docs:check         # strict build — the CI gate
 ```

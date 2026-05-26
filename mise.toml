@@ -149,48 +149,6 @@ description = "Regenerate the frontend API client from the live backend's OpenAP
 dir = "{{config_root}}/frontend"
 run = "pnpm generate"
 
-# ---- Docs (MkDocs Material site + Storybook) ----------------------------
-
-[tasks."docs:typescript"]
-description = "Generate frontend TypeScript reference markdown (TypeDoc → docs/reference/frontend/)"
-dir = "{{config_root}}/frontend"
-run = "pnpm run docs"
-
-[tasks."docs:storybook"]
-description = "Live-reload Storybook on http://localhost:6006"
-dir = "{{config_root}}/frontend"
-run = "pnpm storybook"
-
-[tasks."docs:storybook:build"]
-description = "Build the static Storybook site into frontend/storybook-static/"
-dir = "{{config_root}}/frontend"
-run = "pnpm run build-storybook"
-
-[tasks."docs:serve"]
-description = "Live-reload docs site on http://localhost:8000 (mkdocs serve)"
-dir = "{{config_root}}/backend"
-depends = ["docs:typescript"]
-env = { DISABLE_MKDOCS_2_WARNING = "true" }
-run = "uv run --group docs mkdocs serve -f {{config_root}}/mkdocs.yml"
-
-[tasks."docs:build"]
-description = "Build the docs site + Storybook into ./site (mirrors the CI Pages layout)"
-dir = "{{config_root}}/backend"
-depends = ["docs:typescript", "docs:storybook:build"]
-env = { DISABLE_MKDOCS_2_WARNING = "true" }
-run = [
-    "uv run --group docs mkdocs build -f {{config_root}}/mkdocs.yml",
-    "rm -rf {{config_root}}/site/storybook",
-    "mv {{config_root}}/frontend/storybook-static {{config_root}}/site/storybook",
-]
-
-[tasks."docs:check"]
-description = "Strict docs build (fails on broken refs/links) — used by CI"
-dir = "{{config_root}}/backend"
-depends = ["docs:typescript"]
-env = { DISABLE_MKDOCS_2_WARNING = "true" }
-run = "uv run --group docs mkdocs build --strict -f {{config_root}}/mkdocs.yml"
-
 # ---- Release helpers -----------------------------------------------------
 
 [tasks."release:preview"]
@@ -201,14 +159,11 @@ run = "uv tool run --from commitizen cz bump --dry-run --yes"
 # ---- Cleanup -------------------------------------------------------------
 
 [tasks.clean]
-description = "Remove installed deps and build output (backend/.venv, frontend/node_modules, frontend/dist, site, storybook-static, generated TypeDoc)"
+description = "Remove installed deps and build output (backend/.venv, frontend/node_modules, frontend/dist)"
 run = [
     "rm -rf {{config_root}}/backend/.venv",
     "rm -rf {{config_root}}/frontend/node_modules",
     "rm -rf {{config_root}}/frontend/dist",
-    "rm -rf {{config_root}}/frontend/storybook-static",
-    "rm -rf {{config_root}}/site",
-    "rm -rf {{config_root}}/docs/reference",
 ]
 
 # ---- Production entrypoint ----------------------------------------------

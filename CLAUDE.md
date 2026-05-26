@@ -41,4 +41,3 @@ pinned python via mise). For one-off frontend commands, use `pnpm …` from
 - `frontend/` — Vite + React, managed with `pnpm`. Tests: `vitest`. Lint:
   `biome`. Typecheck: `tsc -b --noEmit`.
 - `mise.toml` — toolchain pins + every repo task.
-- `docs/`, `mkdocs.yml` — MkDocs Material site; build via `mise run docs:build`.

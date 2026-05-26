@@ -32,16 +32,6 @@ dev = [
     "ruff>=0.15.13",
     "ty>=0.0.37",
 ]
-# Build-time only — MkDocs Material renders the docs site (CI:
-# .github/workflows/docs.yml, local: `mise run docs:serve`). The group must
-# share the backend venv so the gen-files hooks can import `backend` (used
-# for OpenAPI rendering) and so `mkdocstrings[python]` can introspect it.
-docs = [
-    "mkdocs-material>=9.5",
-    "mkdocstrings[python]>=0.27",
-    "mkdocs-gen-files>=0.5",
-    "mkdocs-literate-nav>=0.6",
-]
 
 [tool.ruff]
 line-length = 100
