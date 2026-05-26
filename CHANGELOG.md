@@ -1,3 +1,15 @@
+## v1.1.0-rc0 (2026-05-26)
+
+### Feat
+
+- **maintenance**: show available tags + reflect tracked ref in footer (#49)
+- **ui**: make logo link to library + a11y improvements (#48)
+- **series**: make series status the primary pill, hide download status when idle (#47)
+
+### Fix
+
+- **release**: create annotated tags so `git push --follow-tags` pushes them
+
 ## v1.0.0 (2026-05-26)
 
 ### Feat
