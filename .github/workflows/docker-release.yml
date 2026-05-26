@@ -45,9 +45,18 @@ env:
 
 jobs:
   build-and-push:
-    # On workflow_run, only proceed if the upstream tag-release succeeded.
-    # On workflow_dispatch, always proceed (operator explicitly asked).
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # On workflow_run, only proceed if the upstream tag-release succeeded AND
+    # was itself triggered by something other than `workflow_dispatch`. The
+    # dispatch trigger on tag-release.yml is the "re-publish an existing tag"
+    # escape hatch (e.g. backfilling release notes for v1.1.0); we don't want
+    # those backfills to rebuild and re-push an effectively-immutable image
+    # with a slightly different build (updated base layer, different action
+    # versions, etc.). On workflow_dispatch of this workflow, always proceed
+    # (operator explicitly asked to rebuild).
+    if: |
+      github.event_name == 'workflow_dispatch'
+      || (github.event.workflow_run.conclusion == 'success'
+          && github.event.workflow_run.event != 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Download release-tag artifact (workflow_run path)
