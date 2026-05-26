@@ -20,6 +20,8 @@ name: docker-release
 #
 # Image is tagged with the release version (`vX.Y.Z`, plus the bare semver),
 # `X.Y` minor lineage, and `latest`. We also build a SHA tag for traceability.
+# Pre-release tags (e.g. `v1.2.0-rc.1`) skip `latest` and the `X.Y` lineage so
+# an rc never floats on top of a stable release for `:latest` consumers.
 
 on:
   workflow_run:
@@ -97,13 +99,18 @@ jobs:
           # On a release tag like `v1.2.3` we emit:
           #   - v1.2.3, 1.2.3   ← exact-version tags
           #   - 1.2             ← minor lineage (handy for compose pinning)
-          #   - latest          ← floats on the newest release
+          #   - latest          ← floats on the newest stable release
           #   - sha-<short>     ← traceability back to the source commit
+          # For prerelease tags like `v1.2.0-rc.1` we emit only the exact-
+          # version tags and the sha tag: `type=semver` skips `{{major}}.{{minor}}`
+          # for prereleases by default, and the `enable=` guard below skips
+          # `latest`. The guard mirrors tag-release.yml's prerelease check
+          # (a `-` in the version marks a semver prerelease).
           tags: |
             type=semver,pattern={{version}},value=${{ steps.tag.outputs.tag }}
             type=semver,pattern=v{{version}},value=${{ steps.tag.outputs.tag }}
             type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ !contains(steps.tag.outputs.tag, '-') }}
             type=sha,prefix=sha-,format=short
 
       - name: Build and push
