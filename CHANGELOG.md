@@ -1,14 +1,5 @@
 ## v1.1.0 (2026-05-26)
 
-## v1.1.0-rc1 (2026-05-26)
-
-### Fix
-
-- **release**: skip :latest tag on release-candidate Docker images (#52)
-- **release**: chain tag-release off release.yml via workflow_run
-
-## v1.1.0-rc0 (2026-05-26)
-
 ### Feat
 
 - **maintenance**: show available tags + reflect tracked ref in footer (#49)
@@ -17,6 +8,8 @@
 
 ### Fix
 
+- **release**: skip :latest tag on release-candidate Docker images (#52)
+- **release**: chain tag-release off release.yml via workflow_run
 - **release**: create annotated tags so `git push --follow-tags` pushes them
 
 ## v1.0.0 (2026-05-26)

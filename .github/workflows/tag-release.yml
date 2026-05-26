@@ -92,11 +92,16 @@ jobs:
             *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
           esac
 
-      - name: Checkout (at the tagged commit)
+      - name: Checkout
         if: steps.ver.outputs.skip != 'true'
         uses: actions/checkout@v5
         with:
-          ref: ${{ steps.ver.outputs.tag }}
+          # For workflow_dispatch (manual backfill), check out main so the
+          # release notes reflect any post-tag CHANGELOG edits — e.g. when
+          # we want to retroactively rewrite an empty stable section.
+          # Other triggers pin to the tagged commit so notes match exactly
+          # what was released.
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || steps.ver.outputs.tag }}
           fetch-depth: 0
 
       - name: Extract release notes from CHANGELOG
@@ -121,19 +126,28 @@ jobs:
           fi
           echo "path=$out" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         if: steps.ver.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Idempotent: if the Release already exists (e.g. a workflow_dispatch
+        # backfill), update its notes in place. Otherwise create it. Prerelease
+        # state is only set at creation — we don't flip it on backfill.
         run: |
-          prerelease_flag=""
-          if [ "${{ steps.ver.outputs.prerelease }}" = "true" ]; then
-            prerelease_flag="--prerelease"
+          tag="${{ steps.ver.outputs.tag }}"
+          notes="${{ steps.notes.outputs.path }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --notes-file "$notes"
+          else
+            prerelease_flag=""
+            if [ "${{ steps.ver.outputs.prerelease }}" = "true" ]; then
+              prerelease_flag="--prerelease"
+            fi
+            gh release create "$tag" \
+              --title "$tag" \
+              $prerelease_flag \
+              --notes-file "$notes"
           fi
-          gh release create "${{ steps.ver.outputs.tag }}" \
-            --title "${{ steps.ver.outputs.tag }}" \
-            $prerelease_flag \
-            --notes-file "${{ steps.notes.outputs.path }}"
 
       - name: Forward release-tag artifact to docker-release
         if: steps.ver.outputs.skip != 'true'
