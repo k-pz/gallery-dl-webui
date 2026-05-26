@@ -21,7 +21,7 @@ import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
 import { READING_DIRECTION_OPTIONS } from "../lib/readingDirection";
 import { SERIES_STATUS_OPTIONS, seriesStatusTone } from "../lib/seriesStatus";
-import { jobStatusLabel, statusTone } from "../lib/status";
+import { isActive, jobStatusLabel, statusTone } from "../lib/status";
 import { formatRel } from "../lib/time";
 import { useNotifyingMutation } from "../lib/useNotifyingMutation";
 import { IconArrowUpRight, IconChevronDown, IconEye, IconPlay, IconTrash } from "./Icons";
@@ -136,10 +136,10 @@ export function TargetRow({
         <div className="lib-row-main">
           <div className="lib-row-top">
             <div className="lib-row-pills">
-              <Pill tone={tone}>{jobStatusLabel(status)}</Pill>
               {target.series_status && (
                 <Pill tone={seriesStatusTone(target.series_status)}>{target.series_status}</Pill>
               )}
+              {isActive(status) && <Pill tone={tone}>{jobStatusLabel(status)}</Pill>}
               {target.watched && (
                 <Group gap={4} wrap="nowrap" style={{ color: "var(--app-accent)" }}>
                   <IconEye size={11} />
