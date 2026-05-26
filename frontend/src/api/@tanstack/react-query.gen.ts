@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelDownload, cancelMaintenanceJob, checkForUpdates, createDownload, createOutputDir, deleteTarget, exportLibrary, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, getUpdatePreviewRef, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, putConfig, requeueDownload, scheduleMaintenanceJob, setUpdatePreviewRef, updateTarget } from '../sdk.gen';
-import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CancelMaintenanceJobData, CancelMaintenanceJobError, CancelMaintenanceJobResponse, CheckForUpdatesData, CheckForUpdatesError, CheckForUpdatesResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, ExportLibraryData, ExportLibraryResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetError, GetTargetResponse, GetUpdatePreviewRefData, GetUpdatePreviewRefResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, SetUpdatePreviewRefData, SetUpdatePreviewRefError, SetUpdatePreviewRefResponse, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
+import { cancelDownload, cancelMaintenanceJob, checkForUpdates, createDownload, createOutputDir, deleteTarget, exportLibrary, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, getUpdatePreviewRef, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, putConfig, requeueDownload, scheduleMaintenanceJob, setUpdatePreviewRef, tailLogsApiLogsTailGet, updateTarget } from '../sdk.gen';
+import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CancelMaintenanceJobData, CancelMaintenanceJobError, CancelMaintenanceJobResponse, CheckForUpdatesData, CheckForUpdatesError, CheckForUpdatesResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, ExportLibraryData, ExportLibraryResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetError, GetTargetResponse, GetUpdatePreviewRefData, GetUpdatePreviewRefResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, SetUpdatePreviewRefData, SetUpdatePreviewRefError, SetUpdatePreviewRefResponse, TailLogsApiLogsTailGetData, TailLogsApiLogsTailGetError, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -409,7 +409,16 @@ export const cancelMaintenanceJobMutation = (options?: Partial<Options<CancelMai
 export const checkForUpdatesQueryKey = (options?: Options<CheckForUpdatesData>) => createQueryKey('checkForUpdates', options);
 
 /**
- * Check For Updates
+ * Check For Updates Endpoint
+ *
+ * Compare the installed checkout to the tracked ref on GitHub.
+ *
+ * The tracked ref defaults to whatever's in `.git/HEAD` (`main` in
+ * production) but can be overridden via `PUT /maintenance/update-ref`
+ * to preview an unreleased branch / tag / SHA. `force=true` bypasses
+ * the 60 s in-process cache for an explicit refresh button; default
+ * polling reuses the cached result so the UI can refetch aggressively
+ * without burning GitHub's anon rate limit.
  */
 export const checkForUpdatesOptions = (options?: Options<CheckForUpdatesData>) => queryOptions<CheckForUpdatesResponse, CheckForUpdatesError, CheckForUpdatesResponse, ReturnType<typeof checkForUpdatesQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -428,6 +437,12 @@ export const getUpdatePreviewRefQueryKey = (options?: Options<GetUpdatePreviewRe
 
 /**
  * Get Update Preview Ref
+ *
+ * Return the currently-configured preview ref, or null for the default.
+ *
+ * Stored in app_config under `update_preview_ref` so it persists across
+ * restarts. When null, the update checker uses the branch from
+ * `.git/HEAD` (production: `main`).
  */
 export const getUpdatePreviewRefOptions = (options?: Options<GetUpdatePreviewRefData>) => queryOptions<GetUpdatePreviewRefResponse, DefaultError, GetUpdatePreviewRefResponse, ReturnType<typeof getUpdatePreviewRefQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -444,6 +459,13 @@ export const getUpdatePreviewRefOptions = (options?: Options<GetUpdatePreviewRef
 
 /**
  * Set Update Preview Ref
+ *
+ * Persist a preview ref, or clear it when null/empty.
+ *
+ * No upstream validation here: a wrong ref will surface as
+ * `branch_not_on_remote` from the next `/update-check`, and the user
+ * can fix it without the round-trip + rate-limit cost of an extra
+ * GitHub call per save.
  */
 export const setUpdatePreviewRefMutation = (options?: Partial<Options<SetUpdatePreviewRefData>>): UseMutationOptions<SetUpdatePreviewRefResponse, SetUpdatePreviewRefError, Options<SetUpdatePreviewRefData>> => {
     const mutationOptions: UseMutationOptions<SetUpdatePreviewRefResponse, SetUpdatePreviewRefError, Options<SetUpdatePreviewRefData>> = {
@@ -475,4 +497,29 @@ export const getMaintenanceJobProgressOptions = (options: Options<GetMaintenance
         return data;
     },
     queryKey: getMaintenanceJobProgressQueryKey(options)
+});
+
+export const tailLogsApiLogsTailGetQueryKey = (options?: Options<TailLogsApiLogsTailGetData>) => createQueryKey('tailLogsApiLogsTailGet', options);
+
+/**
+ * Tail Logs
+ *
+ * SSE stream of the running service's journal entries.
+ *
+ * The response is `text/event-stream`. Two event types are emitted:
+ * `ready` once at the start carrying `{unit, lines}`, then `log` per entry
+ * carrying `{ts_ms, priority, level, message, unit, ident, pid}`. A single
+ * `error` event is sent if the host doesn't have journalctl available.
+ */
+export const tailLogsApiLogsTailGetOptions = (options?: Options<TailLogsApiLogsTailGetData>) => queryOptions<unknown, TailLogsApiLogsTailGetError, unknown, ReturnType<typeof tailLogsApiLogsTailGetQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await tailLogsApiLogsTailGet({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: tailLogsApiLogsTailGetQueryKey(options)
 });

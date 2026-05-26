@@ -55,11 +55,11 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
       if (extractorFilter && t.extractor !== extractorFilter) return false;
       if (statusFilter !== "any") {
         const status = t.last_status;
-        const active = status !== null && isActive(status);
+        const active = status != null && isActive(status);
         if (statusFilter === "active" && !active) return false;
         if (statusFilter === "completed" && status !== "completed") return false;
         if (statusFilter === "failed" && status !== "failed") return false;
-        if (statusFilter === "no-runs" && t.download_count > 0) return false;
+        if (statusFilter === "no-runs" && (t.download_count ?? 0) > 0) return false;
       }
       return true;
     });
