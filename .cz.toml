@@ -12,6 +12,11 @@
 name = "cz_conventional_commits"
 version = "1.0.0"
 tag_format = "v$version"
+# Create annotated tags (`git tag -a`) rather than lightweight ones —
+# the release workflow uses `git push --follow-tags`, which silently
+# skips lightweight tags, so without this the bump commit lands on main
+# without the matching `v$version` tag ever reaching origin.
+annotated_tag = true
 update_changelog_on_bump = true
 changelog_incremental = true
 major_version_zero = false
