@@ -185,6 +185,15 @@ async def test_check_for_updates_reports_behind_with_changelog(
                     },
                 ],
             )
+        if path == "/repos/o/r/tags":
+            return httpx.Response(
+                200,
+                json=[
+                    {"name": "v1.1.0"},
+                    {"name": "v1.0.0"},
+                    {"name": "nightly"},
+                ],
+            )
         raise AssertionError(f"unexpected GitHub call to {path}")
 
     _patch_httpx(monkeypatch, handler)
@@ -202,6 +211,9 @@ async def test_check_for_updates_reports_behind_with_changelog(
     assert result.reason is None
     assert [e.ref for e in result.changelog] == ["v1.1.0"]
     assert result.changelog[0].title == "v1.1.0 — Shiny"
+    # Tag picker stays populated independent of the changelog window.
+    # Non-semver names (`nightly`) are dropped.
+    assert result.available_tags == ["v1.1.0", "v1.0.0"]
 
 
 async def test_check_for_updates_reports_up_to_date(
@@ -212,6 +224,8 @@ async def test_check_for_updates_reports_up_to_date(
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/repos/o/r/commits/main":
             return httpx.Response(200, json={"sha": "same", "commit": {"message": "x"}})
+        if request.url.path == "/repos/o/r/tags":
+            return httpx.Response(200, json=[{"name": "v1.0.0"}])
         raise AssertionError(f"unexpected call to {request.url.path} (releases should be skipped)")
 
     _patch_httpx(monkeypatch, handler)
@@ -221,6 +235,8 @@ async def test_check_for_updates_reports_up_to_date(
     assert result.latest_sha == "same"
     assert result.changelog == []
     assert result.reason is None
+    # Tags are fetched even when up-to-date, so the picker stays usable.
+    assert result.available_tags == ["v1.0.0"]
 
 
 async def test_check_for_updates_collapses_network_errors(
@@ -258,6 +274,8 @@ async def test_check_for_updates_caches_repeated_calls(
         if request.url.path == "/repos/o/r/commits/main":
             return httpx.Response(200, json={"sha": "new", "commit": {"message": "x"}})
         if request.url.path == "/repos/o/r/releases":
+            return httpx.Response(200, json=[])
+        if request.url.path == "/repos/o/r/tags":
             return httpx.Response(200, json=[])
         raise AssertionError(f"unexpected call to {request.url.path}")
 
@@ -321,6 +339,8 @@ async def test_check_for_updates_ref_override_uses_compare_api(
             )
         if path == "/repos/o/r/releases":
             raise AssertionError("releases endpoint should not be called on a preview ref")
+        if path == "/repos/o/r/tags":
+            return httpx.Response(200, json=[{"name": "v1.1.0"}])
         raise AssertionError(f"unexpected GitHub call to {path}")
 
     _patch_httpx(monkeypatch, handler)
@@ -346,6 +366,8 @@ async def test_check_for_updates_ref_override_matching_branch_stays_default(
         if request.url.path == "/repos/o/r/commits/main":
             return httpx.Response(200, json={"sha": "new", "commit": {"message": "x"}})
         if request.url.path == "/repos/o/r/releases":
+            return httpx.Response(200, json=[])
+        if request.url.path == "/repos/o/r/tags":
             return httpx.Response(200, json=[])
         raise AssertionError(f"unexpected GitHub call to {request.url.path}")
 
@@ -387,6 +409,55 @@ def test_build_release_changelog_filters_to_newer_releases() -> None:
     )
     assert latest == "v1.2.0"
     assert [e.ref for e in entries] == ["v1.2.0", "v1.1.0"]
+
+
+async def test_check_for_updates_tags_sorted_and_filtered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub returns tags in any order; the result is descending semver."""
+    _make_repo(tmp_path, head_sha="same", origin="https://github.com/o/r.git", version="1.0.0")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/repos/o/r/commits/main":
+            return httpx.Response(200, json={"sha": "same", "commit": {"message": "x"}})
+        if request.url.path == "/repos/o/r/tags":
+            return httpx.Response(
+                200,
+                json=[
+                    {"name": "v1.0.0"},
+                    {"name": "v2.0.0"},
+                    {"name": "v1.5.1"},
+                    {"name": "nightly"},
+                    {"name": "v1.5.0-rc1"},  # non-canonical → dropped
+                ],
+            )
+        raise AssertionError(f"unexpected call to {request.url.path}")
+
+    _patch_httpx(monkeypatch, handler)
+
+    result = await update_check.check_for_updates(repo_root=tmp_path)
+    assert result.available_tags == ["v2.0.0", "v1.5.1", "v1.0.0"]
+
+
+async def test_check_for_updates_tags_empty_on_fetch_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 5xx on /tags collapses to an empty list — the picker just gets smaller."""
+    _make_repo(tmp_path, head_sha="same", origin="https://github.com/o/r.git", version="1.0.0")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/repos/o/r/commits/main":
+            return httpx.Response(200, json={"sha": "same", "commit": {"message": "x"}})
+        if request.url.path == "/repos/o/r/tags":
+            return httpx.Response(500, text="boom")
+        raise AssertionError(f"unexpected call to {request.url.path}")
+
+    _patch_httpx(monkeypatch, handler)
+
+    result = await update_check.check_for_updates(repo_root=tmp_path)
+    assert result.available_tags == []
+    # The check itself still succeeded — reason stays None.
+    assert result.reason is None
 
 
 def test_build_release_changelog_passes_all_when_current_unknown() -> None:

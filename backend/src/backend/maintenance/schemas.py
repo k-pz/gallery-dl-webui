@@ -92,6 +92,7 @@ class UpdateCheckOut(BaseModel):
     latest_version: str | None
     behind: bool | None
     changelog: list[ChangelogEntryOut]
+    available_tags: list[str]
     reason: str | None
 
 

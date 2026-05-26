@@ -1245,6 +1245,10 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
+.app-version-installed {
+  opacity: 0.6;
+}
+
 /* Dark mode: soften Mantine's Switch/SegmentedControl so they blend with cards. */
 [data-mantine-color-scheme="dark"] .mantine-Switch-track {
   background-color: color-mix(in srgb, var(--app-text) 8%, transparent);

@@ -7,6 +7,7 @@ import {
   Collapse,
   Group,
   ScrollArea,
+  Select,
   Stack,
   Text,
   TextInput,
@@ -128,6 +129,7 @@ export function UpdateLxcCard({
         <PreviewRefControl
           defaultBranch={updateCheck.data?.branch ?? null}
           currentTrackedRef={updateCheck.data?.tracked_ref ?? null}
+          availableTags={updateCheck.data?.available_tags ?? []}
         />
         {scheduleError ? (
           <Box className="app-alert">
@@ -408,13 +410,20 @@ function ChangelogList({
  * don't surface validation errors inline — the next update-check will report
  * `branch_not_on_remote` if the ref is wrong, which is more informative than
  * a per-keystroke check.
+ *
+ * `availableTags` (newest-first from GitHub) populates a Select beside the
+ * text input — one click prefills the draft so the user doesn't have to type
+ * the exact tag, while still leaving the free-text path open for branches /
+ * SHAs / hand-typed tags.
  */
 function PreviewRefControl({
   defaultBranch,
   currentTrackedRef,
+  availableTags,
 }: {
   defaultBranch: string | null;
   currentTrackedRef: string | null;
+  availableTags: readonly string[];
 }) {
   const qc = useQueryClient();
   const savedRef = useQuery(getUpdatePreviewRefOptions());
@@ -456,6 +465,12 @@ function PreviewRefControl({
 
   const errorMessage = setMutation.isError ? extractErrorMessage(setMutation.error) : null;
 
+  // Picking a tag from the Select feeds the same draft pipeline as typing —
+  // the user still sees what's about to be saved and can confirm with the
+  // explicit Save button. `null` (cleared selection) leaves draft untouched
+  // so accidentally re-clicking the picker doesn't wipe in-progress input.
+  const tagOptions = availableTags.map((tag) => ({ value: tag, label: tag }));
+
   return (
     <Stack gap={6}>
       <Group gap="sm" align="flex-end" wrap="wrap">
@@ -480,6 +495,22 @@ function PreviewRefControl({
           }}
           style={{ flex: 1, minWidth: 220 }}
           disabled={setMutation.isPending}
+        />
+        <Select
+          label="Or pick a version tag"
+          placeholder={tagOptions.length === 0 ? "no tags found" : "Select tag…"}
+          data={tagOptions}
+          value={tagOptions.some((o) => o.value === trimmed) ? trimmed : null}
+          onChange={(value) => {
+            if (value === null) return;
+            setHasTyped(true);
+            setDraft(value);
+          }}
+          searchable
+          clearable={false}
+          disabled={setMutation.isPending || tagOptions.length === 0}
+          comboboxProps={{ withinPortal: true }}
+          w={180}
         />
         <Button variant="light" onClick={save} loading={setMutation.isPending} disabled={!isDirty}>
           Save
