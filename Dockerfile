@@ -18,7 +18,11 @@ WORKDIR /app/frontend
 # `packageManager` field — keeps CI, local dev, and the image in sync.
 RUN corepack enable
 
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
+# `pnpm-workspace.yaml` carries the `allowBuilds: { esbuild: true }` entry that
+# pnpm 11 requires to run esbuild's postinstall (storybook drags esbuild into
+# vite's active peer set). Without this file in the build context, `pnpm
+# install --frozen-lockfile` exits 1 with ERR_PNPM_IGNORED_BUILDS in CI mode.
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY frontend/ ./
