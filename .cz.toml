@@ -19,6 +19,13 @@ tag_format = "v$version"
 annotated_tag = true
 update_changelog_on_bump = true
 changelog_incremental = true
+# When promoting an rc to a stable (`vX.Y.Z-rcN` → `vX.Y.Z`), absorb the
+# intermediate rc sections into the stable section so CHANGELOG.md (and
+# the GitHub Release derived from it) shows the full set of changes since
+# the previous stable, not an empty stub. Without this, cz attributes
+# every commit to the first tag that includes it, leaving the final
+# stable section empty.
+changelog_merge_prerelease = true
 major_version_zero = false
 version_scheme = "semver"
 version_files = [
