@@ -7,12 +7,38 @@ name: release
 # We then push the commit + tag back to origin/main — the tag push is what
 # trips `.github/workflows/tag-release.yml` to publish the GitHub Release.
 #
+# The `increment` input lets the human override commit-derived bump:
+#   - auto  → cz analyses conventional commits (default behaviour)
+#   - patch / minor / major → forces that bump regardless of commit types
+#
+# The `release_candidate` input flips on `--prerelease rc`, producing semver
+# prereleases like `v1.2.0-rc.1`. Run the workflow with it on repeatedly to
+# advance the rc counter; flip it off to promote the rc to a final release.
+# `tag-release.yml` reads the tag shape and marks rc tags as prereleases on
+# the resulting GitHub Release.
+#
 # No auto-trigger: ship cadence is a human decision. If `cz bump` finds no
 # bump-worthy commits since the last tag it exits with code 21 / 3 — we treat
-# either as a no-op (the `|| true` on the bump step).
+# either as a no-op (the explicit rc check on the bump step).
 
 on:
   workflow_dispatch:
+    inputs:
+      increment:
+        description: "Version bump (auto = derive from conventional commits since last tag)"
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+      release_candidate:
+        description: "Cut a release candidate (`-rc.N` prerelease) instead of a final release"
+        required: false
+        default: false
+        type: boolean
 
 # Serialize bumps so two clicks can't race to tag the same version.
 concurrency:
@@ -47,10 +73,28 @@ jobs:
         id: bump
         # cz exits 21 (NoCommitsFoundError) or 3 (NoCommitsIncrement) when
         # there's nothing to release — capture that as a no-op rather than
-        # failing the run.
+        # failing the run. With an explicit `--increment`, cz still requires
+        # at least one new commit since the last tag; the same rc check covers
+        # the "nothing to bump" path.
+        env:
+          INCREMENT: ${{ inputs.increment }}
+          RELEASE_CANDIDATE: ${{ inputs.release_candidate }}
         run: |
+          # Pick the rc-aware task when release_candidate=true; the `:rc`
+          # variant adds `--prerelease rc`. Extra `--increment` args pass
+          # through mise's trailing-args behaviour to `cz bump`.
+          if [ "$RELEASE_CANDIDATE" = "true" ]; then
+            task=release:bump:rc
+          else
+            task=release:bump
+          fi
+          extra_args=()
+          if [ "$INCREMENT" != "auto" ]; then
+            # cz expects MAJOR|MINOR|PATCH; the input is lowercase for UX.
+            extra_args+=(--increment "$(echo "$INCREMENT" | tr '[:lower:]' '[:upper:]')")
+          fi
           set +e
-          mise run release:bump
+          mise run "$task" -- "${extra_args[@]}"
           rc=$?
           set -e
           if [ "$rc" -eq 0 ]; then

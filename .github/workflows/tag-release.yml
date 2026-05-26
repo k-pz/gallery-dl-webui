@@ -30,10 +30,18 @@ jobs:
         id: ver
         # `refs/tags/vX.Y.Z` → `X.Y.Z`. Everything downstream wants the
         # bare semver (CHANGELOG section heading, release body slice).
+        # A `-` in the version (e.g. `v1.2.0-rc.1`) marks a semver
+        # prerelease — we surface that so the Release gets flagged as
+        # a prerelease on GitHub.
         run: |
           tag="${GITHUB_REF##*/}"
+          version="${tag#v}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$version" in
+            *-*) echo "prerelease=true"  >> "$GITHUB_OUTPUT" ;;
+            *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       - name: Extract release notes from CHANGELOG
         id: notes
@@ -60,6 +68,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          prerelease_flag=""
+          if [ "${{ steps.ver.outputs.prerelease }}" = "true" ]; then
+            prerelease_flag="--prerelease"
+          fi
           gh release create "${{ steps.ver.outputs.tag }}" \
             --title "${{ steps.ver.outputs.tag }}" \
+            $prerelease_flag \
             --notes-file "${{ steps.notes.outputs.path }}"

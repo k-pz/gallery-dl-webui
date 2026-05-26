@@ -156,16 +156,34 @@ run = "pnpm generate"
 # (writes version files, appends CHANGELOG, commits, and creates `v$version`
 # tag). The release GH workflow (.github/workflows/release.yml) calls these
 # same tasks so local + CI behaviour stays identical.
+#
+# The `:rc` variants pass `--prerelease rc`, producing semver prerelease
+# versions like `1.2.0-rc.1`. Run `release:bump:rc` repeatedly to advance
+# the rc counter (`-rc.1` → `-rc.2` → …); a plain `release:bump` afterwards
+# promotes the rc to the corresponding final release.
+#
+# Extra args are passed through to `cz bump`, so you can combine e.g.
+# `mise run release:bump:rc -- --increment MINOR` to force the next minor.
 
 [tasks."release:preview"]
 description = "Preview the next version commitizen would bump to (dry run, no writes)"
 dir = "{{config_root}}"
 run = "uv tool run --from commitizen cz bump --dry-run --yes"
 
+[tasks."release:preview:rc"]
+description = "Preview the next release-candidate version (`X.Y.Z-rc.N`, dry run, no writes)"
+dir = "{{config_root}}"
+run = "uv tool run --from commitizen cz bump --dry-run --yes --prerelease rc"
+
 [tasks."release:bump"]
 description = "Run `cz bump`: update version files, append CHANGELOG, commit, and tag `v$version`"
 dir = "{{config_root}}"
 run = "uv tool run --from commitizen cz bump --yes"
+
+[tasks."release:bump:rc"]
+description = "Run `cz bump --prerelease rc`: bump to the next release candidate and tag `v$version`"
+dir = "{{config_root}}"
+run = "uv tool run --from commitizen cz bump --yes --prerelease rc"
 
 # ---- Cleanup -------------------------------------------------------------
 
