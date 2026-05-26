@@ -72,12 +72,32 @@ export default function App() {
     setTab("jobs");
   };
 
+  // Clicking the brand returns to the library (the app's "home"). We keep the
+  // element as a real <a href="/library"> so middle-click / cmd-click open in
+  // a new tab, then intercept the plain click to route via setTab() — the SPA
+  // owns navigation and a full reload would be wasteful.
+  const handleBrandClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (e.defaultPrevented) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    setTab("library");
+  };
+
   return (
     <Box>
+      <a href="#main" className="app-skip-link">
+        Skip to main content
+      </a>
       <header className="app-shell-header">
         <Container size="lg">
           <div className="app-shell-header-inner">
-            <div className="app-brand">
+            <a
+              href="/library"
+              className="app-brand"
+              aria-label="gallery-dl-webui — go to library"
+              aria-current={tab === "library" ? "page" : undefined}
+              onClick={handleBrandClick}
+            >
               <span className="app-brand-mark" aria-hidden="true">
                 g
               </span>
@@ -85,7 +105,7 @@ export default function App() {
               <span className="app-brand-tag" aria-hidden="true">
                 archive
               </span>
-            </div>
+            </a>
             <div className="app-shell-header-meta">
               <HealthBadge />
               <MobileMenuButton open={navOpen} onClick={() => setNavOpen((o) => !o)} />
@@ -93,7 +113,7 @@ export default function App() {
           </div>
         </Container>
       </header>
-      <Container size="lg" py="xl" className="app-shell-body">
+      <Container size="lg" py="xl" component="main" id="main" className="app-shell-body">
         <Stack gap="xl">
           <Tabs value={tab} onChange={setTab} keepMounted className="app-tabs" variant="default">
             <Tabs.List>
