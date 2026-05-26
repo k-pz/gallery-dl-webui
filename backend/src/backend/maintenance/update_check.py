@@ -80,6 +80,10 @@ class UpdateCheckResult:
     `behind` is None when we couldn't establish a comparison (no git
     metadata, network error, unsupported origin). `latest_sha` and
     friends are likewise None in those cases.
+
+    `available_tags` lists the semver-parseable tags on the upstream repo,
+    sorted newest-first. Empty when local state is unreadable or the tags
+    endpoint failed — UI just renders a smaller picker.
     """
 
     branch: str | None
@@ -93,6 +97,7 @@ class UpdateCheckResult:
     latest_version: str | None
     behind: bool | None
     changelog: list[ChangelogEntry] = field(default_factory=list)
+    available_tags: list[str] = field(default_factory=list)
     reason: str | None = None
 
 
@@ -301,6 +306,50 @@ async def _fetch_releases(
     return payload if isinstance(payload, list) else None
 
 
+async def _fetch_tags(
+    client: httpx.AsyncClient, owner: str, repo: str, *, per_page: int = 100
+) -> list[str] | None:
+    """List recent tags newest-first. None on failure.
+
+    GitHub's `/tags` endpoint returns tags ordered by their commit date
+    (newest first), independent of whether a Release exists for them —
+    so this catches `vX.Y.Z` tags that the release flow didn't publish
+    notes for. We filter to semver-parseable names client-side so
+    nightly / non-version tags don't pollute the picker.
+    """
+    url = f"https://api.github.com/repos/{owner}/{repo}/tags"
+    try:
+        resp = await client.get(
+            url,
+            headers={"Accept": "application/vnd.github+json"},
+            params={"per_page": str(per_page)},
+        )
+    except httpx.TimeoutException, httpx.TransportError:
+        return None
+    if resp.status_code >= 400:
+        logger.warning("update-check: GitHub tags returned %s for %s", resp.status_code, url)
+        return None
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None
+    if not isinstance(payload, list):
+        return None
+    names: list[tuple[tuple[int, int, int], str]] = []
+    for tag in payload:
+        if not isinstance(tag, dict):
+            continue
+        name = tag.get("name")
+        if not isinstance(name, str):
+            continue
+        parsed = _parse_semver(name)
+        if parsed is None:
+            continue
+        names.append((parsed, name))
+    names.sort(key=lambda item: item[0], reverse=True)
+    return [name for _, name in names]
+
+
 async def _fetch_compare(
     client: httpx.AsyncClient, owner: str, repo: str, base: str, head: str
 ) -> list[dict] | None:
@@ -469,6 +518,9 @@ async def check_for_updates(
             client, state.owner, state.repo, tracked_ref
         )
         if head_payload is None:
+            # Still try for tags even when the commit fetch failed — the
+            # picker stays usable on transient errors against a single ref.
+            tags = await _fetch_tags(client, state.owner, state.repo)
             result = UpdateCheckResult(
                 branch=state.branch,
                 current_sha=state.current_sha,
@@ -481,6 +533,7 @@ async def check_for_updates(
                 latest_version=None,
                 behind=None,
                 changelog=[],
+                available_tags=tags or [],
                 reason=fetch_reason,
             )
             _cache[cache_key] = result
@@ -521,6 +574,11 @@ async def check_for_updates(
                 if commits is not None:
                     changelog = _build_compare_changelog(commits)
 
+        # Tags drive the picker in the maintenance card. Fetch them
+        # regardless of `behind` — the user can still want to roll back
+        # to an older release when up-to-date with the default branch.
+        tags = await _fetch_tags(client, state.owner, state.repo)
+
     result = UpdateCheckResult(
         branch=state.branch,
         current_sha=state.current_sha,
@@ -533,6 +591,7 @@ async def check_for_updates(
         latest_version=latest_version,
         behind=behind,
         changelog=changelog,
+        available_tags=tags or [],
         reason=None,
     )
     _cache[cache_key] = result

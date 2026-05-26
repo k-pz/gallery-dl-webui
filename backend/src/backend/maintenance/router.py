@@ -126,6 +126,7 @@ async def check_for_updates_endpoint(db: DbDep, force: bool = False) -> UpdateCh
             )
             for entry in result.changelog
         ],
+        available_tags=result.available_tags,
         reason=result.reason,
     )
 

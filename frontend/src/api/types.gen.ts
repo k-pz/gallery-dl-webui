@@ -555,6 +555,10 @@ export type UpdateCheckOut = {
      */
     changelog: Array<ChangelogEntryOut>;
     /**
+     * Available Tags
+     */
+    available_tags: Array<string>;
+    /**
      * Reason
      */
     reason: string | null;
