@@ -43,6 +43,58 @@ def test_normalize_entry_binary_message_decodes() -> None:
     assert out["message"] == "hi"
 
 
+def test_normalize_entry_handles_unknown_priority() -> None:
+    # PRIORITY outside the 0-7 table → defaults to "info" label but keeps the
+    # raw int so the UI can show "priority 9" rather than dropping the entry.
+    out = logs_router._normalize_entry({"PRIORITY": "9", "MESSAGE": "x"})
+    assert out["priority"] == 9
+    assert out["level"] == "info"
+
+
+def test_normalize_entry_garbled_priority_defaults_to_info() -> None:
+    # Non-integer PRIORITY values must not crash the SSE loop. Each exception
+    # branch maps to priority 6 / level "info" so the user still gets the
+    # message rather than a torn stream.
+    out = logs_router._normalize_entry({"PRIORITY": "loud", "MESSAGE": "x"})
+    assert out["priority"] == 6
+    assert out["level"] == "info"
+
+    out_none = logs_router._normalize_entry({"PRIORITY": object(), "MESSAGE": "x"})
+    assert out_none["priority"] == 6
+
+
+def test_normalize_entry_garbled_timestamp_is_none() -> None:
+    out = logs_router._normalize_entry({"__REALTIME_TIMESTAMP": "not-a-number"})
+    assert out["ts_ms"] is None
+
+
+def test_normalize_entry_missing_message_becomes_empty_string() -> None:
+    out = logs_router._normalize_entry({"PRIORITY": 6})
+    assert out["message"] == ""
+
+
+def test_normalize_entry_non_string_message_is_stringified() -> None:
+    # MESSAGE can occasionally come back as a plain int/bool from journald
+    # filters; coerce to str so the JSON SSE payload is well-formed.
+    out = logs_router._normalize_entry({"PRIORITY": 6, "MESSAGE": 42})
+    assert out["message"] == "42"
+
+
+def test_normalize_entry_falls_back_to_UNIT_when_systemd_unit_missing() -> None:
+    out = logs_router._normalize_entry({"PRIORITY": 6, "UNIT": "fallback.service"})
+    assert out["unit"] == "fallback.service"
+
+
+def test_unit_name_defaults_when_env_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("WEBUI_LOG_UNIT", raising=False)
+    assert logs_router._unit_name() == "gallery-dl-webui"
+
+
+def test_unit_name_uses_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("WEBUI_LOG_UNIT", "alt.service")
+    assert logs_router._unit_name() == "alt.service"
+
+
 def test_tail_logs_reports_missing_journalctl(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(logs_router.shutil, "which", lambda _name: None)
 

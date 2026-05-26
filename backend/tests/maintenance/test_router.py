@@ -129,6 +129,23 @@ def test_progress_endpoint_missing_job(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
+def test_progress_endpoint_for_failed_job(client: TestClient) -> None:
+    """Failed jobs synthesise a `failed: <error>` summary line after the live
+    buffer is cleared."""
+    # No postprocess_root configured → rename_chapters fails fast in the worker.
+    created = client.post("/api/maintenance/jobs", json={"kind": "rename_chapters"})
+    job_id = created.json()["id"]
+    done = _wait_for_completion(client, job_id)
+    assert done["status"] == "failed", done
+
+    resp = client.get(f"/api/maintenance/jobs/{job_id}/progress")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "failed"
+    assert payload["lines"], payload
+    assert any(line.startswith("failed:") for line in payload["lines"])
+
+
 def test_schedule_regenerate_series_metadata_job(client: TestClient, tmp_path: Path) -> None:
     root = tmp_path / "media"
     output_dir = root / "Manga"
