@@ -128,25 +128,31 @@ jobs:
 
       - name: Create or update GitHub Release
         if: steps.ver.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # Idempotent: if the Release already exists (e.g. a workflow_dispatch
         # backfill), update its notes in place. Otherwise create it. Prerelease
         # state is only set at creation — we don't flip it on backfill.
+        #
+        # `${{ … }}` expressions are passed through `env:` and read as shell
+        # variables in `run:`, never interpolated directly into the script
+        # body — this avoids code-injection via the tag value (workflow_run
+        # artifact or workflow_dispatch input).
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          NOTES_PATH: ${{ steps.notes.outputs.path }}
+          IS_PRERELEASE: ${{ steps.ver.outputs.prerelease }}
         run: |
-          tag="${{ steps.ver.outputs.tag }}"
-          notes="${{ steps.notes.outputs.path }}"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" --notes-file "$notes"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file "$NOTES_PATH"
           else
             prerelease_flag=""
-            if [ "${{ steps.ver.outputs.prerelease }}" = "true" ]; then
+            if [ "$IS_PRERELEASE" = "true" ]; then
               prerelease_flag="--prerelease"
             fi
-            gh release create "$tag" \
-              --title "$tag" \
+            gh release create "$TAG" \
+              --title "$TAG" \
               $prerelease_flag \
-              --notes-file "$notes"
+              --notes-file "$NOTES_PATH"
           fi
 
       - name: Forward release-tag artifact to docker-release
