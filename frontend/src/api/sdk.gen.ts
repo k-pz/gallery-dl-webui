@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CancelMaintenanceJobData, CancelMaintenanceJobErrors, CancelMaintenanceJobResponses, CheckForUpdatesData, CheckForUpdatesErrors, CheckForUpdatesResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, ExportLibraryData, ExportLibraryResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetMaintenanceJobProgressData, GetMaintenanceJobProgressErrors, GetMaintenanceJobProgressResponses, GetTargetData, GetTargetErrors, GetTargetResponses, GetUpdatePreviewRefData, GetUpdatePreviewRefResponses, ImportLibraryData, ImportLibraryResponses, ListDownloadsData, ListDownloadsResponses, ListMaintenanceJobsData, ListMaintenanceJobsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, ScheduleMaintenanceJobData, ScheduleMaintenanceJobErrors, ScheduleMaintenanceJobResponses, SetUpdatePreviewRefData, SetUpdatePreviewRefErrors, SetUpdatePreviewRefResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
+import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CancelMaintenanceJobData, CancelMaintenanceJobErrors, CancelMaintenanceJobResponses, CheckForUpdatesData, CheckForUpdatesErrors, CheckForUpdatesResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, ExportLibraryData, ExportLibraryResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetMaintenanceJobProgressData, GetMaintenanceJobProgressErrors, GetMaintenanceJobProgressResponses, GetTargetData, GetTargetErrors, GetTargetResponses, GetUpdatePreviewRefData, GetUpdatePreviewRefResponses, ImportLibraryData, ImportLibraryResponses, ListDownloadsData, ListDownloadsResponses, ListMaintenanceJobsData, ListMaintenanceJobsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, ScheduleMaintenanceJobData, ScheduleMaintenanceJobErrors, ScheduleMaintenanceJobResponses, SetUpdatePreviewRefData, SetUpdatePreviewRefErrors, SetUpdatePreviewRefResponses, TailLogsApiLogsTailGetData, TailLogsApiLogsTailGetErrors, TailLogsApiLogsTailGetResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -159,21 +159,62 @@ export const scheduleMaintenanceJob = <ThrowOnError extends boolean = false>(opt
 export const cancelMaintenanceJob = <ThrowOnError extends boolean = false>(options: Options<CancelMaintenanceJobData, ThrowOnError>) => (options.client ?? client).post<CancelMaintenanceJobResponses, CancelMaintenanceJobErrors, ThrowOnError>({ url: '/api/maintenance/jobs/{job_id}/cancel', ...options });
 
 /**
- * Check For Updates
+ * Check For Updates Endpoint
+ *
+ * Compare the installed checkout to the tracked ref on GitHub.
+ *
+ * The tracked ref defaults to whatever's in `.git/HEAD` (`main` in
+ * production) but can be overridden via `PUT /maintenance/update-ref`
+ * to preview an unreleased branch / tag / SHA. `force=true` bypasses
+ * the 60 s in-process cache for an explicit refresh button; default
+ * polling reuses the cached result so the UI can refetch aggressively
+ * without burning GitHub's anon rate limit.
  */
 export const checkForUpdates = <ThrowOnError extends boolean = false>(options?: Options<CheckForUpdatesData, ThrowOnError>) => (options?.client ?? client).get<CheckForUpdatesResponses, CheckForUpdatesErrors, ThrowOnError>({ url: '/api/maintenance/update-check', ...options });
 
 /**
  * Get Update Preview Ref
+ *
+ * Return the currently-configured preview ref, or null for the default.
+ *
+ * Stored in app_config under `update_preview_ref` so it persists across
+ * restarts. When null, the update checker uses the branch from
+ * `.git/HEAD` (production: `main`).
  */
-export const getUpdatePreviewRef = <ThrowOnError extends boolean = false>(options?: Options<GetUpdatePreviewRefData, ThrowOnError>) => (options?.client ?? client).get<GetUpdatePreviewRefResponses, never, ThrowOnError>({ url: '/api/maintenance/update-ref', ...options });
+export const getUpdatePreviewRef = <ThrowOnError extends boolean = false>(options?: Options<GetUpdatePreviewRefData, ThrowOnError>) => (options?.client ?? client).get<GetUpdatePreviewRefResponses, unknown, ThrowOnError>({ url: '/api/maintenance/update-ref', ...options });
 
 /**
  * Set Update Preview Ref
+ *
+ * Persist a preview ref, or clear it when null/empty.
+ *
+ * No upstream validation here: a wrong ref will surface as
+ * `branch_not_on_remote` from the next `/update-check`, and the user
+ * can fix it without the round-trip + rate-limit cost of an extra
+ * GitHub call per save.
  */
-export const setUpdatePreviewRef = <ThrowOnError extends boolean = false>(options: Options<SetUpdatePreviewRefData, ThrowOnError>) => (options.client ?? client).put<SetUpdatePreviewRefResponses, SetUpdatePreviewRefErrors, ThrowOnError>({ url: '/api/maintenance/update-ref', ...options });
+export const setUpdatePreviewRef = <ThrowOnError extends boolean = false>(options: Options<SetUpdatePreviewRefData, ThrowOnError>) => (options.client ?? client).put<SetUpdatePreviewRefResponses, SetUpdatePreviewRefErrors, ThrowOnError>({
+    url: '/api/maintenance/update-ref',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Get Maintenance Job Progress
  */
 export const getMaintenanceJobProgress = <ThrowOnError extends boolean = false>(options: Options<GetMaintenanceJobProgressData, ThrowOnError>) => (options.client ?? client).get<GetMaintenanceJobProgressResponses, GetMaintenanceJobProgressErrors, ThrowOnError>({ url: '/api/maintenance/jobs/{job_id}/progress', ...options });
+
+/**
+ * Tail Logs
+ *
+ * SSE stream of the running service's journal entries.
+ *
+ * The response is `text/event-stream`. Two event types are emitted:
+ * `ready` once at the start carrying `{unit, lines}`, then `log` per entry
+ * carrying `{ts_ms, priority, level, message, unit, ident, pid}`. A single
+ * `error` event is sent if the host doesn't have journalctl available.
+ */
+export const tailLogsApiLogsTailGet = <ThrowOnError extends boolean = false>(options?: Options<TailLogsApiLogsTailGetData, ThrowOnError>) => (options?.client ?? client).get<TailLogsApiLogsTailGetResponses, TailLogsApiLogsTailGetErrors, ThrowOnError>({ url: '/api/logs/tail', ...options });

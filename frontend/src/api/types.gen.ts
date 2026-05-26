@@ -101,6 +101,38 @@ export type AppConfigOut = {
 };
 
 /**
+ * ChangelogEntryOut
+ *
+ * One entry in the changelog list returned by `/api/maintenance/update-check`.
+ *
+ * Default-branch tracking populates `body` with the GitHub Release notes;
+ * preview-ref tracking leaves it None and `title` carries the commit
+ * subject. `ref` is the tag (e.g. `v1.1.0`) or the full commit SHA.
+ */
+export type ChangelogEntryOut = {
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Body
+     */
+    body: string | null;
+    /**
+     * Ref
+     */
+    ref: string;
+    /**
+     * Published At
+     */
+    published_at: string | null;
+    /**
+     * Html Url
+     */
+    html_url: string | null;
+};
+
+/**
  * ChapterProgress
  */
 export type ChapterProgress = {
@@ -151,33 +183,14 @@ export type DirEntry = {
 };
 
 /**
- * DownloadCreate
- */
-export type DownloadCreate = {
-    /**
-     * Url
-     */
-    url: string;
-    /**
-     * Output Dir
-     */
-    output_dir?: string | null;
-    /**
-     * Watched
-     */
-    watched?: boolean;
-    /**
-     * Tags
-     */
-    tags?: Array<string> | null;
-    /**
-     * Reading Direction
-     */
-    reading_direction?: string | null;
-};
-
-/**
  * Download
+ *
+ * A row from the `downloads` table, plus the joined target `name`.
+ *
+ * The same type is used internally (worker, services) and on the wire —
+ * `name` is None when the row was constructed without a JOIN against
+ * `targets`, and populated by `from_row_with_name` or set by the caller
+ * after a separate lookup.
  */
 export type Download = {
     /**
@@ -191,7 +204,7 @@ export type Download = {
     /**
      * Name
      */
-    name: string | null;
+    name?: string | null;
     /**
      * Extractor
      */
@@ -251,7 +264,33 @@ export type Download = {
     /**
      * Target Id
      */
-    target_id: number | null;
+    target_id?: number | null;
+};
+
+/**
+ * DownloadCreate
+ */
+export type DownloadCreate = {
+    /**
+     * Url
+     */
+    url: string;
+    /**
+     * Output Dir
+     */
+    output_dir?: string | null;
+    /**
+     * Watched
+     */
+    watched?: boolean;
+    /**
+     * Tags
+     */
+    tags?: Array<string> | null;
+    /**
+     * Reading Direction
+     */
+    reading_direction?: string | null;
 };
 
 /**
@@ -284,6 +323,11 @@ export type LibraryImportResult = {
 
 /**
  * MaintenanceJob
+ *
+ * A row from `maintenance_jobs`. The DB column `result_json` is parsed
+ * into the `result` dict on validation (NULL / non-dict / invalid JSON all
+ * collapse to None — same semantics as the previous `_to_out` translator
+ * in the router).
  */
 export type MaintenanceJob = {
     /**
@@ -378,6 +422,15 @@ export type ProgressOut = {
 
 /**
  * Target
+ *
+ * A row from the `targets` table, optionally joined with summary stats.
+ *
+ * The summary fields (`last_*`, `download_count`) are hydrated only when
+ * the row came from `service.list_all` / `service.get_summary` (those
+ * queries do the JOIN); otherwise they're None/0.
+ *
+ * `tags` round-trips through a JSON-encoded TEXT column; the field
+ * validator parses the raw string back into a list of strings.
  */
 export type Target = {
     /**
@@ -417,37 +470,37 @@ export type Target = {
      */
     created_at: string;
     /**
-     * Last Download Id
-     */
-    last_download_id: number | null;
-    /**
-     * Last Status
-     */
-    last_status: string | null;
-    /**
-     * Last Finished At
-     */
-    last_finished_at: string | null;
-    /**
-     * Last Created At
-     */
-    last_created_at: string | null;
-    /**
-     * Download Count
-     */
-    download_count: number;
-    /**
      * Tags
      */
-    tags: Array<string>;
+    tags?: Array<string>;
     /**
      * Reading Direction
      */
-    reading_direction: string | null;
+    reading_direction?: string | null;
     /**
      * Series Status
      */
-    series_status: string | null;
+    series_status?: string | null;
+    /**
+     * Last Download Id
+     */
+    last_download_id?: number | null;
+    /**
+     * Last Status
+     */
+    last_status?: string | null;
+    /**
+     * Last Finished At
+     */
+    last_finished_at?: string | null;
+    /**
+     * Last Created At
+     */
+    last_created_at?: string | null;
+    /**
+     * Download Count
+     */
+    download_count?: number;
 };
 
 /**
@@ -481,33 +534,15 @@ export type TargetUpdate = {
 };
 
 /**
- * ChangelogEntryOut
- */
-export type ChangelogEntryOut = {
-    /**
-     * Title
-     */
-    title: string;
-    /**
-     * Body
-     */
-    body: string | null;
-    /**
-     * Ref
-     */
-    ref: string;
-    /**
-     * Published At
-     */
-    published_at: string | null;
-    /**
-     * Html Url
-     */
-    html_url: string | null;
-};
-
-/**
  * UpdateCheckOut
+ *
+ * Snapshot returned by `/api/maintenance/update-check`.
+ *
+ * Almost every field is nullable because the underlying check has
+ * several inert outcomes (no git metadata, network unreachable,
+ * non-GitHub origin); `reason` carries the machine-readable label.
+ * `changelog` is empty in those cases and on preview refs where the
+ * compare API failed.
  */
 export type UpdateCheckOut = {
     /**
@@ -565,9 +600,14 @@ export type UpdateCheckOut = {
 };
 
 /**
- * UpdateRefOut
+ * UpdateRefIn
+ *
+ * Mirror of UpdateRefOut for the PUT endpoint.
+ *
+ * An empty / whitespace-only string is normalised to None on the
+ * server so the user can clear the preview ref by emptying the input.
  */
-export type UpdateRefOut = {
+export type UpdateRefIn = {
     /**
      * Ref
      */
@@ -575,9 +615,14 @@ export type UpdateRefOut = {
 };
 
 /**
- * UpdateRefIn
+ * UpdateRefOut
+ *
+ * Preview ref persisted in app_config under `update_preview_ref`.
+ *
+ * `ref` is null when no preview is set — the checker falls back to the
+ * branch read from `.git/HEAD` (`main` in production).
  */
-export type UpdateRefIn = {
+export type UpdateRefOut = {
     /**
      * Ref
      */
@@ -1226,3 +1271,31 @@ export type GetMaintenanceJobProgressResponses = {
 };
 
 export type GetMaintenanceJobProgressResponse = GetMaintenanceJobProgressResponses[keyof GetMaintenanceJobProgressResponses];
+
+export type TailLogsApiLogsTailGetData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Lines
+         */
+        lines?: number;
+    };
+    url: '/api/logs/tail';
+};
+
+export type TailLogsApiLogsTailGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type TailLogsApiLogsTailGetError = TailLogsApiLogsTailGetErrors[keyof TailLogsApiLogsTailGetErrors];
+
+export type TailLogsApiLogsTailGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};

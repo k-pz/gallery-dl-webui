@@ -109,6 +109,9 @@ export function TargetRow({
   const tone = statusTone(status);
   const busy = update.isPending || poll.isPending || del.isPending;
   const displayName = target.name ?? target.url;
+  const tags = target.tags ?? [];
+  const downloadCount = target.download_count ?? 0;
+  const lastDownloadId = target.last_download_id ?? null;
 
   // Click anywhere on the row head except the action buttons to toggle.
   const handleHeadKey = (e: React.KeyboardEvent) => {
@@ -159,21 +162,20 @@ export function TargetRow({
               className="lib-row-meta"
               style={{ letterSpacing: "0.04em" }}
             >
-              {target.extractor ?? "—"} · {target.download_count}
-              {target.download_count === 1 ? " run" : " runs"} ·{" "}
-              {formatRel(target.last_finished_at) ?? "—"}
+              {target.extractor ?? "—"} · {downloadCount}
+              {downloadCount === 1 ? " run" : " runs"} · {formatRel(target.last_finished_at) ?? "—"}
             </Text>
           </div>
-          {target.tags.length > 0 && (
+          {tags.length > 0 && (
             <Group gap={4} wrap="wrap" className="lib-row-tags">
-              {target.tags.slice(0, 3).map((t) => (
+              {tags.slice(0, 3).map((t) => (
                 <span key={t} className="code-chip" style={{ background: "transparent" }}>
                   {t}
                 </span>
               ))}
-              {target.tags.length > 3 && (
+              {tags.length > 3 && (
                 <Text size="xs" c="dimmed">
-                  +{target.tags.length - 3}
+                  +{tags.length - 3}
                 </Text>
               )}
             </Group>
@@ -185,15 +187,15 @@ export function TargetRow({
           wrap="nowrap"
           onClick={(e) => e.stopPropagation()}
         >
-          {target.last_download_id !== null && onOpenJob && (
+          {lastDownloadId !== null && onOpenJob && (
             <Anchor
               size="xs"
               component="button"
               type="button"
               style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "0 6px" }}
-              onClick={() => target.last_download_id !== null && onOpenJob(target.last_download_id)}
+              onClick={() => onOpenJob(lastDownloadId)}
             >
-              job #{target.last_download_id} <IconArrowUpRight size={11} />
+              job #{lastDownloadId} <IconArrowUpRight size={11} />
             </Anchor>
           )}
           <Tooltip label="Poll now" withArrow>
@@ -330,7 +332,7 @@ export function TargetRow({
             <TagsInput
               label="Tags"
               placeholder="Enter to add"
-              value={target.tags}
+              value={tags}
               onChange={(next) =>
                 update.mutate({
                   path: { target_id: target.id },
