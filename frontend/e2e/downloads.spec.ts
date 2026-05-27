@@ -116,7 +116,9 @@ async function openJobByUrl(page: import("@playwright/test").Page, url: string) 
     .filter({ has: page.getByText(/^Jobs$/, { exact: true }) })
     .last();
   await recentCard.getByRole("combobox", { name: /status/i }).click();
-  await page.getByRole("option", { name: /^any$/i }).click();
+  // force:true — the Mantine popover is still animating, so Playwright's
+  // stability check fails and the option detaches mid-retry as it repositions.
+  await page.getByRole("option", { name: /^any$/i }).click({ force: true });
 
   const row = page.locator(".app-row", { hasText: url }).first();
   await expect(row).toBeVisible({ timeout: 15_000 });
