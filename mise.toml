@@ -202,4 +202,12 @@ description = "Run the backend the way the systemd unit does (`python -m backend
 dir = "{{config_root}}/backend"
 # `exec` so signals reach python directly — systemd KillMode=mixed sends
 # SIGTERM to the leader and we want that to land on the asyncio loop.
-run = "exec uv run --frozen --no-dev python -m backend"
+#
+# `--no-sync` is load-bearing in production: the systemd unit runs under
+# ProtectSystem=strict with only the data dir in ReadWritePaths, so the
+# .venv is read-only at runtime. Without it, `uv run` re-materializes the
+# editable install of the local `backend` package on every start and dies
+# removing `_editable_impl_backend.pth` ("Read-only file system", EROFS).
+# The venv is built writable during deploy by `install:prod`
+# (`uv sync --frozen --no-dev`); at runtime we only exec the prebuilt env.
+run = "exec uv run --frozen --no-dev --no-sync python -m backend"
