@@ -289,6 +289,48 @@ async def test_worker_clears_live_progress_when_done(
         await worker.stop()
 
 
+async def test_worker_persists_per_chapter_outcomes(
+    settings: Settings, db: aiosqlite.Connection
+) -> None:
+    config = FakeGalleryConfig()
+    # Two chapters discovered; chapter 2 fails (no records + captured error).
+    config.chapter_dates_for["https://example/x"] = {
+        ("S", "1"): "2026-01-01",
+        ("S", "2"): "2026-01-02",
+    }
+    config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg", "fake/S/c1/002.jpg"]
+    config.records_for["https://example/x"] = _make_records_for_chapter(
+        settings.downloads_dir, "S", "1"
+    )
+    config.chapter_errors_for["https://example/x"] = {"2": "403 Forbidden"}
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        d = await downloads_service.insert_pending(db, "https://example/x", "fake")
+        worker.notify()
+
+        async def done() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.status == "completed"
+
+        await _wait_for(done)
+
+        row = await downloads_service.get(db, d.id)
+        assert row is not None
+        assert row.chapters_discovered == 2
+        assert row.chapters_total == 2  # needed
+        assert row.chapters_failed == 1
+        outcomes = await downloads_service.get_chapter_outcomes(db, d.id)
+        by_name = {o.name: o for o in outcomes}
+        assert by_name["1"].status == "downloaded"
+        assert by_name["1"].pages == 2
+        assert by_name["2"].status == "failed"
+        assert by_name["2"].error == "403 Forbidden"
+    finally:
+        await worker.stop()
+
+
 def _make_records_for_chapter(downloads_dir: Path, manga: str, chapter: str) -> list[FileRecord]:
     ch_dir = downloads_dir / "fake" / manga / f"c{chapter}"
     ch_dir.mkdir(parents=True, exist_ok=True)
