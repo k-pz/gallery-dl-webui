@@ -1376,7 +1376,9 @@ a {
   text-transform: uppercase;
   color: var(--app-text-faint);
   text-align: center;
-  padding: 1.5rem 0 0.5rem;
+  /* Footnote is the last element in the scroll body, so it carries the bottom
+     safe-area inset — mirrors `.mob-drawer`. */
+  padding: 1.5rem 0 max(0.5rem, env(safe-area-inset-bottom, 0));
 }
 
 .app-version {
