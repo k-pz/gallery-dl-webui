@@ -929,6 +929,39 @@ a {
   word-break: break-all;
 }
 
+/* Expanded result: drop the line clamp so the full payload reads inline,
+   collapsed by default via the tap-to-expand toggle below. */
+.maint-result-full {
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  display: block;
+  overflow: visible;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Inline expand/collapse affordance for the result cell. Mirrors the
+   .maint-log-toggle look (chevron + mono label) but is visible on every
+   viewport, since wide JSON is clipped on desktop too. */
+.maint-result-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 2px 6px;
+  border-radius: var(--mantine-radius-sm);
+  border: 1px solid var(--app-border-subtle);
+}
+.maint-result-toggle:hover {
+  background: var(--app-surface-muted);
+}
+.maint-result-toggle-chev {
+  transition: transform 120ms ease;
+}
+.maint-result-toggle[data-expanded="true"] .maint-result-toggle-chev {
+  transform: rotate(180deg);
+}
+
 /* On phones the maintenance jobs table flips from a 5-column grid (where
    the Result column gets clipped to "{") to a stacked card per row. The
    <table> markup is preserved so `tbody tr` selectors in the e2e suite
