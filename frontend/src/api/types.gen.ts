@@ -152,6 +152,26 @@ export type ChapterProgress = {
      * Stage
      */
     stage: string;
+    /**
+     * Status
+     */
+    status?: string | null;
+    /**
+     * Pages
+     */
+    pages?: number | null;
+    /**
+     * Title
+     */
+    title?: string | null;
+    /**
+     * Date
+     */
+    date?: string | null;
+    /**
+     * Error
+     */
+    error?: string | null;
 };
 
 /**
@@ -241,6 +261,14 @@ export type Download = {
      * Chapters Total
      */
     chapters_total: number | null;
+    /**
+     * Chapters Discovered
+     */
+    chapters_discovered?: number | null;
+    /**
+     * Chapters Failed
+     */
+    chapters_failed?: number | null;
     /**
      * Error
      */
@@ -414,6 +442,26 @@ export type ProgressOut = {
      * Files Present
      */
     files_present: number;
+    /**
+     * Chapters Discovered
+     */
+    chapters_discovered?: number | null;
+    /**
+     * Chapters Needed
+     */
+    chapters_needed?: number | null;
+    /**
+     * Chapters Downloaded
+     */
+    chapters_downloaded?: number;
+    /**
+     * Chapters Failed
+     */
+    chapters_failed?: number;
+    /**
+     * Chapters Skipped
+     */
+    chapters_skipped?: number;
     /**
      * Chapters
      */
