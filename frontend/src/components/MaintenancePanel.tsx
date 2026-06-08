@@ -11,6 +11,7 @@ import {
   Text,
   Title,
   Tooltip,
+  UnstyledButton,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -25,7 +26,14 @@ import { KIND_LABEL, maintStatusLabel, TERMINAL_STATUSES } from "../lib/maintena
 import { usePagination } from "../lib/pagination";
 import { statusTone } from "../lib/status";
 import { EmptyState } from "./EmptyState";
-import { IconAlertTriangle, IconClock, IconEyeOff, IconFileText, IconRefresh } from "./Icons";
+import {
+  IconAlertTriangle,
+  IconChevronDown,
+  IconClock,
+  IconEyeOff,
+  IconFileText,
+  IconRefresh,
+} from "./Icons";
 import { ListPagination } from "./ListPagination";
 import { MaintenanceLog } from "./MaintenanceLog";
 import { Pill } from "./Pill";
@@ -263,6 +271,58 @@ export function MaintenancePanel() {
           )}
         </Stack>
       </Card>
+    </Stack>
+  );
+}
+
+function MaintResultCell({ text, empty, jobId }: { text: string; empty: boolean; jobId: number }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // No payload and no error: nothing to expand, just the placeholder.
+  if (empty) {
+    return (
+      <Text size="xs" ff="monospace" c="dimmed">
+        {text}
+      </Text>
+    );
+  }
+
+  return (
+    <Stack gap={4} className="maint-result-wrap">
+      {expanded ? (
+        <Text
+          size="xs"
+          ff="monospace"
+          c="dimmed"
+          className="maint-result maint-result-full"
+          data-testid={`maint-result-full-${jobId}`}
+        >
+          {text}
+        </Text>
+      ) : (
+        <Text size="xs" ff="monospace" c="dimmed" className="maint-result">
+          {text}
+        </Text>
+      )}
+      <UnstyledButton
+        className="maint-result-toggle"
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpanded((v) => !v);
+        }}
+        aria-expanded={expanded}
+        aria-label={
+          expanded
+            ? `Collapse result for maintenance job ${jobId}`
+            : `Expand result for maintenance job ${jobId}`
+        }
+        data-expanded={expanded ? "true" : undefined}
+      >
+        <Text size="xs" c="dimmed" ff="monospace">
+          {expanded ? "collapse" : "expand"}
+        </Text>
+        <IconChevronDown size={14} className="maint-result-toggle-chev" />
+      </UnstyledButton>
     </Stack>
   );
 }
