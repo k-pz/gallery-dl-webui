@@ -188,7 +188,13 @@ export function ConfigPanel() {
             />
             <TextInput
               label="Chapter naming template"
-              description="Jinja2 template variables: series, manga, chapter, chapter_number, title, volume, lang, author, date."
+              description={
+                <>
+                  Names each CBZ from a Jinja2 template. Example:{" "}
+                  <Code>{"{{ series }} - {{ chapter }} - {{ title }}"}</Code>. Variables: series,
+                  manga, chapter, chapter_number, title, volume, lang, author, date.
+                </>
+              }
               value={chapterTemplate}
               onChange={(e) => setChapterTemplate(e.currentTarget.value)}
               disabled={mutation.isPending}
