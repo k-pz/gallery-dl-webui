@@ -342,6 +342,34 @@ describe("MaintenancePanel", () => {
     await screen.findByText(/update queued/i);
   });
 
+  it("renders the maintenance status as a cased label, not the raw token", async () => {
+    const nextId = { value: 2 };
+    const jobs: Job[] = [
+      {
+        id: 1,
+        kind: "rename_chapters",
+        status: "completed",
+        created_at: "2025-01-01T00:00:00",
+        started_at: "2025-01-01T00:00:01",
+        finished_at: "2025-01-01T00:00:02",
+        result: { renamed: 1 },
+        error: null,
+      },
+    ];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {
+      1: { status: "completed", total: 5, done: 5, lines: ["done"] },
+    };
+    mockFetch(jobsHandler({ jobs, nextId, progress }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    expect(await screen.findByText("Completed")).toBeInTheDocument();
+    expect(screen.queryByText("completed")).not.toBeInTheDocument();
+  });
+
   it("switches the log to the row the user clicks", async () => {
     const nextId = { value: 3 };
     const jobs: Job[] = [

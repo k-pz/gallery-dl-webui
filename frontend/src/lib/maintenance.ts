@@ -8,3 +8,19 @@ export const KIND_LABEL: Record<string, string> = {
   update_lxc: "Update LXC from upstream",
   unwatch_ended_series: "Unwatch ended series",
 };
+
+// Maintenance jobs share the download lifecycle vocabulary but not its
+// meaning: a maintenance job that is `running` is not "Downloading", and a
+// `pending` one is "Queued", not "Scheduled". So we route through a small
+// maint-specific map instead of jobStatusLabel().
+const MAINT_STATUS_LABELS: Record<string, string> = {
+  pending: "Queued",
+  running: "Running",
+  completed: "Completed",
+  failed: "Failed",
+  cancelled: "Cancelled",
+};
+
+export function maintStatusLabel(status: string): string {
+  return MAINT_STATUS_LABELS[status] ?? status;
+}

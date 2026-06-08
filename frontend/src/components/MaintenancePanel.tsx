@@ -21,7 +21,7 @@ import {
   scheduleMaintenanceJobMutation,
 } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
-import { KIND_LABEL, TERMINAL_STATUSES } from "../lib/maintenance";
+import { KIND_LABEL, maintStatusLabel, TERMINAL_STATUSES } from "../lib/maintenance";
 import { usePagination } from "../lib/pagination";
 import { statusTone } from "../lib/status";
 import { EmptyState } from "./EmptyState";
@@ -209,7 +209,7 @@ export function MaintenancePanel() {
                           </Stack>
                         </Table.Td>
                         <Table.Td>
-                          <Pill tone={statusTone(job.status)}>{job.status}</Pill>
+                          <Pill tone={statusTone(job.status)}>{maintStatusLabel(job.status)}</Pill>
                         </Table.Td>
                         <Table.Td>
                           <Text size="xs" ff="monospace" c="dimmed" className="maint-result">
