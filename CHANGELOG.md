@@ -1,3 +1,9 @@
+## v1.2.1 (2026-06-09)
+
+### Fix
+
+- **deploy**: add uv --no-sync to serve:backend so read-only venv doesn't break startup
+
 ## v1.2.0 (2026-06-09)
 
 ### Feat
