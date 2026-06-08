@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { getMaintenanceJobProgressOptions } from "../api/@tanstack/react-query.gen";
 import { useEta } from "../hooks/useEta";
 import { formatEta } from "../lib/eta";
+import { maintStatusLabel } from "../lib/maintenance";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
 import { IconChevronDown } from "./Icons";
 
@@ -84,7 +85,7 @@ export function MaintenanceLog({
             Job #{jobId}
           </Text>
           <Badge color={STATUS_COLOR[data.status] ?? "gray"} variant="light" size="sm">
-            {data.status}
+            {maintStatusLabel(data.status)}
           </Badge>
         </Group>
         <Group gap="sm" align="center">

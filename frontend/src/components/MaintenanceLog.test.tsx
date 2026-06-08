@@ -34,4 +34,17 @@ describe("MaintenanceLog expand", () => {
       expect.objectContaining({ block: "nearest" }),
     );
   });
+
+  it("renders the live status badge with a cased label, not the raw token", async () => {
+    mockFetch(async (input) => {
+      if (urlOf(input).includes("/progress")) return jsonResponse(PROGRESS);
+      return jsonResponse({});
+    });
+
+    renderWithProviders(<MaintenanceLog jobId={1} startedAt={null} />);
+
+    await screen.findByRole("button", { name: /expand job log/i });
+    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.queryByText("running")).not.toBeInTheDocument();
+  });
 });
