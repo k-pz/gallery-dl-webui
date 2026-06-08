@@ -100,9 +100,9 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
           <span className="app-section-kicker">new job</span>
           <Title order={3}>Add a gallery</Title>
         </Stack>
-        <Group align="flex-end" gap="sm" wrap="nowrap">
+        <Group align="flex-end" gap="sm" wrap="wrap">
           <TextInput
-            style={{ flex: 1 }}
+            style={{ flex: 1, minWidth: 220 }}
             label="Gallery URL"
             placeholder="https://mangadex.org/title/…"
             value={url}
@@ -115,7 +115,12 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
             disabled={mutation.isPending}
             size="md"
           />
-          <Button onClick={submit} loading={mutation.isPending} size="md">
+          <Button
+            onClick={submit}
+            loading={mutation.isPending}
+            size="md"
+            style={{ flexGrow: 1, minWidth: 140 }}
+          >
             Download
           </Button>
         </Group>
