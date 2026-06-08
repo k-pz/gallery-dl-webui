@@ -43,6 +43,60 @@ const PROGRESS = {
   ],
 };
 
+describe("ProgressCard transient labels", () => {
+  it("shows 'fetching…' before the manifest is ready", async () => {
+    mockFetch(async (input) => {
+      if (urlOf(input).includes("/progress"))
+        return jsonResponse({
+          status: "running",
+          files_expected: null,
+          files_present: 0,
+          chapters_discovered: null,
+          chapters_needed: null,
+          chapters_downloaded: 0,
+          chapters_failed: 0,
+          chapters_skipped: 0,
+          chapters: [],
+        });
+      return jsonResponse({});
+    });
+    renderWithProviders(<ProgressCard jobId={2} status="running" startedAt={null} />);
+    expect(await screen.findByText("fetching…")).toBeInTheDocument();
+  });
+
+  it("labels a nameless chapter as (untitled)", async () => {
+    mockFetch(async (input) => {
+      if (urlOf(input).includes("/progress"))
+        return jsonResponse({
+          status: "completed",
+          files_expected: 1,
+          files_present: 1,
+          chapters_discovered: 1,
+          chapters_needed: 1,
+          chapters_downloaded: 1,
+          chapters_failed: 0,
+          chapters_skipped: 0,
+          chapters: [
+            {
+              name: "",
+              files_total: 1,
+              files_present: 1,
+              stage: "downloaded",
+              status: "downloaded",
+              pages: 1,
+              title: null,
+              date: null,
+              error: null,
+            },
+          ],
+        });
+      return jsonResponse({});
+    });
+    renderWithProviders(<ProgressCard jobId={3} status="completed" startedAt={null} />);
+    expect(await screen.findByText("(untitled)")).toBeInTheDocument();
+  });
+});
+
 describe("ProgressCard (terminal job)", () => {
   it("shows the discovered/needed/downloaded/failed summary and outcome badges", async () => {
     mockFetch(async (input) => {
