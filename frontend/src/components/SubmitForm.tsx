@@ -157,7 +157,7 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
           <TagsInput
             label="Tags"
             placeholder="Enter to add — e.g. action, romance"
-            description="Applied to series.json + ComicInfo. Existing tags are replaced on every submit."
+            description="Written into this series' metadata (series.json + ComicInfo.xml). Submitting again replaces this series' tags only — other series are untouched."
             value={tags}
             onChange={setTags}
             disabled={mutation.isPending}
