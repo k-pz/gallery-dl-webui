@@ -442,9 +442,7 @@ describe("MaintenancePanel", () => {
 
     await screen.findByText("rename_chapters");
     expect(screen.getByText("—")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /expand result/i }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /expand result/i })).not.toBeInTheDocument();
   });
 
   it("expand-result toggle stopPropagation: clicking expand on a non-selected row does not change selected log", async () => {
