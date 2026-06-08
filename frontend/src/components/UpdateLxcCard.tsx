@@ -175,12 +175,13 @@ export function UpdateLxcCard({
             </Stack>
           </Box>
         ) : !armed ? (
-          <Group>
+          <Group wrap="wrap">
             <Button
               variant="light"
               leftSection={<IconArrowUp size={14} />}
               onClick={() => setArmed(true)}
               loading={scheduling}
+              style={{ flexGrow: 1, minWidth: 140 }}
             >
               Update LXC…
             </Button>
@@ -195,10 +196,16 @@ export function UpdateLxcCard({
               leftSection={<IconArrowUp size={14} />}
               onClick={confirm}
               loading={scheduling}
+              style={{ flexGrow: 1, minWidth: 160 }}
             >
               Yes, update now
             </Button>
-            <Button variant="subtle" color="gray" onClick={() => setArmed(false)}>
+            <Button
+              variant="subtle"
+              color="gray"
+              onClick={() => setArmed(false)}
+              style={{ flexGrow: 1, minWidth: 100 }}
+            >
               Cancel
             </Button>
           </Group>
