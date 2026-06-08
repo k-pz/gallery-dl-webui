@@ -93,6 +93,9 @@ a {
   z-index: 60;
   background: var(--app-bg);
   border-bottom: 1px solid var(--app-border-subtle);
+  /* Mirror the drawer's notch handling: keep the sticky header (and its fill)
+     clear of the top safe-area inset on notched/edge-to-edge phones. */
+  padding-top: env(safe-area-inset-top, 0);
 }
 
 .app-shell-header-inner {
