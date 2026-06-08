@@ -15,6 +15,7 @@ from backend.app_config.constants import (
 from backend.downloads import postprocess, service
 from backend.downloads.gallery import Gallery, SkipChapterFn
 from backend.downloads.live_progress import LiveProgress
+from backend.downloads.outcomes import ChapterSeed, reconcile_outcomes
 from backend.downloads.postprocess import (
     FileRecord,
     SeriesMetadata,
@@ -22,7 +23,6 @@ from backend.downloads.postprocess import (
     normalize_reading_direction,
     normalize_tags,
 )
-from backend.downloads.outcomes import ChapterSeed, reconcile_outcomes
 from backend.downloads.progress import count_present_chapters
 from backend.downloads.schemas import Download
 from backend.events import EventBus, downloads_event, progress_event

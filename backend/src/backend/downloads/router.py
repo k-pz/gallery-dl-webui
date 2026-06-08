@@ -19,6 +19,7 @@ from backend.downloads.exceptions import (
     DownloadNotTerminal,
     DownloadVanished,
 )
+from backend.downloads.outcomes import ChapterOutcome
 from backend.downloads.postprocess import normalize_tags
 from backend.downloads.progress import chapter_progress, chapter_progress_from_completed
 from backend.downloads.schemas import (
@@ -151,6 +152,17 @@ async def get_progress(
     live: LiveProgressDep,
 ) -> ProgressOut:
     manifest = await service.get_manifest(db, download.id)
+
+    if download.status in TERMINAL_STATUSES:
+        outcomes = await service.get_chapter_outcomes(db, download.id)
+        if any(o.status != "pending" for o in outcomes):
+            return _progress_from_outcomes(download, outcomes)
+        # Legacy terminal job (no persisted outcomes): keep the neutral fallback.
+        chapters = chapter_progress(
+            manifest, settings.downloads_dir, download.status, download.postprocess_status
+        )
+        return _legacy_progress(download, chapters)
+
     completed = live.snapshot(download.id)
     if completed is not None:
         chapters = chapter_progress_from_completed(
@@ -160,12 +172,17 @@ async def get_progress(
         chapters = chapter_progress(
             manifest, settings.downloads_dir, download.status, download.postprocess_status
         )
-    files_present = sum(c.files_present for c in chapters)
+    return _legacy_progress(download, chapters)
 
+
+def _legacy_progress(download: Download, chapters: list) -> ProgressOut:
+    files_present = sum(c.files_present for c in chapters)
     return ProgressOut(
         status=download.status,
         files_expected=download.files_expected,
         files_present=files_present,
+        chapters_discovered=download.chapters_discovered,
+        chapters_needed=download.chapters_total,
         chapters=[
             ChapterProgress(
                 name=c.name,
@@ -175,4 +192,60 @@ async def get_progress(
             )
             for c in chapters
         ],
+    )
+
+
+# A skipped chapter is already on disk (you have it) and a downloaded one is
+# done — both are "settled" so the progress bar can complete. A failed chapter
+# stays "downloading" so the bar reflects that the job didn't fully succeed.
+_OUTCOME_STAGE = {
+    "downloaded": "downloaded",
+    "skipped": "completed",
+    "failed": "downloading",
+    "pending": "downloading",
+}
+
+
+def _chapter_files(o: ChapterOutcome) -> tuple[int, int]:
+    """(files_present, files_total) for a chapter outcome. Skipped chapters are
+    counted as present (already on disk); failed/pending as not-yet-present."""
+    if o.status == "downloaded":
+        return o.pages, max(o.pages, 1)
+    if o.status == "skipped":
+        return 1, 1
+    return 0, max(o.pages, 1)
+
+
+def _progress_from_outcomes(download: Download, outcomes: list[ChapterOutcome]) -> ProgressOut:
+    downloaded = sum(1 for o in outcomes if o.status == "downloaded")
+    failed = sum(1 for o in outcomes if o.status == "failed")
+    skipped = sum(1 for o in outcomes if o.status == "skipped")
+    chapters: list[ChapterProgress] = []
+    files_present = 0
+    for o in outcomes:
+        present, total = _chapter_files(o)
+        files_present += present
+        chapters.append(
+            ChapterProgress(
+                name=o.name,
+                files_total=total,
+                files_present=present,
+                stage=_OUTCOME_STAGE.get(o.status, "downloading"),
+                status=o.status,
+                pages=o.pages,
+                title=o.title or None,
+                date=o.date or None,
+                error=o.error,
+            )
+        )
+    return ProgressOut(
+        status=download.status,
+        files_expected=download.files_expected,
+        files_present=files_present,
+        chapters_discovered=download.chapters_discovered,
+        chapters_needed=download.chapters_total,
+        chapters_downloaded=downloaded,
+        chapters_failed=failed,
+        chapters_skipped=skipped,
+        chapters=chapters,
     )

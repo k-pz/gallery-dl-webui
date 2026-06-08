@@ -117,6 +117,46 @@ def test_progress_endpoint_returns_chapter_breakdown(
     assert all(c["stage"] == "completed" for c in progress["chapters"])
 
 
+def test_progress_reports_persisted_outcomes_for_terminal_job(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    from pathlib import Path
+
+    from backend.downloads.postprocess import FileRecord
+
+    gallery_config.chapter_dates_for["https://example/x"] = {
+        ("S", "1"): "2026-01-01",
+        ("S", "2"): "2026-01-02",
+    }
+    gallery_config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]
+    gallery_config.records_for["https://example/x"] = [
+        FileRecord(
+            category="fake",
+            manga="S",
+            chapter="1",
+            title="Intro",
+            volume="",
+            lang="",
+            author="",
+            date="2026-01-01",
+            path=Path("fake/S/c1/001.jpg"),
+        ),
+    ]
+    gallery_config.chapter_errors_for["https://example/x"] = {"2": "boom"}
+
+    created = client.post("/api/downloads", json={"url": "https://example/x"}).json()
+    _wait_for_status(client, created["id"], {"completed", "failed", "cancelled"})
+
+    prog = client.get(f"/api/downloads/{created['id']}/progress").json()
+    assert prog["chapters_discovered"] == 2
+    assert prog["chapters_failed"] == 1
+    names = {c["name"]: c for c in prog["chapters"]}
+    assert names["1"]["status"] == "downloaded"
+    assert names["1"]["pages"] == 1
+    assert names["2"]["status"] == "failed"
+    assert names["2"]["error"] == "boom"
+
+
 def test_progress_endpoint_returns_404_for_missing(client: TestClient) -> None:
     resp = client.get("/api/downloads/99999/progress")
     assert resp.status_code == 404

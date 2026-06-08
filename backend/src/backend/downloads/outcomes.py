@@ -11,7 +11,10 @@ from typing import Literal
 
 from backend.downloads.postprocess import IMAGE_SUFFIXES, FileRecord
 
-ChapterOutcomeStatus = Literal["downloaded", "skipped", "failed"]
+# reconcile_outcomes only ever emits the first three; "pending" is the
+# persisted state of a not-yet-reconciled manifest row (and legacy NULL rows),
+# surfaced when reading outcomes back out of the DB.
+ChapterOutcomeStatus = Literal["downloaded", "skipped", "failed", "pending"]
 
 
 @dataclass(frozen=True)

@@ -169,9 +169,7 @@ async def save_chapter_outcomes(
     await db.commit()
 
 
-async def get_chapter_outcomes(
-    db: aiosqlite.Connection, download_id: int
-) -> list[ChapterOutcome]:
+async def get_chapter_outcomes(db: aiosqlite.Connection, download_id: int) -> list[ChapterOutcome]:
     """Return persisted per-chapter outcomes ordered by manifest index.
 
     Rows written before this feature (status NULL) surface as status 'pending'.
@@ -185,7 +183,7 @@ async def get_chapter_outcomes(
     return [
         ChapterOutcome(
             name=r["relpath"],
-            status=r["status"] or "pending",  # type: ignore[arg-type]
+            status=r["status"] or "pending",
             pages=r["pages"] or 0,
             title=r["title"] or "",
             date=r["date"] or "",
