@@ -41,6 +41,9 @@ class FakeGalleryConfig:
         # values are ISO YYYY-MM-DD strings. Falls back to the parent dirs
         # of `manifest_for` paths when unset.
         self.chapter_dates_for: dict[str, dict[tuple[str, str], str]] = {}
+        # Optional per-URL captured per-chapter errors (chapter name -> reason),
+        # surfaced by run_download to exercise outcome reconciliation.
+        self.chapter_errors_for: dict[str, dict[str, str]] = {}
         self.default_extractor: str | None = "fake"
         self.write_files: bool = True
 
@@ -89,7 +92,7 @@ class FakeGallery:
         url: str,
         on_file_complete: Callable[[str], None] | None = None,
         skip_chapter: SkipChapterFn | None = None,
-    ) -> tuple[int, list[FileRecord]]:
+    ) -> tuple[int, list[FileRecord], dict[str, str]]:
         self.download_calls.append(url)
         emitted_records: list[FileRecord] = []
         for rel in self._config.manifest_for.get(url, []):
@@ -116,7 +119,7 @@ class FakeGallery:
             ):
                 continue
             emitted_records.append(rec)
-        return 0, emitted_records
+        return 0, emitted_records, dict(self._config.chapter_errors_for.get(url, {}))
 
     def _chapter_for(self, url: str, relpath: str) -> tuple[str, str]:
         """Look up (manga, chapter) for a manifest entry from records_for, when

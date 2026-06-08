@@ -5,6 +5,7 @@ from __future__ import annotations
 import aiosqlite
 
 from backend.database import insert_returning_id, now_iso
+from backend.downloads.outcomes import ChapterOutcome
 from backend.downloads.schemas import Download
 
 # Bounds the race-loss retry inside `claim_next_pending`: each retry
@@ -87,24 +88,33 @@ async def claim_next_pending(db: aiosqlite.Connection) -> Download | None:
 
 
 async def save_manifest(
-    db: aiosqlite.Connection, download_id: int, chapter_names: list[str]
+    db: aiosqlite.Connection,
+    download_id: int,
+    chapter_names: list[str],
+    *,
+    dates: dict[str, str] | None = None,
+    discovered: int | None = None,
 ) -> None:
     """Persist the chapter list discovered by the metadata pull.
 
-    Each chapter gets one row in `download_files`; we reuse that table even
-    though the rows no longer represent individual files. `files_expected`
-    and `chapters_total` both equal the chapter count — the legacy
-    `files_*` columns are kept in sync so older UI fallbacks keep working.
+    Each needed chapter gets one row in `download_files` (status 'pending', with
+    its discovered date when known). `files_expected` and `chapters_total` carry
+    the needed count; `chapters_discovered` carries the total seen before
+    skip-filtering (defaults to the needed count when not supplied).
     """
+    dates = dates or {}
     await db.execute("DELETE FROM download_files WHERE download_id = ?", (download_id,))
     await db.executemany(
-        "INSERT INTO download_files(download_id, idx, relpath) VALUES(?, ?, ?)",
-        [(download_id, i, name) for i, name in enumerate(chapter_names)],
+        "INSERT INTO download_files(download_id, idx, relpath, status, date) "
+        "VALUES(?, ?, ?, 'pending', ?)",
+        [(download_id, i, name, dates.get(name, "")) for i, name in enumerate(chapter_names)],
     )
     n = len(chapter_names)
+    disc = discovered if discovered is not None else n
     await db.execute(
-        "UPDATE downloads SET files_expected = ?, chapters_total = ? WHERE id = ?",
-        (n, n, download_id),
+        "UPDATE downloads SET files_expected = ?, chapters_total = ?, "
+        "chapters_discovered = ? WHERE id = ?",
+        (n, n, disc, download_id),
     )
     await db.commit()
 
@@ -117,6 +127,70 @@ async def get_manifest(db: aiosqlite.Connection, download_id: int) -> list[str]:
     ) as cur:
         rows = await cur.fetchall()
     return [r["relpath"] for r in rows]
+
+
+async def save_chapter_outcomes(
+    db: aiosqlite.Connection,
+    download_id: int,
+    outcomes: list[ChapterOutcome],
+) -> None:
+    """Persist per-chapter outcomes onto the manifest rows (matching by chapter
+    name); append rows for chapters that downloaded but weren't in the manifest.
+    Also denormalises the failed count onto the download row.
+    """
+    async with db.execute(
+        "SELECT relpath, idx FROM download_files WHERE download_id = ?",
+        (download_id,),
+    ) as cur:
+        rows = await cur.fetchall()
+    idx_by_name = {r["relpath"]: r["idx"] for r in rows}
+    next_idx = (max(idx_by_name.values()) + 1) if idx_by_name else 0
+    for o in outcomes:
+        if o.name in idx_by_name:
+            await db.execute(
+                "UPDATE download_files SET status = ?, pages = ?, title = ?, "
+                "date = COALESCE(NULLIF(?, ''), date), error = ? "
+                "WHERE download_id = ? AND relpath = ?",
+                (o.status, o.pages, o.title, o.date, o.error, download_id, o.name),
+            )
+        else:
+            await db.execute(
+                "INSERT INTO download_files"
+                "(download_id, idx, relpath, status, pages, title, date, error) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                (download_id, next_idx, o.name, o.status, o.pages, o.title, o.date, o.error),
+            )
+            next_idx += 1
+    failed = sum(1 for o in outcomes if o.status == "failed")
+    await db.execute(
+        "UPDATE downloads SET chapters_failed = ? WHERE id = ?",
+        (failed, download_id),
+    )
+    await db.commit()
+
+
+async def get_chapter_outcomes(db: aiosqlite.Connection, download_id: int) -> list[ChapterOutcome]:
+    """Return persisted per-chapter outcomes ordered by manifest index.
+
+    Rows written before this feature (status NULL) surface as status 'pending'.
+    """
+    async with db.execute(
+        "SELECT relpath, status, pages, title, date, error "
+        "FROM download_files WHERE download_id = ? ORDER BY idx ASC",
+        (download_id,),
+    ) as cur:
+        rows = await cur.fetchall()
+    return [
+        ChapterOutcome(
+            name=r["relpath"],
+            status=r["status"] or "pending",
+            pages=r["pages"] or 0,
+            title=r["title"] or "",
+            date=r["date"] or "",
+            error=r["error"],
+        )
+        for r in rows
+    ]
 
 
 async def mark_running(db: aiosqlite.Connection, id_: int) -> None:
@@ -176,7 +250,8 @@ async def reset_to_pending(db: aiosqlite.Connection, id_: int) -> bool:
     cursor = await db.execute(
         "UPDATE downloads SET status = 'pending', started_at = NULL, "
         "finished_at = NULL, exit_code = NULL, files_downloaded = 0, "
-        "files_expected = NULL, chapters_total = NULL, error = NULL, "
+        "files_expected = NULL, chapters_total = NULL, "
+        "chapters_discovered = NULL, chapters_failed = NULL, error = NULL, "
         "postprocess_status = NULL, postprocess_chapters_packed = NULL, "
         "postprocess_error = NULL "
         "WHERE id = ? AND status IN ('completed', 'failed', 'cancelled')",

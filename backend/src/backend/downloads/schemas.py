@@ -35,6 +35,8 @@ class Download(BaseModel):
     files_downloaded: int
     files_expected: int | None
     chapters_total: int | None
+    chapters_discovered: int | None = None
+    chapters_failed: int | None = None
     error: str | None
     postprocess_status: str | None
     postprocess_chapters_packed: int | None
@@ -56,10 +58,20 @@ class ChapterProgress(BaseModel):
     files_total: int
     files_present: int
     stage: str
+    status: str | None = None
+    pages: int | None = None
+    title: str | None = None
+    date: str | None = None
+    error: str | None = None
 
 
 class ProgressOut(BaseModel):
     status: str
     files_expected: int | None
     files_present: int
+    chapters_discovered: int | None = None
+    chapters_needed: int | None = None
+    chapters_downloaded: int = 0
+    chapters_failed: int = 0
+    chapters_skipped: int = 0
     chapters: list[ChapterProgress]

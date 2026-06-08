@@ -1,11 +1,11 @@
-import { Box, Group, Progress, ScrollArea, Stack, Text } from "@mantine/core";
+import { Box, Group, Progress, ScrollArea, Stack, Text, Tooltip } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { getDownloadProgressOptions } from "../api/@tanstack/react-query.gen";
 import type { ChapterProgress } from "../api/types.gen";
 import { useEta } from "../hooks/useEta";
 import { formatEta } from "../lib/eta";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
-import { chapterStageLabel, isTerminal, type Status, statusTone } from "../lib/status";
+import { chapterStageLabel, isTerminal, type Status, statusTone, type Tone } from "../lib/status";
 import { Pill } from "./Pill";
 
 type ChapterStage = "downloading" | "downloaded" | "processing" | "completed";
@@ -15,6 +15,14 @@ function chapterStage(ch: ChapterProgress): ChapterStage {
     return ch.stage;
   }
   return "downloading";
+}
+
+// Terminal jobs carry an explicit per-chapter `status` (downloaded/skipped/
+// failed); live jobs only carry `stage`. Prefer status for the badge so past
+// jobs show what actually happened.
+function chapterBadge(ch: ChapterProgress): { label: string; tone: Tone } {
+  const key = ch.status ?? ch.stage;
+  return { label: chapterStageLabel(key), tone: statusTone(key) };
 }
 
 export function ProgressCard({
@@ -102,6 +110,25 @@ export function ProgressCard({
         </Text>
       </Group>
       <Progress value={pct} size="md" radius="sm" striped={!terminal} animated={!terminal} />
+      {(() => {
+        const downloaded = data.chapters_downloaded ?? 0;
+        const failed = data.chapters_failed ?? 0;
+        const skipped = data.chapters_skipped ?? 0;
+        if (data.chapters_discovered == null && failed === 0) return null;
+        return (
+          <Text size="xs" c="dimmed" ff="monospace">
+            {[
+              data.chapters_discovered != null ? `discovered ${data.chapters_discovered}` : null,
+              data.chapters_needed != null ? `needed ${data.chapters_needed}` : null,
+              `downloaded ${downloaded}`,
+              skipped > 0 ? `skipped ${skipped}` : null,
+              `failed ${failed}`,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </Text>
+        );
+      })()}
       {manifestReady && (
         <Box
           className="active-job-chapters"
@@ -114,8 +141,11 @@ export function ProgressCard({
           <ScrollArea h={220} type="auto">
             <Stack gap={0} p="xs">
               {data.chapters.map((ch, i) => {
-                const stage = chapterStage(ch);
+                const badge = chapterBadge(ch);
                 const label = ch.name || "(root)";
+                const meta = [ch.pages ? `${ch.pages}p` : null, ch.date || null]
+                  .filter(Boolean)
+                  .join(" · ");
                 return (
                   <Group
                     key={label}
@@ -128,19 +158,36 @@ export function ProgressCard({
                       borderTop: i > 0 ? "1px solid var(--app-border-subtle)" : undefined,
                     }}
                   >
-                    <Text
-                      size="sm"
-                      ff="monospace"
-                      style={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                      title={label}
+                    <Stack gap={0} style={{ minWidth: 0 }}>
+                      <Text
+                        size="sm"
+                        ff="monospace"
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={ch.title || label}
+                      >
+                        {label}
+                      </Text>
+                      {meta && (
+                        <Text size="xs" c="dimmed" ff="monospace">
+                          {meta}
+                        </Text>
+                      )}
+                    </Stack>
+                    <Tooltip
+                      label={ch.error ?? ""}
+                      disabled={!ch.error}
+                      withArrow
+                      multiline
+                      w={260}
                     >
-                      {label}
-                    </Text>
-                    <Pill tone={statusTone(stage)}>{chapterStageLabel(stage)}</Pill>
+                      <span style={{ display: "inline-flex" }}>
+                        <Pill tone={badge.tone}>{badge.label}</Pill>
+                      </span>
+                    </Tooltip>
                   </Group>
                 );
               })}

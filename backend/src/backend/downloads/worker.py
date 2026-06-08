@@ -15,6 +15,7 @@ from backend.app_config.constants import (
 from backend.downloads import postprocess, service
 from backend.downloads.gallery import Gallery, SkipChapterFn
 from backend.downloads.live_progress import LiveProgress
+from backend.downloads.outcomes import ChapterSeed, reconcile_outcomes
 from backend.downloads.postprocess import (
     FileRecord,
     SeriesMetadata,
@@ -126,7 +127,7 @@ class Worker:
                 self._cancel_flags.pop(job.id, None)
 
     async def _process(self, job: Download) -> None:
-        chapter_names: list[str] = []
+        needed: list[ChapterSeed] = []
         records: list[FileRecord] = []
         exit_code = 1
         cancelled = False
@@ -136,16 +137,22 @@ class Worker:
         chapters_seen: set[str] = set()
         try:
             skip_chapter = await self._build_skip_chapter(job)
-            chapter_names = await self._extract_metadata(job, skip_chapter)
+            needed, discovered = await self._extract_metadata(job, skip_chapter)
             if self._cancel_flags.get(job.id, False):
                 await service.mark_cancelled(self._db, job.id, 0)
                 self._publish(downloads_event("updated", id=job.id, status="cancelled"))
                 return
-            await service.save_manifest(self._db, job.id, chapter_names)
-            self._publish(downloads_event("manifest_ready", id=job.id, files=len(chapter_names)))
+            await service.save_manifest(
+                self._db,
+                job.id,
+                [s.name for s in needed],
+                dates={s.name: s.date for s in needed if s.date},
+                discovered=discovered,
+            )
+            self._publish(downloads_event("manifest_ready", id=job.id, files=len(needed)))
             try:
                 exit_code, records, cancelled = await self._execute_download(
-                    job, skip_chapter, chapters_seen
+                    job, skip_chapter, chapters_seen, needed
                 )
             finally:
                 self._live.clear(job.id)
@@ -197,10 +204,11 @@ class Worker:
 
     async def _extract_metadata(
         self, job: Download, skip_chapter: SkipChapterFn | None
-    ) -> list[str]:
-        """Metadata-only pull: discover the chapter list and seed the target's
-        series_name / status / tags. Skips the per-page enumeration the manifest
-        sim does, so the worker can hand control to the actual download sooner.
+    ) -> tuple[list[ChapterSeed], int]:
+        """Metadata-only pull: discover the chapter list (+ release dates) and
+        seed the target's series_name / status / tags. Returns the needed
+        chapters (after skip-filtering) with their dates, plus the total
+        discovered count.
         """
         meta = await asyncio.to_thread(self._gallery.extract_metadata, job.url)
         if job.target_id is not None and meta.series_name:
@@ -210,20 +218,22 @@ class Worker:
             await targets_service.set_series_status(self._db, job.target_id, meta.series_status)
         if job.target_id is not None and meta.series_tags:
             await targets_service.set_series_tags(self._db, job.target_id, meta.series_tags)
-        chapter_names: list[str] = []
-        for (manga, chapter), _date in meta.chapter_dates.items():
+        needed: list[ChapterSeed] = []
+        for (manga, chapter), date in meta.chapter_dates.items():
             if skip_chapter is not None and manga and chapter and skip_chapter(manga, chapter):
                 continue
-            chapter_names.append(chapter)
-        return chapter_names
+            needed.append(ChapterSeed(name=chapter, date=date))
+        return needed, len(meta.chapter_dates)
 
     async def _execute_download(
         self,
         job: Download,
         skip_chapter: SkipChapterFn | None,
         chapters_seen: set[str],
+        needed: list[ChapterSeed],
     ) -> tuple[int, list[FileRecord], bool]:
-        """Run the real download; return (exit_code, file records, was_cancelled).
+        """Run the real download; reconcile + persist per-chapter outcomes;
+        return (exit_code, file records, was_cancelled).
 
         `chapters_seen` is mutated by the per-file callback so the caller can
         read a live chapter count even if `run_download` raises.
@@ -231,18 +241,21 @@ class Worker:
         await service.mark_running(self._db, job.id)
         self._publish(downloads_event("updated", id=job.id, status="running"))
         self._live.start(job.id)
-        exit_code, records = await asyncio.to_thread(
+        exit_code, records, chapter_errors = await asyncio.to_thread(
             self._gallery.run_download,
             job.url,
             self._make_progress_cb(job.id, chapters_seen),
             skip_chapter,
         )
         cancelled = self._cancel_flags.get(job.id, False)
-        # Prefer chapters_seen (populated by the per-file callback) over
-        # `records` so the count stays correct when run_download surfaces no
-        # records — e.g. extractors whose handle_url path doesn't reach
-        # coerce_record_from_kwdict.
-        present = max(len(chapters_seen), count_present_chapters([r.path for r in records]))
+        outcomes = reconcile_outcomes(needed, records, chapter_errors, exit_code)
+        await service.save_chapter_outcomes(self._db, job.id, outcomes)
+        present = sum(1 for o in outcomes if o.status == "downloaded")
+        if not present:
+            # Fall back to the live/record-derived count when reconciliation
+            # produced no downloaded rows (e.g. extractors with empty chapter
+            # metadata and no records keyed by chapter).
+            present = max(len(chapters_seen), count_present_chapters([r.path for r in records]))
         if cancelled:
             await service.mark_cancelled(self._db, job.id, present)
             self._publish(downloads_event("updated", id=job.id, status="cancelled"))

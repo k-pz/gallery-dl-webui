@@ -29,6 +29,15 @@ async def test_insert_pending_starts_in_pending_state(db: aiosqlite.Connection) 
     assert d.files_expected is None
 
 
+async def test_download_schema_exposes_new_count_fields(db: aiosqlite.Connection) -> None:
+    d = await service.insert_pending(db, "https://example/x", "fake")
+    fetched = await service.get(db, d.id)
+    assert fetched is not None
+    # New optional fields default to None on a fresh row.
+    assert fetched.chapters_discovered is None
+    assert fetched.chapters_failed is None
+
+
 async def test_get_returns_persisted_row(db: aiosqlite.Connection) -> None:
     inserted = await service.insert_pending(db, "https://example/x", None)
     fetched = await service.get(db, inserted.id)
@@ -115,6 +124,73 @@ async def test_save_manifest_replaces_existing(db: aiosqlite.Connection) -> None
     assert fetched is not None
     assert fetched.files_expected == 1
     assert fetched.chapters_total == 1
+
+
+async def test_save_manifest_records_discovered_and_dates(db: aiosqlite.Connection) -> None:
+    d = await service.insert_pending(db, "https://example/x", "fake")
+    await service.save_manifest(db, d.id, ["1", "2"], dates={"1": "2026-01-01"}, discovered=5)
+    fetched = await service.get(db, d.id)
+    assert fetched is not None
+    assert fetched.chapters_total == 2  # needed
+    assert fetched.chapters_discovered == 5
+    outcomes = await service.get_chapter_outcomes(db, d.id)
+    assert [o.name for o in outcomes] == ["1", "2"]
+    assert outcomes[0].status == "pending"
+    assert outcomes[0].date == "2026-01-01"
+
+
+async def test_save_chapter_outcomes_updates_rows_and_counts(db: aiosqlite.Connection) -> None:
+    from backend.downloads.outcomes import ChapterOutcome
+
+    d = await service.insert_pending(db, "https://example/x", "fake")
+    await service.save_manifest(db, d.id, ["1", "2"], discovered=2)
+    await service.save_chapter_outcomes(
+        db,
+        d.id,
+        [
+            ChapterOutcome("1", "downloaded", 12, "Intro", "2026-01-01", None),
+            ChapterOutcome("2", "failed", 0, "", "", "403 Forbidden"),
+        ],
+    )
+    rows = await service.get_chapter_outcomes(db, d.id)
+    by_name = {r.name: r for r in rows}
+    assert by_name["1"].status == "downloaded"
+    assert by_name["1"].pages == 12
+    assert by_name["1"].title == "Intro"
+    assert by_name["2"].status == "failed"
+    assert by_name["2"].error == "403 Forbidden"
+    fetched = await service.get(db, d.id)
+    assert fetched is not None
+    assert fetched.chapters_failed == 1
+
+
+async def test_save_chapter_outcomes_inserts_synthesized_chapter(db: aiosqlite.Connection) -> None:
+    from backend.downloads.outcomes import ChapterOutcome
+
+    d = await service.insert_pending(db, "https://example/x", "fake")
+    await service.save_manifest(db, d.id, [], discovered=0)
+    await service.save_chapter_outcomes(
+        db, d.id, [ChapterOutcome("9", "downloaded", 3, "", "", None)]
+    )
+    rows = await service.get_chapter_outcomes(db, d.id)
+    assert [r.name for r in rows] == ["9"]
+
+
+async def test_reset_to_pending_clears_new_count_columns(db: aiosqlite.Connection) -> None:
+    from backend.downloads.outcomes import ChapterOutcome
+
+    d = await service.insert_pending(db, "https://example/x", "fake")
+    await service.save_manifest(db, d.id, ["1"], discovered=3)
+    await service.save_chapter_outcomes(
+        db, d.id, [ChapterOutcome("1", "failed", 0, "", "", "boom")]
+    )
+    await service.finish_job(db, d.id, exit_code=1, files_downloaded=0)
+    assert await service.reset_to_pending(db, d.id) is True
+    fetched = await service.get(db, d.id)
+    assert fetched is not None
+    assert fetched.chapters_discovered is None
+    assert fetched.chapters_failed is None
+    assert await service.get_chapter_outcomes(db, d.id) == []
 
 
 async def test_mark_running(db: aiosqlite.Connection) -> None:

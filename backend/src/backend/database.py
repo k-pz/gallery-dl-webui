@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS downloads (
     files_downloaded INTEGER NOT NULL DEFAULT 0,
     files_expected INTEGER,
     chapters_total INTEGER,
+    chapters_discovered INTEGER,
+    chapters_failed INTEGER,
     error TEXT,
     postprocess_status TEXT,
     postprocess_chapters_packed INTEGER,
@@ -57,6 +59,11 @@ CREATE TABLE IF NOT EXISTS download_files (
     download_id INTEGER NOT NULL REFERENCES downloads(id) ON DELETE CASCADE,
     idx INTEGER NOT NULL,
     relpath TEXT NOT NULL,
+    status TEXT,
+    pages INTEGER,
+    title TEXT,
+    date TEXT,
+    error TEXT,
     PRIMARY KEY (download_id, idx)
 );
 CREATE INDEX IF NOT EXISTS idx_download_files_download_id
@@ -117,6 +124,10 @@ async def _migrate(db: aiosqlite.Connection) -> None:
         await db.execute("ALTER TABLE downloads ADD COLUMN files_expected INTEGER")
     if "chapters_total" not in cols:
         await db.execute("ALTER TABLE downloads ADD COLUMN chapters_total INTEGER")
+    if "chapters_discovered" not in cols:
+        await db.execute("ALTER TABLE downloads ADD COLUMN chapters_discovered INTEGER")
+    if "chapters_failed" not in cols:
+        await db.execute("ALTER TABLE downloads ADD COLUMN chapters_failed INTEGER")
     if "postprocess_status" not in cols:
         await db.execute("ALTER TABLE downloads ADD COLUMN postprocess_status TEXT")
     if "postprocess_chapters_packed" not in cols:
@@ -131,6 +142,18 @@ async def _migrate(db: aiosqlite.Connection) -> None:
         )
         await _backfill_targets(db)
     await db.execute("CREATE INDEX IF NOT EXISTS idx_downloads_target_id ON downloads(target_id)")
+
+    async with db.execute("PRAGMA table_info(download_files)") as cur:
+        df_cols = {row["name"] for row in await cur.fetchall()}
+    for col, decl in (
+        ("status", "TEXT"),
+        ("pages", "INTEGER"),
+        ("title", "TEXT"),
+        ("date", "TEXT"),
+        ("error", "TEXT"),
+    ):
+        if col not in df_cols:
+            await db.execute(f"ALTER TABLE download_files ADD COLUMN {col} {decl}")
 
     async with db.execute("PRAGMA table_info(targets)") as cur:
         target_cols = {row["name"] for row in await cur.fetchall()}

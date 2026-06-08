@@ -158,3 +158,22 @@ def test_handle_url_is_a_noop():
     )
     assert job._series_box[0] is None
     assert job._dates_box[0] == {}
+
+
+def test_fake_gallery_run_download_returns_chapter_errors():
+    from pathlib import Path
+
+    from backend.config import Settings
+    from tests.fakes import FakeGallery, FakeGalleryConfig
+
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["ch1/001.jpg"]
+    config.chapter_errors_for["https://example/x"] = {"1": "boom"}
+    config.write_files = False
+    settings = Settings(data_dir=Path("/tmp/does-not-matter"))
+    gallery = FakeGallery(settings, config=config)
+
+    result = gallery.run_download("https://example/x")
+    assert isinstance(result, tuple)
+    assert len(result) == 3
+    assert result[2] == {"1": "boom"}

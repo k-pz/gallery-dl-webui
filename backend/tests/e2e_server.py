@@ -83,7 +83,7 @@ class _SlowFakeGallery(FakeGallery):
             ):
                 continue
             records.append(rec)
-        return 0, records
+        return 0, records, dict(self._config.chapter_errors_for.get(url, {}))
 
 
 def _gallery_factory(settings: Settings) -> FakeGallery:
