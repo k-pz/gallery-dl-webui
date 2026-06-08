@@ -65,7 +65,7 @@ export function RecentRow({
           <Text className="app-row-name" size="sm" fw={selected ? 600 : 500} title={displayName}>
             {displayName}
           </Text>
-          <Text size="xs" c="dimmed" ff="monospace" style={{ whiteSpace: "nowrap" }}>
+          <Text size="xs" c="dimmed" ff="monospace">
             {chapterCountLabel(item)}
           </Text>
         </div>
