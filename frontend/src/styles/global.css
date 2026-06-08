@@ -1391,3 +1391,14 @@ a {
   background-color: color-mix(in srgb, var(--app-text) 10%, var(--app-surface));
   box-shadow: none;
 }
+
+/* LogsPanel filter controls — stack one-per-row on phones (was fixed-width). */
+@media (--bp-phone) {
+  .logs-filter-row {
+    width: 100%;
+  }
+  .logs-filter-row > * {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+}

@@ -232,7 +232,7 @@ export function LogsPanel() {
   return (
     <Stack gap="md">
       <Group justify="space-between" align="flex-end" wrap="wrap" gap="md">
-        <Group gap="xs" align="flex-end" wrap="wrap">
+        <Group className="logs-filter-row" gap="xs" align="flex-end" wrap="wrap">
           <NumberInput
             label="Lines"
             value={linesDraft}
@@ -248,7 +248,7 @@ export function LogsPanel() {
             max={MAX_LINES}
             step={100}
             clampBehavior="strict"
-            w={140}
+            miw={120}
             description="History on connect"
           />
           <Select
@@ -257,7 +257,7 @@ export function LogsPanel() {
             value={levelThreshold}
             onChange={(v) => v && setLevelThreshold(v)}
             allowDeselect={false}
-            w={200}
+            miw={180}
           />
           <TextInput
             label="Filter"
@@ -265,7 +265,7 @@ export function LogsPanel() {
             onChange={(e) => setFilter(e.currentTarget.value)}
             placeholder="substring match…"
             leftSection={<IconSearch size={14} />}
-            w={260}
+            style={{ flex: 1, minWidth: 200 }}
           />
         </Group>
         <Group gap="xs" align="center">
