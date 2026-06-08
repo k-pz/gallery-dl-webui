@@ -28,7 +28,9 @@ describe("LibraryBackup import errors", () => {
     const input = container.querySelector('input[type="file"]') as HTMLInputElement;
     await userEvent.upload(input, new File(["x"], "lib.yaml", { type: "text/yaml" }));
 
-    await waitFor(() => expect(screen.getByText(/40 entries had problems/i)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(/40 series could not be imported/i)).toBeInTheDocument(),
+    );
 
     expect(screen.getByText("row 0 failed: bad url")).toBeInTheDocument();
     expect(screen.getByText("row 39 failed: bad url")).toBeInTheDocument();

@@ -68,13 +68,13 @@ export function LibraryBackup() {
         <Alert
           color={importResult.errors.length > 0 ? "yellow" : "green"}
           variant="light"
-          title={`Imported ${importResult.imported}, updated ${importResult.updated}`}
+          title={`Imported ${importResult.imported} series, updated ${importResult.updated}.`}
         >
           {importResult.errors.length === 0 ? (
-            <Text size="sm">Done.</Text>
+            <Text size="sm">Library imported.</Text>
           ) : (
             <Stack gap={4}>
-              <Text size="sm">{importResult.errors.length} entries had problems:</Text>
+              <Text size="sm">{importResult.errors.length} series could not be imported:</Text>
               {/* Mirror UpdateLxcCard's ChangelogList: grow with the error count
                   but cap viewport-relative so a 500-line bad import stays a
                   scrollable panel instead of pushing the whole page down. */}
