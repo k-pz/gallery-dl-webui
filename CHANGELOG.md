@@ -1,3 +1,64 @@
+## v1.2.0 (2026-06-09)
+
+### Feat
+
+- **jobs**: viewport-aware layout — never two-column on phones
+- **maintenance**: expandable result cell
+- **maintenance**: add MaintResultCell expand/collapse component
+- **running-jobs**: mirror URL subtitle for consistent density
+- **css**: respect prefers-reduced-motion
+- 44px pagination controls on phones
+- 44px sort-direction toggle on phones
+- **css**: 44px drawer close button on phones
+- **css**: 44px touch targets for list/toolbar icon buttons on phones
+- **theme**: add breakpoints map mirroring CSS --bp-* tokens
+- **ui**: RecentRow shows failed chapter count
+- **ui**: ProgressCard shows per-chapter outcomes + summary
+- **ui**: status tones + labels for chapter outcomes
+- **downloads**: progress endpoint returns persisted per-chapter truth
+- **downloads**: worker persists discovered count + per-chapter outcomes
+- **downloads**: persist per-chapter outcomes + discovered count
+- **downloads**: capture per-chapter errors during gallery-dl run
+- **downloads**: thread-scoped per-chapter error collector
+- **downloads**: reconcile per-chapter outcomes
+- **downloads**: add verbose-trace fields to schemas
+- **db**: add verbose per-job trace columns
+
+### Fix
+
+- **ui**: address xhigh code-review findings in ux-copy-refinement
+- **maintenance**: restore cancel-job tooltip for consistency with ActiveJobCard
+- **maintenance-log**: label live status instead of raw backend token
+- **job-stepper**: drop decorative icon row on phones
+- **recent-row**: let chapter meta wrap on narrow rows
+- **health-badge**: show 'checking' during load
+- **recent-row**: spell the chapters unit
+- **running-jobs**: spell the chapters unit
+- **progress-card**: align transient labels to lifecycle + (untitled)
+- **maintenance**: label status pill instead of raw backend token
+- **css**: bottom safe-area guard on shell body at phone width
+- **css**: bottom safe-area inset on footnote
+- **css**: top safe-area inset on sticky header
+- **maintenance-log**: scroll expanded log into view
+- **library-backup**: cap import-error list in a scroll area
+- **progress-card**: let chapter list scroll the page on phones
+- **inline-confirm**: wrap message above buttons on phones
+- **update-lxc**: full-width banner buttons on phones
+- **update-lxc**: reflow preview-ref controls on phones
+- **target-row**: reflow expanded controls on phones
+- **recent-list**: reflow status + sort toolbar on phones
+- **logs-panel**: stack filter controls one-per-row on phones
+- **directory-picker**: wrap create-folder controls on phones
+- **submit-form**: wrap URL+Download so the action reflows on phones
+- **css**: hamburger touch target 40->44px
+- **release**: finish release-workflow hardening (#54)
+- **release**: merge rc sections into stable release notes (#53)
+
+### Refactor
+
+- **css**: centralize breakpoints behind postcss-custom-media tokens
+- **downloads**: simplify outcome reconciliation + batch writes
+
 ## v1.1.0 (2026-05-26)
 
 ### Feat
