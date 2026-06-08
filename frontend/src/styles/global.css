@@ -726,6 +726,16 @@ a {
   }
 }
 
+/* Phones: the sort-direction toggle is a primary touch control. */
+@media (--bp-phone) {
+  .sort-dir-toggle {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 /* Collapsible library row — Direction B. Shows status + URL + summary on one
    line. The expanded panel below carries the edit controls. */
 .lib-row {

@@ -21,6 +21,7 @@ export function SortDirToggle({
   return (
     <Tooltip label={`${current} — click for ${after.toLowerCase()}`} withArrow>
       <ActionIcon
+        className="sort-dir-toggle"
         variant="default"
         size="lg"
         onClick={() => onToggle(next)}
