@@ -415,4 +415,49 @@ describe("MaintenancePanel", () => {
     await screen.findByText(/Job #1/);
     expect(screen.getByText(/done: \{renamed: 4\}/)).toBeInTheDocument();
   });
+
+  it("keeps the result payload collapsed by default and expands it inline on tap", async () => {
+    const nextId = { value: 2 };
+    const jobs: Job[] = [
+      {
+        id: 1,
+        kind: "rename_chapters",
+        status: "completed",
+        created_at: "2025-01-01T00:00:00",
+        started_at: "2025-01-01T00:00:01",
+        finished_at: "2025-01-01T00:00:02",
+        result: { renamed: 7 },
+        error: null,
+      },
+    ];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {
+      1: { status: "completed", total: 7, done: 7, lines: ["done"] },
+    };
+    mockFetch(jobsHandler({ jobs, nextId, progress }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    const toggle = await screen.findByRole("button", {
+      name: /expand result for maintenance job 1/i,
+    });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText(/\{"renamed":7\}/)).toBeInTheDocument();
+    expect(screen.queryByTestId("maint-result-full-1")).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("button", { name: /collapse result for maintenance job 1/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("maint-result-full-1")).toHaveTextContent('{"renamed":7}');
+
+    fireEvent.click(screen.getByRole("button", { name: /collapse result for maintenance job 1/i }));
+    expect(
+      screen.getByRole("button", { name: /expand result for maintenance job 1/i }),
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("maint-result-full-1")).not.toBeInTheDocument();
+  });
 });

@@ -220,9 +220,11 @@ export function MaintenancePanel() {
                           <Pill tone={statusTone(job.status)}>{maintStatusLabel(job.status)}</Pill>
                         </Table.Td>
                         <Table.Td>
-                          <Text size="xs" ff="monospace" c="dimmed" className="maint-result">
-                            {job.result ? JSON.stringify(job.result) : (job.error ?? "—")}
-                          </Text>
+                          <MaintResultCell
+                            text={job.result ? JSON.stringify(job.result) : (job.error ?? "—")}
+                            empty={!job.result && !job.error}
+                            jobId={job.id}
+                          />
                         </Table.Td>
                         <Table.Td>
                           {cancellable && (
