@@ -1436,3 +1436,20 @@ a {
     margin-left: auto;
   }
 }
+
+/* Reduced-motion guard. Viewers who ask the OS to minimise motion get the
+   same layout with the movement removed: the skeleton shimmer (app-shimmer)
+   and loading health dot (app-pulse) hold a static frame, the drawer snaps
+   open/closed instead of sliding (the translateX position is preserved — only
+   the transition is killed), and every hover/colour/transform transition
+   collapses to near-instant. Keeping a 0.01ms duration rather than `none`
+   lets transitionend/animationiteration handlers still fire. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
