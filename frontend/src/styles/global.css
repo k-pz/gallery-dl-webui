@@ -1317,6 +1317,16 @@ a {
     width: 0.35rem;
     height: 0.35rem;
   }
+
+  /* The chapter list is a Mantine ScrollArea pinned at h=220 in JS. On a phone
+     a fixed 220px inner window steals the swipe: a vertical drag scrolls five
+     rows instead of the page. Let the list grow with the content and cap it
+     viewport-relative so a long manifest still can't run multi-screen. */
+  .active-job-chapters .mantine-ScrollArea-root,
+  .active-job-chapters .mantine-ScrollArea-viewport {
+    height: auto !important;
+    max-height: 60vh;
+  }
 }
 
 /* Modal scrim + dialog box — themed replacement for native confirm. */
