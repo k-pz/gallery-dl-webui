@@ -65,6 +65,6 @@ describe("RecentRow chapter label", () => {
       />,
     );
     expect(screen.queryByText(/failed/)).not.toBeInTheDocument();
-    expect(screen.getByText("5 ch.")).toBeInTheDocument();
+    expect(screen.getByText("5 chapters")).toBeInTheDocument();
   });
 });
