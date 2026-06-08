@@ -119,7 +119,7 @@ export function ConfigPanel() {
       <Card>
         <Group>
           <Loader size="sm" />
-          <Text>Loading config…</Text>
+          <Text>Loading configuration…</Text>
         </Group>
       </Card>
     );
