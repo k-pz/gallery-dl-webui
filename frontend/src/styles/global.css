@@ -736,6 +736,14 @@ a {
   }
 }
 
+/* Phones: pagination page buttons become real touch targets. */
+@media (--bp-phone) {
+  .list-pagination .mantine-Pagination-control {
+    min-width: 44px;
+    height: 44px;
+  }
+}
+
 /* Collapsible library row — Direction B. Shows status + URL + summary on one
    line. The expanded panel below carries the edit controls. */
 .lib-row {
