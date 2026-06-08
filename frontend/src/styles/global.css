@@ -1402,3 +1402,18 @@ a {
     min-width: 0;
   }
 }
+
+/* InlineConfirm — stack message above the buttons on phones instead of
+   squeezing two tiny buttons to the right. */
+@media (--bp-phone) {
+  .confirm-strip {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .confirm-strip .confirm-msg {
+    flex: 1 1 100%;
+  }
+  .confirm-strip .confirm-actions {
+    margin-left: auto;
+  }
+}
