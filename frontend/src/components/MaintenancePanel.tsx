@@ -1,5 +1,4 @@
 import {
-  ActionIcon,
   Box,
   Button,
   Card,
@@ -10,7 +9,6 @@ import {
   Table,
   Text,
   Title,
-  Tooltip,
   UnstyledButton,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -33,6 +31,7 @@ import {
   IconEyeOff,
   IconFileText,
   IconRefresh,
+  IconX,
 } from "./Icons";
 import { ListPagination } from "./ListPagination";
 import { MaintenanceLog } from "./MaintenanceLog";
@@ -228,22 +227,21 @@ export function MaintenancePanel() {
                         </Table.Td>
                         <Table.Td>
                           {cancellable && (
-                            <Tooltip label="Cancel job" withArrow>
-                              <ActionIcon
-                                variant="subtle"
-                                color="red"
-                                aria-label={`Cancel maintenance job ${job.id}`}
-                                loading={
-                                  cancel.isPending && cancel.variables?.path?.job_id === job.id
-                                }
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  cancel.mutate({ path: { job_id: job.id } });
-                                }}
-                              >
-                                ✕
-                              </ActionIcon>
-                            </Tooltip>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              data-tone="danger"
+                              aria-label={`Cancel maintenance job ${job.id}`}
+                              disabled={
+                                cancel.isPending && cancel.variables?.path?.job_id === job.id
+                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                cancel.mutate({ path: { job_id: job.id } });
+                              }}
+                            >
+                              <IconX size={16} />
+                            </button>
                           )}
                         </Table.Td>
                       </Table.Tr>
