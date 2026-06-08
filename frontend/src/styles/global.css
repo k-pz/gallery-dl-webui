@@ -1260,6 +1260,10 @@ a {
     padding-top: var(--mantine-spacing-md);
     padding-left: var(--mantine-spacing-sm);
     padding-right: var(--mantine-spacing-sm);
+    /* Compose the inset with the phone-width vertical padding in case the
+       footnote is short/absent. (Mantine's inline `py="xl"` shadows this
+       padding-bottom, so .app-footnote is the guaranteed carrier — see E2.) */
+    padding-bottom: max(var(--mantine-spacing-md), env(safe-area-inset-bottom, 0));
   }
   .app-surface.mantine-Card-root {
     padding: 14px;
