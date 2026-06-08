@@ -1,6 +1,5 @@
 import {
   Anchor,
-  Badge,
   Box,
   Button,
   Card,
@@ -26,6 +25,7 @@ import {
 import type { ChangelogEntryOut, MaintenanceJob, UpdateCheckOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { IconAlertTriangle, IconArrowUp, IconInfo } from "./Icons";
+import { Pill } from "./Pill";
 
 /**
  * Pulls the latest source from upstream, rebuilds, and restarts the LXC.
@@ -265,9 +265,9 @@ function UpdateAvailabilityBanner({
               Update available
             </Text>
             {isPreview ? (
-              <Badge color="grape" variant="light" size="sm">
+              <Pill tone="info" noDot>
                 preview · {check.tracked_ref}
-              </Badge>
+              </Pill>
             ) : null}
           </Group>
           {!isPreview && latestVersion ? (
