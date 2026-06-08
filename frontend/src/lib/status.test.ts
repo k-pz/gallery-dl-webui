@@ -6,6 +6,7 @@ import {
   jobStep,
   pickCurrentActiveJobId,
   statusColor,
+  statusTone,
 } from "./status";
 
 describe("statusColor", () => {
@@ -22,6 +23,20 @@ describe("statusColor", () => {
   it("falls back to gray for unknown statuses", () => {
     expect(statusColor("anything-else")).toBe("gray");
     expect(statusColor("")).toBe("gray");
+  });
+});
+
+describe("chapter outcome presentation", () => {
+  it("labels downloaded/skipped/failed chapter outcomes", () => {
+    expect(chapterStageLabel("downloaded")).toBe("Downloaded");
+    expect(chapterStageLabel("skipped")).toBe("Skipped");
+    expect(chapterStageLabel("failed")).toBe("Failed");
+  });
+
+  it("tones failed as error and skipped as muted", () => {
+    expect(statusTone("failed")).toBe("error");
+    expect(statusTone("skipped")).toBe("muted");
+    expect(statusTone("downloaded")).toBe("info");
   });
 });
 

@@ -39,6 +39,7 @@ const STATUS_TONES: Record<string, Tone> = {
   completed: "done",
   failed: "error",
   cancelled: "warn",
+  skipped: "muted",
   [CANCELLING_LABEL]: "warn",
 };
 
@@ -107,6 +108,9 @@ const CHAPTER_STAGE_LABELS: Record<string, string> = {
   downloaded: "Downloaded",
   processing: "Processing",
   completed: "Completed",
+  skipped: "Skipped",
+  failed: "Failed",
+  pending: "Pending",
 };
 
 export function chapterStageLabel(stage: string): string {
