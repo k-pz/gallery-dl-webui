@@ -23,7 +23,7 @@ export function ListPagination({
 }) {
   if (totalPages <= 1) return null;
   return (
-    <Group justify="space-between" align="center" wrap="wrap">
+    <Group className="list-pagination" justify="space-between" align="center" wrap="wrap">
       <Text size="xs" c="dimmed">
         {start + 1}–{end} of {total}
       </Text>

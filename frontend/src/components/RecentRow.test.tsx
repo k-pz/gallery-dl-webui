@@ -65,6 +65,24 @@ describe("RecentRow chapter label", () => {
       />,
     );
     expect(screen.queryByText(/failed/)).not.toBeInTheDocument();
-    expect(screen.getByText("5 ch.")).toBeInTheDocument();
+    expect(screen.getByText("5 chapters")).toBeInTheDocument();
+  });
+
+  it("lets the chapter meta wrap (no inline white-space:nowrap) so it doesn't crowd the row", () => {
+    renderWithProviders(
+      <RecentRow
+        item={makeJob({ chapters_total: 40, postprocess_chapters_packed: 12, chapters_failed: 3 })}
+        selected={false}
+        cancelling={false}
+        inflight={false}
+        isCancelPending={false}
+        isRequeuePending={false}
+        onSelect={noop}
+        onCancel={noop}
+        onRequeue={noop}
+      />,
+    );
+    const meta = screen.getByText(/12\/40 chapters/);
+    expect(meta.style.whiteSpace).toBe("");
   });
 });

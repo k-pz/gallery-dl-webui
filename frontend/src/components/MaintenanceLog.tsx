@@ -9,10 +9,11 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getMaintenanceJobProgressOptions } from "../api/@tanstack/react-query.gen";
 import { useEta } from "../hooks/useEta";
 import { formatEta } from "../lib/eta";
+import { maintStatusLabel } from "../lib/maintenance";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
 import { IconChevronDown } from "./Icons";
 
@@ -41,6 +42,15 @@ export function MaintenanceLog({
     },
   });
   const [expanded, setExpanded] = useState(false);
+
+  // When the user taps "expand" the box jumps to 70vh; on a phone the new top
+  // edge can land above the fold. Pull the freshly-expanded box into view.
+  const logBoxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (expanded) {
+      logBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [expanded]);
 
   const terminal = data ? TERMINAL_STATUSES.has(data.status) : false;
   const eta = useEta({
@@ -75,7 +85,7 @@ export function MaintenanceLog({
             Job #{jobId}
           </Text>
           <Badge color={STATUS_COLOR[data.status] ?? "gray"} variant="light" size="sm">
-            {data.status}
+            {maintStatusLabel(data.status)}
           </Badge>
         </Group>
         <Group gap="sm" align="center">
@@ -98,6 +108,7 @@ export function MaintenanceLog({
       </Group>
       <Progress value={pct} size="md" radius="sm" striped={!terminal} animated={!terminal} />
       <Box
+        ref={logBoxRef}
         style={{
           border: "1px solid var(--app-border-subtle)",
           borderRadius: "var(--mantine-radius-md)",

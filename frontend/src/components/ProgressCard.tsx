@@ -95,8 +95,8 @@ export function ProgressCard({
   const pct = totalChapters > 0 ? (settledChapters / totalChapters) * 100 : 0;
 
   let rightLabel: string;
-  if (!manifestReady) rightLabel = "preparing…";
-  else if (packing) rightLabel = `packing… · ${settledChapters} / ${totalChapters}`;
+  if (!manifestReady) rightLabel = "fetching…";
+  else if (packing) rightLabel = `processing… · ${settledChapters} / ${totalChapters} chapters`;
   else if (eta.kind === "eta") {
     rightLabel = `~${formatEta(eta.remainingMs)} · ${settledChapters} / ${totalChapters} chapters`;
   } else rightLabel = `${settledChapters} / ${totalChapters} chapters`;
@@ -142,7 +142,7 @@ export function ProgressCard({
             <Stack gap={0} p="xs">
               {data.chapters.map((ch, i) => {
                 const badge = chapterBadge(ch);
-                const label = ch.name || "(root)";
+                const label = ch.name || "(untitled)";
                 const meta = [ch.pages ? `${ch.pages}p` : null, ch.date || null]
                   .filter(Boolean)
                   .join(" · ");

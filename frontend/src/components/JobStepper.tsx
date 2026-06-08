@@ -19,15 +19,17 @@ export function JobStepper({ job }: { job: { status: string; step: ReturnType<ty
   const cancelling = step.kind === "cancelling";
   return (
     <Box className="active-job-stepper">
-      <Stepper active={active} size="xs" iconSize={20} color={cancelling ? "orange" : undefined}>
-        {JOB_STEPS.map((label, i) => (
-          <Stepper.Step
-            key={label}
-            label={label}
-            loading={step.kind === "running" && i === step.index}
-          />
-        ))}
-      </Stepper>
+      <Box className="active-job-stepper-track">
+        <Stepper active={active} size="xs" iconSize={20} color={cancelling ? "orange" : undefined}>
+          {JOB_STEPS.map((label, i) => (
+            <Stepper.Step
+              key={label}
+              label={label}
+              loading={step.kind === "running" && i === step.index}
+            />
+          ))}
+        </Stepper>
+      </Box>
       <Text className="active-job-step-caption" size="xs" c="dimmed">
         Step {Math.min(currentIndex + 1, JOB_STEPS.length)} of {JOB_STEPS.length} — {currentLabel}
       </Text>

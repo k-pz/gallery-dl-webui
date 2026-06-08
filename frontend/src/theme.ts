@@ -59,6 +59,22 @@ export const theme = createTheme({
   white: "#fbf7f0",
   black: "#1a160e",
   colors: { amber, ink },
+  // JS-side source of truth for viewport-aware components (useMediaQuery).
+  // Mantine's default keys are kept so Container/size lookups are unchanged;
+  // the app tokens mirror the `@custom-media --bp-*` values in
+  // styles/global.css (px → em at base 16). 480 is intentionally absent: it is
+  // a row-local `@container` threshold, not a viewport breakpoint.
+  breakpoints: {
+    xs: "36em",
+    sm: "48em",
+    md: "62em",
+    lg: "75em",
+    xl: "88em",
+    phone: "33.75em", // 540px — --bp-phone
+    maint: "40em", //    640px — --bp-maint
+    nav: "48em", //      768px — --bp-nav
+    split: "55em", //    880px — --bp-split
+  },
   headings: {
     fontFamily: serifStack,
     fontWeight: "500",

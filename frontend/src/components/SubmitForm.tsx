@@ -77,7 +77,7 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
   const submit = () => {
     const trimmed = url.trim();
     if (!trimmed) {
-      setSubmitError("url is required");
+      setSubmitError("Enter a gallery URL.");
       return;
     }
     mutation.mutate({
@@ -98,11 +98,11 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
       <Stack gap="lg">
         <Stack gap={4}>
           <span className="app-section-kicker">new job</span>
-          <Title order={3}>Add a gallery</Title>
+          <Title order={3}>Add a series</Title>
         </Stack>
-        <Group align="flex-end" gap="sm" wrap="nowrap">
+        <Group align="flex-end" gap="sm" wrap="wrap">
           <TextInput
-            style={{ flex: 1 }}
+            style={{ flex: 1, minWidth: 220 }}
             label="Gallery URL"
             placeholder="https://mangadex.org/title/…"
             value={url}
@@ -115,7 +115,12 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
             disabled={mutation.isPending}
             size="md"
           />
-          <Button onClick={submit} loading={mutation.isPending} size="md">
+          <Button
+            onClick={submit}
+            loading={mutation.isPending}
+            size="md"
+            style={{ flexGrow: 1, minWidth: 140 }}
+          >
             Download
           </Button>
         </Group>
@@ -152,7 +157,7 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
           <TagsInput
             label="Tags"
             placeholder="Enter to add — e.g. action, romance"
-            description="Applied to series.json + ComicInfo. Existing tags are replaced on every submit."
+            description="Written into this series' metadata (series.json + ComicInfo.xml). Submitting again replaces this series' tags only — other series are untouched."
             value={tags}
             onChange={setTags}
             disabled={mutation.isPending}
@@ -160,7 +165,7 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
           />
           <Select
             label="Reading direction"
-            description="RTL becomes ComicInfo Manga=YesAndRightToLeft."
+            description="Right-to-left tells the reader to page backwards (written into ComicInfo.xml as Manga=YesAndRightToLeft)."
             value={readingDirection}
             onChange={(v) => {
               if (!v) return;
@@ -174,7 +179,7 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
         </Group>
         <Checkbox
           label="Watch"
-          description="Re-poll this gallery on the default cadence for new chapters."
+          description="Check for new chapters on a repeating schedule (the default cadence set in Config)."
           checked={watched}
           onChange={(e) => setWatched(e.currentTarget.checked)}
           disabled={mutation.isPending}

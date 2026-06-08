@@ -34,7 +34,7 @@ export function InlineConfirm({
         style={{ color: "var(--tone-error)", flexShrink: 0, marginTop: 2 }}
       />
       <div className="confirm-msg">{message}</div>
-      <Group gap="xs" wrap="nowrap">
+      <Group className="confirm-actions" gap="xs" wrap="nowrap">
         <Button size="xs" variant="subtle" color="gray" onClick={onCancel} disabled={loading}>
           {cancelLabel}
         </Button>

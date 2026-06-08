@@ -119,7 +119,7 @@ export function ConfigPanel() {
       <Card>
         <Group>
           <Loader size="sm" />
-          <Text>Loading config…</Text>
+          <Text>Loading configuration…</Text>
         </Group>
       </Card>
     );
@@ -188,7 +188,13 @@ export function ConfigPanel() {
             />
             <TextInput
               label="Chapter naming template"
-              description="Jinja2 template variables: series, manga, chapter, chapter_number, title, volume, lang, author, date."
+              description={
+                <>
+                  Names each CBZ from a Jinja2 template. Example:{" "}
+                  <Code>{"{{ series }} - {{ chapter }} - {{ title }}"}</Code>. Variables: series,
+                  manga, chapter, chapter_number, title, volume, lang, author, date.
+                </>
+              }
               value={chapterTemplate}
               onChange={(e) => setChapterTemplate(e.currentTarget.value)}
               disabled={mutation.isPending}
@@ -239,7 +245,7 @@ export function ConfigPanel() {
           <FormSection
             kicker="concurrency"
             title="Parallelism"
-            description="Applied at startup. Bumping this speeds up CBZ packing inside one job but adds disk I/O."
+            description="Restart the service to apply a change here. A higher value packs more CBZs at once within a single job — faster, but with heavier disk I/O."
           >
             <NumberInput
               label="Max parallel postprocess"

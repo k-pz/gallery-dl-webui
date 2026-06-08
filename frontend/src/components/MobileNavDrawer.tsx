@@ -8,7 +8,7 @@ const NAV_ITEMS: { key: NavKey; label: string; icon: ReactNode }[] = [
   { key: "library", label: "Library", icon: <IconLibrary size={20} /> },
   { key: "jobs", label: "Jobs", icon: <IconActivity size={20} /> },
   { key: "config", label: "Config", icon: <IconSliders size={20} /> },
-  { key: "maintenance", label: "Maintain", icon: <IconWrench size={20} /> },
+  { key: "maintenance", label: "Maintenance", icon: <IconWrench size={20} /> },
   { key: "logs", label: "Logs", icon: <IconFileText size={20} /> },
 ];
 
@@ -58,7 +58,7 @@ export function MobileNavDrawer({
       />
       <aside className="mob-drawer" role="dialog" aria-modal="true" aria-label="Primary navigation">
         <div className="mob-drawer-head">
-          <span className="mob-drawer-title">Navigate</span>
+          <span className="mob-drawer-title">Sections</span>
           <button
             type="button"
             className="mob-drawer-close"

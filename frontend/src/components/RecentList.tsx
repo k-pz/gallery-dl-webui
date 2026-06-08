@@ -197,10 +197,11 @@ export function RecentList({
               ]}
               value={statusFilter}
               onChange={(v) => setStatusFilter((v as StatusFilter) ?? "any")}
-              w={140}
+              miw={130}
+              style={{ flex: "1 1 130px" }}
               comboboxProps={{ withinPortal: true }}
             />
-            <Group gap={4} align="flex-end" wrap="nowrap">
+            <Group gap={4} align="flex-end" wrap="nowrap" style={{ flex: "1 1 180px" }}>
               <Select
                 label="Sort by"
                 data={[
@@ -210,7 +211,7 @@ export function RecentList({
                 ]}
                 value={sortKey}
                 onChange={(v) => setSortKey((v as SortKey) ?? "queue")}
-                w={150}
+                style={{ flex: 1 }}
                 comboboxProps={{ withinPortal: true }}
               />
               <SortDirToggle dir={sortDir} sortKey={sortKey} onToggle={setSortDir} />

@@ -1,4 +1,4 @@
-import { Alert, Button, FileButton, Group, List, Stack, Text } from "@mantine/core";
+import { Alert, Button, FileButton, Group, List, ScrollArea, Stack, Text } from "@mantine/core";
 import { useState } from "react";
 import type { LibraryImportResult } from "../api/types.gen";
 import { useDataInvalidators } from "../lib/invalidate";
@@ -68,18 +68,23 @@ export function LibraryBackup() {
         <Alert
           color={importResult.errors.length > 0 ? "yellow" : "green"}
           variant="light"
-          title={`Imported ${importResult.imported}, updated ${importResult.updated}`}
+          title={`Imported ${importResult.imported} series, updated ${importResult.updated}.`}
         >
           {importResult.errors.length === 0 ? (
-            <Text size="sm">Done.</Text>
+            <Text size="sm">Library imported.</Text>
           ) : (
             <Stack gap={4}>
-              <Text size="sm">{importResult.errors.length} entries had problems:</Text>
-              <List size="sm" withPadding>
-                {importResult.errors.map((e) => (
-                  <List.Item key={e}>{e}</List.Item>
-                ))}
-              </List>
+              <Text size="sm">{importResult.errors.length} series could not be imported:</Text>
+              {/* Mirror UpdateLxcCard's ChangelogList: grow with the error count
+                  but cap viewport-relative so a 500-line bad import stays a
+                  scrollable panel instead of pushing the whole page down. */}
+              <ScrollArea.Autosize mah="min(40vh, 320px)" type="auto">
+                <List size="sm" withPadding>
+                  {importResult.errors.map((e) => (
+                    <List.Item key={e}>{e}</List.Item>
+                  ))}
+                </List>
+              </ScrollArea.Autosize>
             </Stack>
           )}
         </Alert>

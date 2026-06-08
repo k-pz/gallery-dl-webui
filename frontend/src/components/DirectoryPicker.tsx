@@ -80,7 +80,7 @@ export function DirectoryPicker({
   const submitCreate = () => {
     const trimmed = createPath.trim();
     if (!trimmed) {
-      setCreateError("path is required");
+      setCreateError("Enter a folder name.");
       return;
     }
     setCreateError(null);
@@ -125,9 +125,9 @@ export function DirectoryPicker({
           style={{ backgroundColor: "var(--app-surface-muted)" }}
         >
           <Stack gap="xs">
-            <Group align="flex-end" gap="xs" wrap="nowrap">
+            <Group align="flex-end" gap="xs" wrap="wrap">
               <TextInput
-                style={{ flex: 1 }}
+                style={{ flex: 1, minWidth: 200 }}
                 label="New folder name"
                 description="A single folder under the root — no slashes."
                 placeholder="manga"
@@ -138,7 +138,7 @@ export function DirectoryPicker({
                   if (e.key === "Enter") submitCreate();
                 }}
               />
-              <Button onClick={submitCreate} loading={create.isPending}>
+              <Button onClick={submitCreate} loading={create.isPending} style={{ flexGrow: 1 }}>
                 Create
               </Button>
               <Button

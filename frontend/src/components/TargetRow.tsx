@@ -93,7 +93,7 @@ export function TargetRow({
     },
     {
       success: { title: "Series removed", message: target.url, color: "gray" },
-      error: { title: "Delete failed" },
+      error: { title: "Remove failed" },
     },
   );
 
@@ -211,7 +211,7 @@ export function TargetRow({
               <IconPlay size={14} />
             </button>
           </Tooltip>
-          <Tooltip label="Remove from library" withArrow>
+          <Tooltip label="Remove series" withArrow>
             <button
               type="button"
               className="icon-btn"
@@ -294,7 +294,8 @@ export function TargetRow({
                   ? "Per-target override. Clear to fall back."
                   : `Default: ${defaultPeriod}`
               }
-              w={170}
+              miw={150}
+              style={{ flex: "1 1 170px" }}
               error={periodError ?? undefined}
             />
             <Select
@@ -308,7 +309,8 @@ export function TargetRow({
                 })
               }
               disabled={update.isPending}
-              w={180}
+              miw={150}
+              style={{ flex: "1 1 180px" }}
               comboboxProps={{ withinPortal: true }}
               allowDeselect={false}
             />
@@ -323,7 +325,8 @@ export function TargetRow({
                 })
               }
               disabled={update.isPending}
-              w={160}
+              miw={150}
+              style={{ flex: "1 1 160px" }}
               comboboxProps={{ withinPortal: true }}
               allowDeselect={false}
             />

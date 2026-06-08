@@ -8,7 +8,7 @@ import { getHealthOptions } from "../api/@tanstack/react-query.gen";
  * diagnostic rather than promotional.
  */
 export function HealthBadge() {
-  const { data, isLoading, error } = useQuery(getHealthOptions());
+  const { data, error } = useQuery(getHealthOptions());
 
   let state: "loading" | "ok" | "down" = "loading";
   let label = "checking";
@@ -26,8 +26,8 @@ export function HealthBadge() {
       <span>backend</span>
       {/* The e2e tests look for the literal "ok" badge text inside the
           element labelled "backend", so we keep the raw status string. */}
-      {!isLoading && <span>·</span>}
-      {!isLoading && <span>{label}</span>}
+      <span>·</span>
+      <span>{label}</span>
     </span>
   );
 }

@@ -342,6 +342,34 @@ describe("MaintenancePanel", () => {
     await screen.findByText(/update queued/i);
   });
 
+  it("renders the maintenance status as a cased label, not the raw token", async () => {
+    const nextId = { value: 2 };
+    const jobs: Job[] = [
+      {
+        id: 1,
+        kind: "rename_chapters",
+        status: "completed",
+        created_at: "2025-01-01T00:00:00",
+        started_at: "2025-01-01T00:00:01",
+        finished_at: "2025-01-01T00:00:02",
+        result: { renamed: 1 },
+        error: null,
+      },
+    ];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {
+      1: { status: "completed", total: 5, done: 5, lines: ["done"] },
+    };
+    mockFetch(jobsHandler({ jobs, nextId, progress }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    expect(await screen.findByText("Completed")).toBeInTheDocument();
+    expect(screen.queryByText("completed")).not.toBeInTheDocument();
+  });
+
   it("switches the log to the row the user clicks", async () => {
     const nextId = { value: 3 };
     const jobs: Job[] = [
@@ -386,5 +414,128 @@ describe("MaintenancePanel", () => {
     fireEvent.click(within(row1).getByText("1"));
     await screen.findByText(/Job #1/);
     expect(screen.getByText(/done: \{renamed: 4\}/)).toBeInTheDocument();
+  });
+
+  it("renders '—' with no expand toggle for a completed job with null result and null error", async () => {
+    const nextId = { value: 2 };
+    const jobs: Job[] = [
+      {
+        id: 1,
+        kind: "rename_chapters",
+        status: "completed",
+        created_at: "2025-01-01T00:00:00",
+        started_at: "2025-01-01T00:00:01",
+        finished_at: "2025-01-01T00:00:02",
+        result: null,
+        error: null,
+      },
+    ];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {
+      1: { status: "completed", total: 1, done: 1, lines: ["done"] },
+    };
+    mockFetch(jobsHandler({ jobs, nextId, progress }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    await screen.findByText("rename_chapters");
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /expand result/i })).not.toBeInTheDocument();
+  });
+
+  it("expand-result toggle stopPropagation: clicking expand on a non-selected row does not change selected log", async () => {
+    const nextId = { value: 3 };
+    const jobs: Job[] = [
+      {
+        id: 2,
+        kind: "rename_chapters",
+        status: "running",
+        created_at: "2025-01-02T00:00:00",
+        started_at: "2025-01-02T00:00:01",
+        finished_at: null,
+        result: null,
+        error: "some error on job 2",
+      },
+      {
+        id: 1,
+        kind: "rename_chapters",
+        status: "completed",
+        created_at: "2025-01-01T00:00:00",
+        started_at: "2025-01-01T00:00:01",
+        finished_at: "2025-01-01T00:00:02",
+        result: { renamed: 3 },
+        error: null,
+      },
+    ];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {
+      2: { status: "running", total: 5, done: 1, lines: ["working"] },
+      1: { status: "completed", total: 3, done: 3, lines: ["done"] },
+    };
+    mockFetch(jobsHandler({ jobs, nextId, progress }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    // Auto-selected log is for job 2 (most recent).
+    await screen.findByText(/Job #2/);
+
+    // Expand the result cell on job 1 (non-selected row).
+    const expandJob1 = screen.getByRole("button", {
+      name: /expand result for maintenance job 1/i,
+    });
+    fireEvent.click(expandJob1);
+
+    // The log header should still show Job #2 — stopPropagation prevented row selection.
+    expect(screen.getByText(/Job #2/)).toBeInTheDocument();
+    expect(screen.queryByText(/Job #1/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the result payload collapsed by default and expands it inline on tap", async () => {
+    const nextId = { value: 2 };
+    const jobs: Job[] = [
+      {
+        id: 1,
+        kind: "rename_chapters",
+        status: "completed",
+        created_at: "2025-01-01T00:00:00",
+        started_at: "2025-01-01T00:00:01",
+        finished_at: "2025-01-01T00:00:02",
+        result: { renamed: 7 },
+        error: null,
+      },
+    ];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {
+      1: { status: "completed", total: 7, done: 7, lines: ["done"] },
+    };
+    mockFetch(jobsHandler({ jobs, nextId, progress }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    const toggle = await screen.findByRole("button", {
+      name: /expand result for maintenance job 1/i,
+    });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText(/\{"renamed":7\}/)).toBeInTheDocument();
+    expect(screen.queryByTestId("maint-result-full-1")).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("button", { name: /collapse result for maintenance job 1/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("maint-result-full-1")).toHaveTextContent('{"renamed":7}');
+
+    fireEvent.click(screen.getByRole("button", { name: /collapse result for maintenance job 1/i }));
+    expect(
+      screen.getByRole("button", { name: /expand result for maintenance job 1/i }),
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("maint-result-full-1")).not.toBeInTheDocument();
   });
 });

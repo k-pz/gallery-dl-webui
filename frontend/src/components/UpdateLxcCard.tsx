@@ -1,6 +1,5 @@
 import {
   Anchor,
-  Badge,
   Box,
   Button,
   Card,
@@ -26,6 +25,7 @@ import {
 import type { ChangelogEntryOut, MaintenanceJob, UpdateCheckOut } from "../api/types.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { IconAlertTriangle, IconArrowUp, IconInfo } from "./Icons";
+import { Pill } from "./Pill";
 
 /**
  * Pulls the latest source from upstream, rebuilds, and restarts the LXC.
@@ -175,12 +175,13 @@ export function UpdateLxcCard({
             </Stack>
           </Box>
         ) : !armed ? (
-          <Group>
+          <Group wrap="wrap">
             <Button
               variant="light"
               leftSection={<IconArrowUp size={14} />}
               onClick={() => setArmed(true)}
               loading={scheduling}
+              style={{ flexGrow: 1, minWidth: 140 }}
             >
               Update LXC…
             </Button>
@@ -195,10 +196,16 @@ export function UpdateLxcCard({
               leftSection={<IconArrowUp size={14} />}
               onClick={confirm}
               loading={scheduling}
+              style={{ flexGrow: 1, minWidth: 160 }}
             >
               Yes, update now
             </Button>
-            <Button variant="subtle" color="gray" onClick={() => setArmed(false)}>
+            <Button
+              variant="subtle"
+              color="gray"
+              onClick={() => setArmed(false)}
+              style={{ flexGrow: 1, minWidth: 100 }}
+            >
               Cancel
             </Button>
           </Group>
@@ -258,9 +265,9 @@ function UpdateAvailabilityBanner({
               Update available
             </Text>
             {isPreview ? (
-              <Badge color="grape" variant="light" size="sm">
+              <Pill tone="info" noDot>
                 preview · {check.tracked_ref}
-              </Badge>
+              </Pill>
             ) : null}
           </Group>
           {!isPreview && latestVersion ? (
@@ -493,7 +500,7 @@ function PreviewRefControl({
               save();
             }
           }}
-          style={{ flex: 1, minWidth: 220 }}
+          style={{ flex: "1 1 220px", minWidth: 200 }}
           disabled={setMutation.isPending}
         />
         <Select
@@ -510,7 +517,8 @@ function PreviewRefControl({
           clearable={false}
           disabled={setMutation.isPending || tagOptions.length === 0}
           comboboxProps={{ withinPortal: true }}
-          w={180}
+          miw={150}
+          style={{ flex: "1 1 180px" }}
         />
         <Button variant="light" onClick={save} loading={setMutation.isPending} disabled={!isDirty}>
           Save

@@ -13,8 +13,8 @@ function progressLabel(item: Download): string {
   const total = item.chapters_total;
   if (total != null) {
     const packed = item.postprocess_chapters_packed;
-    if (packed != null) return `${packed}/${total} ch.`;
-    return `${total} ch.`;
+    if (packed != null) return `${packed}/${total} chapters`;
+    return `${total} chapters`;
   }
   if (item.files_expected != null) {
     return `${item.files_downloaded}/${item.files_expected}`;
@@ -87,6 +87,7 @@ function RunningRow({
 }) {
   const step = jobStep(item.status, item.postprocess_status, false);
   const displayName = item.name ?? item.url;
+  const showUrlSubtitle = Boolean(item.name);
   const dim = downloadEtaDimension(item);
   const eta = useEta({
     resetKey: `dl:${item.id}:${dim.phaseKey}`,
@@ -133,6 +134,11 @@ function RunningRow({
             {progressLabel(item)}
           </Text>
         </div>
+        {showUrlSubtitle && (
+          <Text className="app-url app-row-url" title={item.url}>
+            {item.url}
+          </Text>
+        )}
       </Stack>
     </Box>
   );

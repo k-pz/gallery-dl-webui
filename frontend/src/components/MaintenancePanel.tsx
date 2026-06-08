@@ -1,5 +1,4 @@
 import {
-  ActionIcon,
   Box,
   Button,
   Card,
@@ -11,6 +10,7 @@ import {
   Text,
   Title,
   Tooltip,
+  UnstyledButton,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -21,11 +21,19 @@ import {
   scheduleMaintenanceJobMutation,
 } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
-import { KIND_LABEL, TERMINAL_STATUSES } from "../lib/maintenance";
+import { KIND_LABEL, maintStatusLabel, TERMINAL_STATUSES } from "../lib/maintenance";
 import { usePagination } from "../lib/pagination";
 import { statusTone } from "../lib/status";
 import { EmptyState } from "./EmptyState";
-import { IconAlertTriangle, IconClock, IconEyeOff, IconFileText, IconRefresh } from "./Icons";
+import {
+  IconAlertTriangle,
+  IconChevronDown,
+  IconClock,
+  IconEyeOff,
+  IconFileText,
+  IconRefresh,
+  IconX,
+} from "./Icons";
 import { ListPagination } from "./ListPagination";
 import { MaintenanceLog } from "./MaintenanceLog";
 import { Pill } from "./Pill";
@@ -72,8 +80,8 @@ export function MaintenancePanel() {
             <span className="app-section-kicker">postprocessing</span>
             <Title order={3}>Schedule maintenance</Title>
             <Text size="sm" c="dimmed">
-              One-off jobs that fan out over the library: rename CBZs, refresh series metadata. Safe
-              and idempotent.
+              One-off jobs that sweep the whole library: rename CBZs, refresh series metadata. Safe
+              to run repeatedly (idempotent) — re-running won't double up or undo earlier runs.
             </Text>
           </Stack>
           <Group wrap="wrap">
@@ -150,7 +158,7 @@ export function MaintenancePanel() {
             <EmptyState
               icon={<IconClock size={20} />}
               title="No maintenance jobs yet"
-              body="Scheduled background jobs (rename, regenerate, rebuild) and their results show up here."
+              body="Jobs you schedule above — and what they did — show up here."
             />
           )}
           {jobList.length > 0 && (
@@ -209,21 +217,24 @@ export function MaintenancePanel() {
                           </Stack>
                         </Table.Td>
                         <Table.Td>
-                          <Pill tone={statusTone(job.status)}>{job.status}</Pill>
+                          <Pill tone={statusTone(job.status)}>{maintStatusLabel(job.status)}</Pill>
                         </Table.Td>
                         <Table.Td>
-                          <Text size="xs" ff="monospace" c="dimmed" className="maint-result">
-                            {job.result ? JSON.stringify(job.result) : (job.error ?? "—")}
-                          </Text>
+                          <MaintResultCell
+                            text={job.result ? JSON.stringify(job.result) : (job.error ?? "—")}
+                            empty={!job.result && !job.error}
+                            jobId={job.id}
+                          />
                         </Table.Td>
                         <Table.Td>
                           {cancellable && (
                             <Tooltip label="Cancel job" withArrow>
-                              <ActionIcon
-                                variant="subtle"
-                                color="red"
+                              <button
+                                type="button"
+                                className="icon-btn"
+                                data-tone="danger"
                                 aria-label={`Cancel maintenance job ${job.id}`}
-                                loading={
+                                disabled={
                                   cancel.isPending && cancel.variables?.path?.job_id === job.id
                                 }
                                 onClick={(e) => {
@@ -231,8 +242,8 @@ export function MaintenancePanel() {
                                   cancel.mutate({ path: { job_id: job.id } });
                                 }}
                               >
-                                ✕
-                              </ActionIcon>
+                                <IconX size={16} />
+                              </button>
                             </Tooltip>
                           )}
                         </Table.Td>
@@ -263,6 +274,58 @@ export function MaintenancePanel() {
           )}
         </Stack>
       </Card>
+    </Stack>
+  );
+}
+
+function MaintResultCell({ text, empty, jobId }: { text: string; empty: boolean; jobId: number }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // No payload and no error: nothing to expand, just the placeholder.
+  if (empty) {
+    return (
+      <Text size="xs" ff="monospace" c="dimmed">
+        {text}
+      </Text>
+    );
+  }
+
+  return (
+    <Stack gap={4} className="maint-result-wrap">
+      {expanded ? (
+        <Text
+          size="xs"
+          ff="monospace"
+          c="dimmed"
+          className="maint-result maint-result-full"
+          data-testid={`maint-result-full-${jobId}`}
+        >
+          {text}
+        </Text>
+      ) : (
+        <Text size="xs" ff="monospace" c="dimmed" className="maint-result">
+          {text}
+        </Text>
+      )}
+      <UnstyledButton
+        className="maint-result-toggle"
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpanded((v) => !v);
+        }}
+        aria-expanded={expanded}
+        aria-label={
+          expanded
+            ? `Collapse result for maintenance job ${jobId}`
+            : `Expand result for maintenance job ${jobId}`
+        }
+        data-expanded={expanded ? "true" : undefined}
+      >
+        <Text size="xs" c="dimmed" ff="monospace">
+          {expanded ? "collapse" : "expand"}
+        </Text>
+        <IconChevronDown size={14} className="maint-result-toggle-chev" />
+      </UnstyledButton>
     </Stack>
   );
 }

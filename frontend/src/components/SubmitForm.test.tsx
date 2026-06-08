@@ -203,7 +203,7 @@ describe("SubmitForm", () => {
     renderWithProviders(<SubmitForm onCreated={onCreated} />);
     await userEvent.click(screen.getByRole("button", { name: /download/i }));
 
-    expect(await screen.findByText(/url is required/i)).toBeInTheDocument();
+    expect(await screen.findByText(/enter a gallery url\./i)).toBeInTheDocument();
     expect(findCall(fetchSpy, (i, init) => methodOf(i, init) === "POST")).toBeUndefined();
     expect(onCreated).not.toHaveBeenCalled();
   });
