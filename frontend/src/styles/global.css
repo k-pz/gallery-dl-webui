@@ -1131,6 +1131,16 @@ a {
   color: var(--app-text);
 }
 
+/* Phones: the drawer is touch-only, so its close affordance gets the full
+   44px target. */
+@media (--bp-phone) {
+  .mob-drawer-close {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+  }
+}
+
 .mob-drawer-nav {
   flex: 1;
   padding: 12px 10px;
