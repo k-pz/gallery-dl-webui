@@ -8,8 +8,9 @@ function chapterCountLabel(item: Download): string {
   const total = item.chapters_total;
   if (total == null) return "—";
   const packed = item.postprocess_chapters_packed;
-  if (packed != null) return `${packed}/${total} ch.`;
-  return `${total} ch.`;
+  const base = packed != null ? `${packed}/${total} ch.` : `${total} ch.`;
+  const failed = item.chapters_failed ?? 0;
+  return failed > 0 ? `${base} · ${failed} failed` : base;
 }
 
 export function RecentRow({
