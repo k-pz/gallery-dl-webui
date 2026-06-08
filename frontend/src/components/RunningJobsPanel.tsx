@@ -87,6 +87,7 @@ function RunningRow({
 }) {
   const step = jobStep(item.status, item.postprocess_status, false);
   const displayName = item.name ?? item.url;
+  const showUrlSubtitle = Boolean(item.name);
   const dim = downloadEtaDimension(item);
   const eta = useEta({
     resetKey: `dl:${item.id}:${dim.phaseKey}`,
@@ -133,6 +134,11 @@ function RunningRow({
             {progressLabel(item)}
           </Text>
         </div>
+        {showUrlSubtitle && (
+          <Text className="app-url app-row-url" title={item.url}>
+            {item.url}
+          </Text>
+        )}
       </Stack>
     </Box>
   );
