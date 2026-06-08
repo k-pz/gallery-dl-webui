@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -10,6 +11,7 @@ from gallery_dl.exception import StopExtraction
 from gallery_dl.job import DownloadJob, SimulationJob
 
 from backend.config import Settings
+from backend.downloads.capture import ChapterErrorCollector
 from backend.downloads.postprocess import (
     FileRecord,
     chapter_with_minor,
@@ -84,6 +86,7 @@ class _ProgressDownloadJob(DownloadJob):
     _downloads_base: str
     _records: list[FileRecord]
     _skip_chapter: SkipChapterFn | None
+    _chapter_ctx: list[str]
 
     def __init__(
         self,
@@ -102,14 +105,25 @@ class _ProgressDownloadJob(DownloadJob):
             "_downloads_base",
             "_records",
             "_skip_chapter",
+            "_chapter_ctx",
         ):
             assert on_file_complete is not None and downloads_base is not None
             self._on_file_complete = on_file_complete
             self._downloads_base = downloads_base
             self._records = []
             self._skip_chapter = skip_chapter
+            self._chapter_ctx = [""]
+
+    def handle_directory(self, kwdict: dict[str, Any]) -> None:
+        chapter = chapter_with_minor(kwdict)
+        if chapter:
+            self._chapter_ctx[0] = chapter
+        super().handle_directory(kwdict)
 
     def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
+        chapter_ctx = chapter_with_minor(kwdict)
+        if chapter_ctx:
+            self._chapter_ctx[0] = chapter_ctx
         if self._skip_chapter is not None:
             manga = str(kwdict.get("manga") or "")
             chapter = chapter_with_minor(kwdict)
@@ -292,16 +306,19 @@ class Gallery:
         url: str,
         on_file_complete: Callable[[str], None] | None = None,
         skip_chapter: SkipChapterFn | None = None,
-    ) -> tuple[int, list[FileRecord]]:
-        """Run a real download. Returns (exit_code, per-file metadata records).
+    ) -> tuple[int, list[FileRecord], dict[str, str]]:
+        """Run a real download. Returns (exit_code, per-file metadata records,
+        per-chapter error reasons).
 
         Records are only collected when an `on_file_complete` callback is
         supplied (the worker always supplies one); otherwise the list is empty.
         `skip_chapter`, when set, causes the download job to short-circuit
-        URLs whose chapter the callable says is already packed.
+        URLs whose chapter the callable says is already packed. Per-chapter
+        errors are captured by a logging handler attached to the root logger
+        for the duration of the run (see `ChapterErrorCollector`).
         """
         if on_file_complete is None:
-            return DownloadJob(url).run(), []
+            return DownloadJob(url).run(), [], {}
         base = str(self._downloads_dir).rstrip(os.sep) + os.sep
         job = _ProgressDownloadJob(
             url,
@@ -309,5 +326,11 @@ class Gallery:
             downloads_base=base,
             skip_chapter=skip_chapter,
         )
-        exit_code = job.run()
-        return exit_code, job._records
+        collector = ChapterErrorCollector(job._chapter_ctx, threading.get_ident())
+        root = logging.getLogger()
+        root.addHandler(collector)
+        try:
+            exit_code = job.run()
+        finally:
+            root.removeHandler(collector)
+        return exit_code, job._records, dict(collector.errors)
