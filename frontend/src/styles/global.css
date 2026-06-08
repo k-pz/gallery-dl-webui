@@ -696,6 +696,36 @@ a {
   cursor: not-allowed;
 }
 
+/* Phones: desktop keeps its deliberately tight density, but on a touch
+   screen the 26/32px icon buttons in list + toolbar rows are below the 44px
+   tap-target floor and sit too close together. Promote every actionable
+   .icon-btn in these contexts to the existing data-size="lg" footprint and
+   keep >=8px between adjacent targets. Reuses the 44px variant rather than
+   touching each component's data-size prop. */
+@media (--bp-phone) {
+  .app-row .icon-btn,
+  .lib-row-actions .icon-btn,
+  .jobs-list-row .icon-btn,
+  .active-job-head-actions .icon-btn,
+  .maint-jobs-table .icon-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+  }
+  .app-row .icon-btn svg,
+  .lib-row-actions .icon-btn svg,
+  .jobs-list-row .icon-btn svg,
+  .active-job-head-actions .icon-btn svg,
+  .maint-jobs-table .icon-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+  .lib-row-actions,
+  .active-job-head-actions {
+    gap: 8px;
+  }
+}
+
 /* Collapsible library row — Direction B. Shows status + URL + summary on one
    line. The expanded panel below carries the edit controls. */
 .lib-row {
