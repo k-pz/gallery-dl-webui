@@ -40,8 +40,8 @@ export function RebuildLibraryCard({
             <Text size="sm" c="dimmed">
               Wipes every downloaded chapter, the gallery-dl archive, the raw downloads dir, and
               everything under the postprocess root (excluded directory names are spared). Every
-              watched series is re-queued from scratch. There's no undo. Plan to be offline for
-              several hours.
+              watched series is re-queued from scratch. There's no undo. Expect the library to be
+              rebuilding — and downloads to stay incomplete — for several hours.
             </Text>
           </Stack>
           <IconAlertTriangle size={20} style={{ color: "var(--tone-error)", flexShrink: 0 }} />
