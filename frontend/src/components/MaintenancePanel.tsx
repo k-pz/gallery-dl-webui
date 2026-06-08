@@ -72,8 +72,8 @@ export function MaintenancePanel() {
             <span className="app-section-kicker">postprocessing</span>
             <Title order={3}>Schedule maintenance</Title>
             <Text size="sm" c="dimmed">
-              One-off jobs that fan out over the library: rename CBZs, refresh series metadata. Safe
-              and idempotent.
+              One-off jobs that sweep the whole library: rename CBZs, refresh series metadata. Safe
+              to run repeatedly (idempotent) — re-running won't double up or undo earlier runs.
             </Text>
           </Stack>
           <Group wrap="wrap">
