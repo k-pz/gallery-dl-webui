@@ -3,6 +3,25 @@
    font supports them so headings can use a heavier optical size. */
 @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
 
+/* Responsive breakpoint tokens — single source of truth for every `@media`
+   query in this file. Resolved at build time by postcss-custom-media (see
+   ../../postcss.config.cjs). Kept in sync with `theme.breakpoints` in
+   ../theme.ts (same px values, expressed there in em for Mantine's JS API).
+   Each token is max-width: the rule applies at that width and below.
+
+     --bp-phone  540px  phone gutters / header / lib + active-job declutter
+     --bp-maint  640px  maintenance table → stacked cards, log expand toggle
+     --bp-nav    768px  top tabs → slide-in drawer navigation
+     --bp-split  880px  Jobs master-detail grid → single column
+
+   Container queries can't read custom-media (the spec only resolves tokens
+   inside `@media`), so the 480px `.app-row` `@container` query below stays a
+   literal — it is the row-local sibling of --bp-phone, documented inline. */
+@custom-media --bp-phone (max-width: 540px);
+@custom-media --bp-maint (max-width: 640px);
+@custom-media --bp-nav (max-width: 768px);
+@custom-media --bp-split (max-width: 880px);
+
 html,
 body,
 #root {
@@ -153,7 +172,7 @@ a {
 /* Tighten the header on phones — the "archive" tag is editorial filler that
    eats width without informing, and the wordmark wraps to two lines once
    the health badge is alongside it. Hide the tag, shrink the word a touch. */
-@media (max-width: 540px) {
+@media (--bp-phone) {
   .app-shell-header-inner {
     padding: 0.7rem 0;
     gap: 0.5rem;
@@ -244,7 +263,7 @@ a {
   white-space: nowrap;
   flex-shrink: 0;
 }
-@media (max-width: 540px) {
+@media (--bp-phone) {
   .app-health {
     padding: 0.25rem 0.55rem;
     font-size: 0.65rem;
@@ -344,7 +363,10 @@ a {
    and reserve a min-width for the name so it slides onto its own full line
    instead of ellipsing to "I…". The earlier 360px threshold missed phones
    entirely — at 430px viewport an .app-row sits around 380–400px wide.
-   `order: 99` pushes the name behind the short meta chips when it wraps. */
+   `order: 99` pushes the name behind the short meta chips when it wraps.
+   NOTE: 480px is a literal here on purpose — `@container` queries can't read
+   the `@custom-media --bp-*` tokens (resolved only inside `@media`). This is
+   the row-local companion to --bp-phone (540px); keep them moving together. */
 @container (max-width: 480px) {
   .app-row-line {
     flex-wrap: wrap;
@@ -737,7 +759,7 @@ a {
 /* Phones: let the row head wrap so the action column slides under the name
    when there isn't room for both side-by-side, and stack the top-row pieces
    so the name owns its own line above the pills. */
-@media (max-width: 540px) {
+@media (--bp-phone) {
   .lib-row-head {
     flex-wrap: wrap;
     gap: 6px 8px;
@@ -804,7 +826,7 @@ a {
   gap: 20px;
   align-items: start;
 }
-@media (max-width: 880px) {
+@media (--bp-split) {
   .jobs-grid {
     grid-template-columns: 1fr;
   }
@@ -860,7 +882,7 @@ a {
    the Result column gets clipped to "{") to a stacked card per row. The
    <table> markup is preserved so `tbody tr` selectors in the e2e suite
    keep matching; CSS just rewrites the visual layout. */
-@media (max-width: 640px) {
+@media (--bp-maint) {
   .maint-jobs-table {
     display: block;
   }
@@ -939,7 +961,7 @@ a {
 .maint-log-toggle[data-expanded="true"] .maint-log-toggle-chev {
   transform: rotate(180deg);
 }
-@media (max-width: 640px) {
+@media (--bp-maint) {
   .maint-log-toggle {
     display: inline-flex;
   }
@@ -984,7 +1006,7 @@ a {
 .mob-drawer-root {
   display: none;
 }
-@media (max-width: 768px) {
+@media (--bp-nav) {
   .mob-menu-btn {
     display: inline-flex;
   }
@@ -1171,7 +1193,7 @@ a {
    the internal `.app-surface` class our theme stamps on Card root, since
    Card sets `padding` from the `padding` prop as an inline `--card-padding`
    variable and CSS-variable overrides on the same element lose to inline. */
-@media (max-width: 540px) {
+@media (--bp-phone) {
   .app-shell-body {
     padding-top: var(--mantine-spacing-md);
     padding-left: var(--mantine-spacing-sm);
@@ -1199,7 +1221,7 @@ a {
      "Step N of 6 — Name" caption underneath.
    - Chapter list: shrink the repeating status pill so it stops dominating
      the row (no letter-spacing, smaller font, tighter padding). */
-@media (max-width: 540px) {
+@media (--bp-phone) {
   .active-job-head {
     flex-wrap: wrap;
     row-gap: 8px;
