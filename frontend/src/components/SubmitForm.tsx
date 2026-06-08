@@ -98,7 +98,7 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
       <Stack gap="lg">
         <Stack gap={4}>
           <span className="app-section-kicker">new job</span>
-          <Title order={3}>Add a gallery</Title>
+          <Title order={3}>Add a series</Title>
         </Stack>
         <Group align="flex-end" gap="sm" wrap="wrap">
           <TextInput
