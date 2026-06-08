@@ -245,7 +245,7 @@ export function ConfigPanel() {
           <FormSection
             kicker="concurrency"
             title="Parallelism"
-            description="Applied at startup. Bumping this speeds up CBZ packing inside one job but adds disk I/O."
+            description="Restart the service to apply a change here. A higher value packs more CBZs at once within a single job — faster, but with heavier disk I/O."
           >
             <NumberInput
               label="Max parallel postprocess"
