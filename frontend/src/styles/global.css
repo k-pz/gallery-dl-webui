@@ -930,7 +930,12 @@ a {
 }
 
 /* Expanded result: drop the line clamp so the full payload reads inline,
-   collapsed by default via the tap-to-expand toggle below. */
+   collapsed by default via the tap-to-expand toggle below.
+   NOTE: `display: block` is load-bearing here — it makes `-webkit-line-clamp`
+   inert (the property only applies to `-webkit-box` / `-webkit-inline-box`
+   containers), which is what actually lifts the clamp. Without it the
+   `-webkit-line-clamp: unset` alone would not override the phone rule at
+   `.maint-jobs-table .maint-result` (same specificity, source order wins). */
 .maint-result-full {
   -webkit-line-clamp: unset;
   line-clamp: unset;
