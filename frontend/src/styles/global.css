@@ -1330,15 +1330,8 @@ a {
     justify-content: flex-end;
   }
 
-  .active-job-stepper .mantine-Stepper-stepLabel,
-  .active-job-stepper .mantine-Stepper-stepDescription,
-  .active-job-stepper .mantine-Stepper-stepBody {
+  .active-job-stepper-track {
     display: none;
-  }
-  .active-job-stepper .mantine-Stepper-separator {
-    margin-left: 4px;
-    margin-right: 4px;
-    min-width: 12px;
   }
   .active-job-step-caption {
     display: block;
