@@ -1,4 +1,5 @@
-import { Box, Container, Stack, Tabs } from "@mantine/core";
+import { Box, Container, Stack, Tabs, useMantineTheme } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listDownloadsOptions } from "./api/@tanstack/react-query.gen";
@@ -174,7 +175,7 @@ export default function App() {
  * the recent list live in the left column; the active job card fills the
  * right. Under 880px both columns collapse to a single stack.
  */
-function JobsTabBody({
+export function JobsTabBody({
   selectedId,
   onSelect,
   hasAnyActive,
@@ -183,15 +184,24 @@ function JobsTabBody({
   onSelect: (id: number | null) => void;
   hasAnyActive: boolean;
 }) {
+  const theme = useMantineTheme();
+  // The two-column .jobs-grid only collapses to one column at --bp-split (880px)
+  // via CSS; below it the ActiveJobCard still mounts inside the grid wrapper and
+  // fights the single column. Gate grid *entry* on viewport too so a selection
+  // never forces the grid on a narrow screen. `true` initial value keeps the
+  // desktop layout on first paint (matches the >=880px common case).
+  const wide = useMediaQuery(`(min-width: ${theme.breakpoints.split})`, true);
   const hasSelection = selectedId !== null;
-  // On desktop with a selection, the active card sits in the right column;
-  // when nothing is selected (or on mobile), the layout falls back to a
-  // single column with the running and recent panels stacked.
-  if (!hasSelection) {
+  if (!hasSelection || !wide) {
     return (
       <Stack gap="lg">
         <RunningJobsPanel onSelect={onSelect} selectedId={selectedId} />
-        <RecentList onSelect={onSelect} selectedId={selectedId} hideEmpty={!hasAnyActive} />
+        <RecentList
+          onSelect={onSelect}
+          selectedId={selectedId}
+          hideEmpty={!hasSelection && !hasAnyActive}
+        />
+        {hasSelection ? <ActiveJobCard jobId={selectedId} onClose={() => onSelect(null)} /> : null}
       </Stack>
     );
   }
