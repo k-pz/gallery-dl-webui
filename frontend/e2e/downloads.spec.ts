@@ -40,7 +40,7 @@ test.describe("downloads UI", () => {
     await page.getByLabel(/gallery url/i).fill("   ");
     await page.getByRole("button", { name: /^download$/i }).click();
 
-    await expect(page.getByText(/url is required/i)).toBeVisible();
+    await expect(page.getByText(/enter a gallery url\./i)).toBeVisible();
   });
 
   test("shows live progress for a slow download", async ({ page }) => {

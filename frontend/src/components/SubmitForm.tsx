@@ -77,7 +77,7 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
   const submit = () => {
     const trimmed = url.trim();
     if (!trimmed) {
-      setSubmitError("url is required");
+      setSubmitError("Enter a gallery URL.");
       return;
     }
     mutation.mutate({
