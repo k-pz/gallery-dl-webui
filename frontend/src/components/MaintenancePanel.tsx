@@ -9,6 +9,7 @@ import {
   Table,
   Text,
   Title,
+  Tooltip,
   UnstyledButton,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -227,21 +228,23 @@ export function MaintenancePanel() {
                         </Table.Td>
                         <Table.Td>
                           {cancellable && (
-                            <button
-                              type="button"
-                              className="icon-btn"
-                              data-tone="danger"
-                              aria-label={`Cancel maintenance job ${job.id}`}
-                              disabled={
-                                cancel.isPending && cancel.variables?.path?.job_id === job.id
-                              }
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                cancel.mutate({ path: { job_id: job.id } });
-                              }}
-                            >
-                              <IconX size={16} />
-                            </button>
+                            <Tooltip label="Cancel job" withArrow>
+                              <button
+                                type="button"
+                                className="icon-btn"
+                                data-tone="danger"
+                                aria-label={`Cancel maintenance job ${job.id}`}
+                                disabled={
+                                  cancel.isPending && cancel.variables?.path?.job_id === job.id
+                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cancel.mutate({ path: { job_id: job.id } });
+                                }}
+                              >
+                                <IconX size={16} />
+                              </button>
+                            </Tooltip>
                           )}
                         </Table.Td>
                       </Table.Tr>
