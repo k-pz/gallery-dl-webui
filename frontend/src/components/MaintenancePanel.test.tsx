@@ -149,6 +149,56 @@ describe("MaintenancePanel", () => {
     });
   });
 
+  it("shows a spinner and stays hoverable (aria-disabled, not disabled) while a cancel is in flight", async () => {
+    const jobs: Job[] = [
+      {
+        id: 1,
+        kind: "rename_chapters",
+        status: "running",
+        created_at: "2025-01-01T00:00:00",
+        started_at: "2025-01-01T00:00:01",
+        finished_at: null,
+        result: null,
+        error: null,
+      },
+    ];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {
+      1: { status: "running", total: 3, done: 1, lines: ["working"] },
+    };
+    const baseHandler = jobsHandler({ jobs, nextId: { value: 2 }, progress });
+    let releaseCancel: (() => void) | undefined;
+    mockFetch(async (input, init) => {
+      if (urlOf(input).includes("/cancel")) {
+        // Keep the mutation in flight so we can observe the pending UI.
+        await new Promise<void>((resolve) => {
+          releaseCancel = resolve;
+        });
+        return jsonResponse({});
+      }
+      return baseHandler(input, init);
+    });
+
+    renderWithProviders(<MaintenancePanel />);
+
+    const cancelBtn = await screen.findByRole("button", {
+      name: /cancel maintenance job 1/i,
+    });
+    expect(cancelBtn).not.toBeDisabled();
+
+    fireEvent.click(cancelBtn);
+
+    // In-flight: a spinner replaces the X and the control is aria-disabled
+    // (NOT natively disabled — a disabled button would swallow the Tooltip).
+    await waitFor(() => expect(cancelBtn).toHaveAttribute("aria-disabled", "true"));
+    expect(cancelBtn.querySelector(".mantine-Loader-root")).not.toBeNull();
+    expect(cancelBtn).not.toBeDisabled();
+
+    releaseCancel?.();
+  });
+
   it("renders a live log tail for the latest job", async () => {
     const nextId = { value: 2 };
     const jobs: Job[] = [

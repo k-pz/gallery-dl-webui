@@ -181,3 +181,27 @@ describe("LogsPanel follow behavior", () => {
     expect(geom.scrollTop).toBe(1000);
   });
 });
+
+describe("LogsPanel filter sizing", () => {
+  beforeEach(() => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal("EventSource", FakeEventSource);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("sizes the filter field via a CSS class, not inline styles, so the phone rule can win", () => {
+    renderWithProviders(<LogsPanel />);
+
+    const searchInput = screen.getByLabelText("Filter");
+    const root = searchInput.closest(".mantine-TextInput-root") as HTMLElement;
+    expect(root).not.toBeNull();
+
+    // An inline min-width beats the @media (--bp-phone) stacking rule; sizing
+    // must come from a stylesheet class instead.
+    expect(root.style.minWidth).toBe("");
+    expect(root).toHaveClass("logs-filter-search");
+  });
+});

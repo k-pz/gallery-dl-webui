@@ -59,11 +59,13 @@ export const theme = createTheme({
   white: "#fbf7f0",
   black: "#1a160e",
   colors: { amber, ink },
-  // JS-side source of truth for viewport-aware components (useMediaQuery).
-  // Mantine's default keys are kept so Container/size lookups are unchanged;
-  // the app tokens mirror the `@custom-media --bp-*` values in
-  // styles/global.css (px → em at base 16). 480 is intentionally absent: it is
-  // a row-local `@container` threshold, not a viewport breakpoint.
+  // Mantine's default keys are kept so Container/size lookups are unchanged.
+  // The app tokens (phone/maint/nav/split) mirror the `@custom-media --bp-*`
+  // values in styles/global.css (px → em at base 16) for reference. Responsive
+  // layout is CSS-only — nothing reads these from JS, which is what keeps the
+  // JS and CSS breakpoints from drifting under non-default font scaling. 480 is
+  // intentionally absent: it is a row-local `@container` threshold, not a
+  // viewport breakpoint.
   breakpoints: {
     xs: "36em",
     sm: "48em",

@@ -97,6 +97,49 @@ describe("ProgressCard transient labels", () => {
   });
 });
 
+describe("ProgressCard chapter keys", () => {
+  it("renders two same-named chapters without colliding React keys", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const nameless = {
+      name: "",
+      files_total: 1,
+      files_present: 1,
+      stage: "downloaded",
+      status: "downloaded",
+      pages: 1,
+      title: null,
+      date: null,
+      error: null,
+    };
+    mockFetch(async (input) => {
+      if (urlOf(input).includes("/progress"))
+        return jsonResponse({
+          status: "completed",
+          files_expected: 2,
+          files_present: 2,
+          chapters_discovered: 2,
+          chapters_needed: 2,
+          chapters_downloaded: 2,
+          chapters_failed: 0,
+          chapters_skipped: 0,
+          chapters: [nameless, nameless],
+        });
+      return jsonResponse({});
+    });
+
+    renderWithProviders(<ProgressCard jobId={5} status="completed" startedAt={null} />);
+
+    // Both nameless rows must render…
+    await waitFor(() => expect(screen.getAllByText("(untitled)")).toHaveLength(2));
+    // …without React warning about duplicate keys (label-as-key collides here).
+    const dupKeyWarning = errorSpy.mock.calls.some((args) =>
+      args.some((a) => typeof a === "string" && a.includes("same key")),
+    );
+    errorSpy.mockRestore();
+    expect(dupKeyWarning).toBe(false);
+  });
+});
+
 describe("ProgressCard (terminal job)", () => {
   it("shows the discovered/needed/downloaded/failed summary and outcome badges", async () => {
     mockFetch(async (input) => {

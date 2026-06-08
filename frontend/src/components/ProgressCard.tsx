@@ -94,6 +94,18 @@ export function ProgressCard({
 
   const pct = totalChapters > 0 ? (settledChapters / totalChapters) * 100 : 0;
 
+  // Chapters have no stable id and two can share a name (e.g. both "(untitled)"),
+  // which collides if used directly as a React key. Disambiguate repeats into
+  // stable, unique keys instead of falling back to the array index.
+  const chapterKeys: string[] = [];
+  const seenLabels = new Map<string, number>();
+  for (const ch of data.chapters) {
+    const label = ch.name || "(untitled)";
+    const dup = seenLabels.get(label) ?? 0;
+    seenLabels.set(label, dup + 1);
+    chapterKeys.push(dup === 0 ? label : `${label}#${dup}`);
+  }
+
   let rightLabel: string;
   if (!manifestReady) rightLabel = "fetching…";
   else if (packing) rightLabel = `processing… · ${settledChapters} / ${totalChapters} chapters`;
@@ -148,7 +160,7 @@ export function ProgressCard({
                   .join(" · ");
                 return (
                   <Group
-                    key={label}
+                    key={chapterKeys[i]}
                     justify="space-between"
                     gap="xs"
                     wrap="nowrap"

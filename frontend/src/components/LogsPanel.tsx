@@ -248,7 +248,7 @@ export function LogsPanel() {
             max={MAX_LINES}
             step={100}
             clampBehavior="strict"
-            miw={120}
+            className="logs-filter-lines"
             description="History on connect"
           />
           <Select
@@ -257,7 +257,7 @@ export function LogsPanel() {
             value={levelThreshold}
             onChange={(v) => v && setLevelThreshold(v)}
             allowDeselect={false}
-            miw={180}
+            className="logs-filter-level"
           />
           <TextInput
             label="Filter"
@@ -265,7 +265,7 @@ export function LogsPanel() {
             onChange={(e) => setFilter(e.currentTarget.value)}
             placeholder="substring match…"
             leftSection={<IconSearch size={14} />}
-            style={{ flex: 1, minWidth: 200 }}
+            className="logs-filter-search"
           />
         </Group>
         <Group gap="xs" align="center">

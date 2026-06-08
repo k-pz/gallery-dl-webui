@@ -35,6 +35,33 @@ describe("MaintenanceLog expand", () => {
     );
   });
 
+  it("uses an instant (non-smooth) scroll when the user prefers reduced motion", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    mockFetch(async (input) => {
+      if (urlOf(input).includes("/progress")) return jsonResponse(PROGRESS);
+      return jsonResponse({});
+    });
+
+    renderWithProviders(<MaintenanceLog jobId={1} startedAt={null} />);
+
+    const toggle = await screen.findByRole("button", { name: /expand job log/i });
+    await userEvent.click(toggle);
+
+    await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: "auto", block: "nearest" }),
+    );
+  });
+
   it("renders the live status badge with a cased label, not the raw token", async () => {
     mockFetch(async (input) => {
       if (urlOf(input).includes("/progress")) return jsonResponse(PROGRESS);
@@ -46,5 +73,24 @@ describe("MaintenanceLog expand", () => {
     await screen.findByRole("button", { name: /expand job log/i });
     expect(screen.getByText("Running")).toBeInTheDocument();
     expect(screen.queryByText("running")).not.toBeInTheDocument();
+  });
+});
+
+describe("MaintenanceLog terminal state", () => {
+  it("treats a cancelled job as terminal — the progress bar stops animating", async () => {
+    mockFetch(async (input) => {
+      if (urlOf(input).includes("/progress"))
+        return jsonResponse({ status: "cancelled", done: 2, total: 4, lines: ["cancelled"] });
+      return jsonResponse({});
+    });
+
+    const { container } = renderWithProviders(<MaintenanceLog jobId={1} startedAt={null} />);
+
+    // The badge already calls it "Cancelled"…
+    expect(await screen.findByText("Cancelled")).toBeInTheDocument();
+    // …so the progress bar must not keep animating as if the job were still live.
+    const section = container.querySelector(".mantine-Progress-section");
+    expect(section).not.toBeNull();
+    expect(section).not.toHaveAttribute("data-animated");
   });
 });

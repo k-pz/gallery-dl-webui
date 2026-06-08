@@ -188,6 +188,8 @@ export function MaintenancePanel() {
                   {pagination.pageItems.map((job) => {
                     const cancellable = !TERMINAL_STATUSES.has(job.status);
                     const isSelected = selectedJobId === job.id;
+                    const isCancelling =
+                      cancel.isPending && cancel.variables?.path?.job_id === job.id;
                     return (
                       <Table.Tr
                         key={job.id}
@@ -234,15 +236,21 @@ export function MaintenancePanel() {
                                 className="icon-btn"
                                 data-tone="danger"
                                 aria-label={`Cancel maintenance job ${job.id}`}
-                                disabled={
-                                  cancel.isPending && cancel.variables?.path?.job_id === job.id
-                                }
+                                // aria-disabled (not native `disabled`) keeps the
+                                // button hoverable so the Tooltip still fires while
+                                // the cancel is in flight; the click is guarded below.
+                                aria-disabled={isCancelling ? "true" : undefined}
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  if (isCancelling) return;
                                   cancel.mutate({ path: { job_id: job.id } });
                                 }}
                               >
-                                <IconX size={16} />
+                                {isCancelling ? (
+                                  <Loader size={16} color="red" />
+                                ) : (
+                                  <IconX size={16} />
+                                )}
                               </button>
                             </Tooltip>
                           )}

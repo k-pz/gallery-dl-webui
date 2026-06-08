@@ -13,11 +13,9 @@ import { useEffect, useRef, useState } from "react";
 import { getMaintenanceJobProgressOptions } from "../api/@tanstack/react-query.gen";
 import { useEta } from "../hooks/useEta";
 import { formatEta } from "../lib/eta";
-import { maintStatusLabel } from "../lib/maintenance";
+import { maintStatusLabel, TERMINAL_STATUSES } from "../lib/maintenance";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
 import { IconChevronDown } from "./Icons";
-
-const TERMINAL_STATUSES = new Set(["completed", "failed"]);
 
 const STATUS_COLOR: Record<string, string> = {
   pending: "gray",
@@ -48,7 +46,13 @@ export function MaintenanceLog({
   const logBoxRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (expanded) {
-      logBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      // CSS can't tame a JS smooth-scroll (an explicit `behavior` wins over
+      // `scroll-behavior`), so honor the reduced-motion preference here.
+      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      logBoxRef.current?.scrollIntoView({
+        behavior: reduceMotion ? "auto" : "smooth",
+        block: "nearest",
+      });
     }
   }, [expanded]);
 

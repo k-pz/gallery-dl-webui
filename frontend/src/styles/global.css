@@ -870,15 +870,21 @@ a {
   transform: rotate(180deg);
 }
 
-/* Master-detail layout for the Jobs tab (desktop only). */
+/* Master-detail layout for the Jobs tab. The grid is always present (one
+   stable root in JobsTabBody); it stays a single full-width column until a job
+   is selected, then splits master-detail on desktop. Below --bp-split it
+   collapses back to one column (running + recent, then the detail card). */
 .jobs-grid {
   display: grid;
-  grid-template-columns: 360px 1fr;
+  grid-template-columns: 1fr;
   gap: 20px;
   align-items: start;
 }
+.jobs-grid[data-has-selection="true"] {
+  grid-template-columns: 360px 1fr;
+}
 @media (--bp-split) {
-  .jobs-grid {
+  .jobs-grid[data-has-selection="true"] {
     grid-template-columns: 1fr;
   }
 }
@@ -1442,12 +1448,29 @@ a {
   box-shadow: none;
 }
 
-/* LogsPanel filter controls — stack one-per-row on phones (was fixed-width). */
+/* LogsPanel filter controls. Sizing lives here (not as inline style/`miw`
+   props) so the phone stacking rule below actually wins the cascade — an
+   inline min-width would otherwise beat any stylesheet selector. Desktop and
+   phone rules share the same specificity (0,0,2,0); the phone rule comes
+   later, so it takes over inside its @media. */
+.logs-filter-row .logs-filter-lines {
+  min-width: 120px;
+}
+.logs-filter-row .logs-filter-level {
+  min-width: 180px;
+}
+.logs-filter-row .logs-filter-search {
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+/* Stack one-per-row on phones (was fixed-width). */
 @media (--bp-phone) {
   .logs-filter-row {
     width: 100%;
   }
-  .logs-filter-row > * {
+  .logs-filter-row .logs-filter-lines,
+  .logs-filter-row .logs-filter-level,
+  .logs-filter-row .logs-filter-search {
     flex: 1 1 100%;
     min-width: 0;
   }

@@ -1,5 +1,4 @@
-import { Box, Container, Stack, Tabs, useMantineTheme } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
+import { Box, Container, Stack, Tabs } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listDownloadsOptions } from "./api/@tanstack/react-query.gen";
@@ -171,9 +170,15 @@ export default function App() {
 }
 
 /**
- * Two-column master-detail (Direction B) on desktop. The running panel and
- * the recent list live in the left column; the active job card fills the
- * right. Under 880px both columns collapse to a single stack.
+ * Two-column master-detail (Direction B) on the Jobs tab. The running panel and
+ * the recent list live in the left column; the active job card fills the right.
+ *
+ * The grid is always rendered as one stable root: a selection just flips
+ * `data-has-selection` (CSS reads it to switch to two columns) and mounts the
+ * detail card. Below --bp-split the grid collapses to a single column in CSS.
+ * Because the root element never changes type, resizing the window — or
+ * selecting/closing a job — never remounts the list or detail, so their local
+ * state (search, sort, scroll position) survives.
  */
 export function JobsTabBody({
   selectedId,
@@ -184,34 +189,18 @@ export function JobsTabBody({
   onSelect: (id: number | null) => void;
   hasAnyActive: boolean;
 }) {
-  const theme = useMantineTheme();
-  // The two-column .jobs-grid only collapses to one column at --bp-split (880px)
-  // via CSS; below it the ActiveJobCard still mounts inside the grid wrapper and
-  // fights the single column. Gate grid *entry* on viewport too so a selection
-  // never forces the grid on a narrow screen. `true` initial value keeps the
-  // desktop layout on first paint (matches the >=880px common case).
-  const wide = useMediaQuery(`(min-width: ${theme.breakpoints.split})`, true);
   const hasSelection = selectedId !== null;
-  if (!hasSelection || !wide) {
-    return (
-      <Stack gap="lg">
+  return (
+    <div className="jobs-grid" data-has-selection={hasSelection ? "true" : undefined}>
+      <Stack gap="md">
         <RunningJobsPanel onSelect={onSelect} selectedId={selectedId} />
         <RecentList
           onSelect={onSelect}
           selectedId={selectedId}
           hideEmpty={!hasSelection && !hasAnyActive}
         />
-        {hasSelection ? <ActiveJobCard jobId={selectedId} onClose={() => onSelect(null)} /> : null}
       </Stack>
-    );
-  }
-  return (
-    <div className="jobs-grid">
-      <Stack gap="md">
-        <RunningJobsPanel onSelect={onSelect} selectedId={selectedId} />
-        <RecentList onSelect={onSelect} selectedId={selectedId} />
-      </Stack>
-      <ActiveJobCard jobId={selectedId} onClose={() => onSelect(null)} />
+      {hasSelection ? <ActiveJobCard jobId={selectedId} onClose={() => onSelect(null)} /> : null}
     </div>
   );
 }
