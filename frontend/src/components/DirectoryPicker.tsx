@@ -80,7 +80,7 @@ export function DirectoryPicker({
   const submitCreate = () => {
     const trimmed = createPath.trim();
     if (!trimmed) {
-      setCreateError("path is required");
+      setCreateError("Enter a folder name.");
       return;
     }
     setCreateError(null);
