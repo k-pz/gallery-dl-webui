@@ -13,8 +13,8 @@ function progressLabel(item: Download): string {
   const total = item.chapters_total;
   if (total != null) {
     const packed = item.postprocess_chapters_packed;
-    if (packed != null) return `${packed}/${total} ch.`;
-    return `${total} ch.`;
+    if (packed != null) return `${packed}/${total} chapters`;
+    return `${total} chapters`;
   }
   if (item.files_expected != null) {
     return `${item.files_downloaded}/${item.files_expected}`;
