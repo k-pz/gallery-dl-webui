@@ -29,6 +29,15 @@ async def test_insert_pending_starts_in_pending_state(db: aiosqlite.Connection) 
     assert d.files_expected is None
 
 
+async def test_download_schema_exposes_new_count_fields(db: aiosqlite.Connection) -> None:
+    d = await service.insert_pending(db, "https://example/x", "fake")
+    fetched = await service.get(db, d.id)
+    assert fetched is not None
+    # New optional fields default to None on a fresh row.
+    assert fetched.chapters_discovered is None
+    assert fetched.chapters_failed is None
+
+
 async def test_get_returns_persisted_row(db: aiosqlite.Connection) -> None:
     inserted = await service.insert_pending(db, "https://example/x", None)
     fetched = await service.get(db, inserted.id)
