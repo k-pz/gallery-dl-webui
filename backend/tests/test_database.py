@@ -44,6 +44,34 @@ async def test_migrate_adds_new_columns_to_legacy_db(tmp_path: Path) -> None:
         await conn.close()
 
 
+async def test_migrate_adds_verbose_trace_columns(tmp_path: Path) -> None:
+    db = await open_database(tmp_path / "jobs.db")
+    try:
+        async with db.execute("PRAGMA table_info(downloads)") as cur:
+            dl_cols = {r["name"] for r in await cur.fetchall()}
+        async with db.execute("PRAGMA table_info(download_files)") as cur:
+            df_cols = {r["name"] for r in await cur.fetchall()}
+    finally:
+        await db.close()
+
+    assert {"chapters_discovered", "chapters_failed"} <= dl_cols
+    assert {"status", "pages", "title", "date", "error"} <= df_cols
+
+
+async def test_migrate_is_idempotent_on_existing_db(tmp_path: Path) -> None:
+    path = tmp_path / "jobs.db"
+    db = await open_database(path)
+    await db.close()
+    # Re-open: _migrate runs again over a DB that already has the columns.
+    db = await open_database(path)
+    try:
+        async with db.execute("PRAGMA table_info(download_files)") as cur:
+            df_cols = {r["name"] for r in await cur.fetchall()}
+    finally:
+        await db.close()
+    assert "status" in df_cols
+
+
 async def test_manifest_cascades_on_download_delete(tmp_path: Path) -> None:
     """download_files has ON DELETE CASCADE; verify with a manual DELETE.
 
