@@ -179,7 +179,7 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
         </Group>
         <Checkbox
           label="Watch"
-          description="Re-poll this gallery on the default cadence for new chapters."
+          description="Check for new chapters on a repeating schedule (the default cadence set in Config)."
           checked={watched}
           onChange={(e) => setWatched(e.currentTarget.checked)}
           disabled={mutation.isPending}
