@@ -493,7 +493,7 @@ function PreviewRefControl({
               save();
             }
           }}
-          style={{ flex: 1, minWidth: 220 }}
+          style={{ flex: "1 1 220px", minWidth: 200 }}
           disabled={setMutation.isPending}
         />
         <Select
@@ -510,7 +510,8 @@ function PreviewRefControl({
           clearable={false}
           disabled={setMutation.isPending || tagOptions.length === 0}
           comboboxProps={{ withinPortal: true }}
-          w={180}
+          miw={150}
+          style={{ flex: "1 1 180px" }}
         />
         <Button variant="light" onClick={save} loading={setMutation.isPending} disabled={!isDirty}>
           Save
