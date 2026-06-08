@@ -165,7 +165,7 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
           />
           <Select
             label="Reading direction"
-            description="RTL becomes ComicInfo Manga=YesAndRightToLeft."
+            description="Right-to-left tells the reader to page backwards (written into ComicInfo.xml as Manga=YesAndRightToLeft)."
             value={readingDirection}
             onChange={(v) => {
               if (!v) return;
