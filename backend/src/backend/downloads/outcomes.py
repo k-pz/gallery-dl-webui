@@ -6,6 +6,7 @@ Pure functions only — no DB, no gallery-dl. Tested in isolation.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -39,8 +40,20 @@ def _pages(records: list[FileRecord]) -> int:
     return sum(1 for r in records if r.path.suffix.lower() in IMAGE_SUFFIXES)
 
 
-def _first(values: list[str], fallback: str = "") -> str:
+def _first(values: Iterable[str], fallback: str = "") -> str:
     return next((v for v in values if v), fallback)
+
+
+def _downloaded(name: str, recs: list[FileRecord], date_fallback: str = "") -> ChapterOutcome:
+    """Build a `downloaded` outcome from the records keyed to one chapter."""
+    return ChapterOutcome(
+        name=name,
+        status="downloaded",
+        pages=_pages(recs),
+        title=_first(r.title for r in recs),
+        date=_first((r.date for r in recs), date_fallback),
+        error=None,
+    )
 
 
 def reconcile_outcomes(
@@ -68,16 +81,7 @@ def reconcile_outcomes(
     for seed in needed:
         recs = by_chapter.get(seed.name)
         if recs:
-            out.append(
-                ChapterOutcome(
-                    name=seed.name,
-                    status="downloaded",
-                    pages=_pages(recs),
-                    title=_first([r.title for r in recs]),
-                    date=_first([r.date for r in recs], seed.date),
-                    error=None,
-                )
-            )
+            out.append(_downloaded(seed.name, recs, seed.date))
         elif seed.name in chapter_errors:
             out.append(
                 ChapterOutcome(seed.name, "failed", 0, "", seed.date, chapter_errors[seed.name])
@@ -91,14 +95,5 @@ def reconcile_outcomes(
     for chapter, recs in by_chapter.items():
         if chapter in needed_names:
             continue
-        out.append(
-            ChapterOutcome(
-                name=chapter,
-                status="downloaded",
-                pages=_pages(recs),
-                title=_first([r.title for r in recs]),
-                date=_first([r.date for r in recs]),
-                error=None,
-            )
-        )
+        out.append(_downloaded(chapter, recs))
     return out

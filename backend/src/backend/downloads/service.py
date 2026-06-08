@@ -145,22 +145,30 @@ async def save_chapter_outcomes(
         rows = await cur.fetchall()
     idx_by_name = {r["relpath"]: r["idx"] for r in rows}
     next_idx = (max(idx_by_name.values()) + 1) if idx_by_name else 0
+    updates: list[tuple] = []
+    inserts: list[tuple] = []
     for o in outcomes:
         if o.name in idx_by_name:
-            await db.execute(
-                "UPDATE download_files SET status = ?, pages = ?, title = ?, "
-                "date = COALESCE(NULLIF(?, ''), date), error = ? "
-                "WHERE download_id = ? AND relpath = ?",
-                (o.status, o.pages, o.title, o.date, o.error, download_id, o.name),
-            )
+            updates.append((o.status, o.pages, o.title, o.date, o.error, download_id, o.name))
         else:
-            await db.execute(
-                "INSERT INTO download_files"
-                "(download_id, idx, relpath, status, pages, title, date, error) "
-                "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-                (download_id, next_idx, o.name, o.status, o.pages, o.title, o.date, o.error),
+            inserts.append(
+                (download_id, next_idx, o.name, o.status, o.pages, o.title, o.date, o.error)
             )
             next_idx += 1
+    if updates:
+        await db.executemany(
+            "UPDATE download_files SET status = ?, pages = ?, title = ?, "
+            "date = COALESCE(NULLIF(?, ''), date), error = ? "
+            "WHERE download_id = ? AND relpath = ?",
+            updates,
+        )
+    if inserts:
+        await db.executemany(
+            "INSERT INTO download_files"
+            "(download_id, idx, relpath, status, pages, title, date, error) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+            inserts,
+        )
     failed = sum(1 for o in outcomes if o.status == "failed")
     await db.execute(
         "UPDATE downloads SET chapters_failed = ? WHERE id = ?",

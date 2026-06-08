@@ -151,18 +151,18 @@ async def get_progress(
     settings: SettingsDep,
     live: LiveProgressDep,
 ) -> ProgressOut:
-    manifest = await service.get_manifest(db, download.id)
-
     if download.status in TERMINAL_STATUSES:
         outcomes = await service.get_chapter_outcomes(db, download.id)
         if any(o.status != "pending" for o in outcomes):
             return _progress_from_outcomes(download, outcomes)
         # Legacy terminal job (no persisted outcomes): keep the neutral fallback.
+        manifest = await service.get_manifest(db, download.id)
         chapters = chapter_progress(
             manifest, settings.downloads_dir, download.status, download.postprocess_status
         )
         return _legacy_progress(download, chapters)
 
+    manifest = await service.get_manifest(db, download.id)
     completed = live.snapshot(download.id)
     if completed is not None:
         chapters = chapter_progress_from_completed(
@@ -217,14 +217,14 @@ def _chapter_files(o: ChapterOutcome) -> tuple[int, int]:
 
 
 def _progress_from_outcomes(download: Download, outcomes: list[ChapterOutcome]) -> ProgressOut:
-    downloaded = sum(1 for o in outcomes if o.status == "downloaded")
-    failed = sum(1 for o in outcomes if o.status == "failed")
-    skipped = sum(1 for o in outcomes if o.status == "skipped")
+    counts = {"downloaded": 0, "failed": 0, "skipped": 0}
     chapters: list[ChapterProgress] = []
     files_present = 0
     for o in outcomes:
         present, total = _chapter_files(o)
         files_present += present
+        if o.status in counts:
+            counts[o.status] += 1
         chapters.append(
             ChapterProgress(
                 name=o.name,
@@ -244,8 +244,8 @@ def _progress_from_outcomes(download: Download, outcomes: list[ChapterOutcome]) 
         files_present=files_present,
         chapters_discovered=download.chapters_discovered,
         chapters_needed=download.chapters_total,
-        chapters_downloaded=downloaded,
-        chapters_failed=failed,
-        chapters_skipped=skipped,
+        chapters_downloaded=counts["downloaded"],
+        chapters_failed=counts["failed"],
+        chapters_skipped=counts["skipped"],
         chapters=chapters,
     )

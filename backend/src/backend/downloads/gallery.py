@@ -114,19 +114,21 @@ class _ProgressDownloadJob(DownloadJob):
             self._skip_chapter = skip_chapter
             self._chapter_ctx = [""]
 
-    def handle_directory(self, kwdict: dict[str, Any]) -> None:
+    def _track_chapter(self, kwdict: dict[str, Any]) -> str:
+        """Record the current chapter in `_chapter_ctx` and return its name."""
         chapter = chapter_with_minor(kwdict)
         if chapter:
             self._chapter_ctx[0] = chapter
+        return chapter
+
+    def handle_directory(self, kwdict: dict[str, Any]) -> None:
+        self._track_chapter(kwdict)
         super().handle_directory(kwdict)
 
     def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
-        chapter_ctx = chapter_with_minor(kwdict)
-        if chapter_ctx:
-            self._chapter_ctx[0] = chapter_ctx
+        chapter = self._track_chapter(kwdict)
         if self._skip_chapter is not None:
             manga = str(kwdict.get("manga") or "")
-            chapter = chapter_with_minor(kwdict)
             if manga and chapter and self._skip_chapter(manga, chapter):
                 pathfmt = self.pathfmt
                 if pathfmt is not None:
