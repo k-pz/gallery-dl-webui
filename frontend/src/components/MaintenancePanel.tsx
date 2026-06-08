@@ -150,7 +150,7 @@ export function MaintenancePanel() {
             <EmptyState
               icon={<IconClock size={20} />}
               title="No maintenance jobs yet"
-              body="Scheduled background jobs (rename, regenerate, rebuild) and their results show up here."
+              body="Jobs you schedule above — and what they did — show up here."
             />
           )}
           {jobList.length > 0 && (
