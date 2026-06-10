@@ -222,11 +222,16 @@ export function MaintenancePanel() {
                           <Pill tone={statusTone(job.status)}>{maintStatusLabel(job.status)}</Pill>
                         </Table.Td>
                         <Table.Td>
-                          <MaintResultCell
-                            text={job.result ? JSON.stringify(job.result) : (job.error ?? "—")}
-                            empty={!job.result && !job.error}
-                            jobId={job.id}
-                          />
+                          <Stack gap={4}>
+                            {job.kind === "push_komga_series_status" && (
+                              <KomgaMatchWarnings result={job.result} />
+                            )}
+                            <MaintResultCell
+                              text={job.result ? JSON.stringify(job.result) : (job.error ?? "—")}
+                              empty={!job.result && !job.error}
+                              jobId={job.id}
+                            />
+                          </Stack>
                         </Table.Td>
                         <Table.Td>
                           {cancellable && (
@@ -282,6 +287,37 @@ export function MaintenancePanel() {
           )}
         </Stack>
       </Card>
+    </Stack>
+  );
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === "string");
+}
+
+/** Names the series a Komga push couldn't sync, so the user knows what to fix.
+ *
+ * The push job's result carries `unmatched` (no Komga series with that name)
+ * and `ambiguous` (several exact matches) alongside the counters; rendering
+ * them here saves digging through the raw JSON or the job log.
+ */
+function KomgaMatchWarnings({ result }: { result: { [key: string]: unknown } | null }) {
+  const unmatched = stringList(result?.unmatched);
+  const ambiguous = stringList(result?.ambiguous);
+  if (unmatched.length === 0 && ambiguous.length === 0) return null;
+  return (
+    <Stack gap={2}>
+      {unmatched.length > 0 && (
+        <Text size="xs" c="orange">
+          No Komga match ({unmatched.length}): {unmatched.join(", ")}
+        </Text>
+      )}
+      {ambiguous.length > 0 && (
+        <Text size="xs" c="orange">
+          Ambiguous Komga match ({ambiguous.length}): {ambiguous.join(", ")}
+        </Text>
+      )}
     </Stack>
   );
 }

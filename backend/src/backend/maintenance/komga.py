@@ -12,7 +12,7 @@ or malformed pair fails the job up front with a user-visible message.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -58,8 +58,12 @@ class KomgaPushResult:
     skipped_multi_match: int = 0
     failed: int = 0
     total: int = 0
+    # Series names behind the two match-failure counters, so the persisted
+    # job result can tell the user *which* series to fix, not just how many.
+    unmatched: list[str] = field(default_factory=list)
+    ambiguous: list[str] = field(default_factory=list)
 
-    def as_dict(self) -> dict[str, int]:
+    def as_dict(self) -> dict[str, Any]:
         return {
             "updated": self.updated,
             "skipped_no_status": self.skipped_no_status,
@@ -68,6 +72,8 @@ class KomgaPushResult:
             "skipped_multi_match": self.skipped_multi_match,
             "failed": self.failed,
             "total": self.total,
+            "unmatched": list(self.unmatched),
+            "ambiguous": list(self.ambiguous),
         }
 
 
@@ -113,7 +119,8 @@ async def push_series_statuses(
 
     Matching rule: case-insensitive exact match on the series name. Zero or
     multiple matches → log + skip (per the agreed UX), tracked as separate
-    counters in the returned result.
+    counters in the returned result, with the affected series names recorded
+    in `unmatched` / `ambiguous` so the persisted result names them.
 
     `client_factory` exists so tests can inject an `httpx.MockTransport`
     without monkey-patching. `should_cancel` is polled before each per-series
@@ -200,10 +207,12 @@ async def push_series_statuses(
 
             if len(exact) == 0:
                 result.skipped_no_match += 1
+                result.unmatched.append(target.name)
                 emit(f"skip (no Komga match): {target.name}")
                 continue
             if len(exact) > 1:
                 result.skipped_multi_match += 1
+                result.ambiguous.append(target.name)
                 emit(f"skip ({len(exact)} Komga matches): {target.name}")
                 continue
 

@@ -548,7 +548,7 @@ class MaintenanceWorker:
             "enqueued": enqueued,
         }
 
-    async def _run_push_komga_status(self, job_id: int) -> dict[str, int]:
+    async def _run_push_komga_status(self, job_id: int) -> dict[str, Any]:
         """Push every target's local `series_status` into the matching Komga series.
 
         Credentials live in `app_config` (`komga_base_url` + `komga_api_key`,
