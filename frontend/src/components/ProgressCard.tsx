@@ -5,6 +5,7 @@ import { useRef } from "react";
 import { getDownloadProgressOptions } from "../api/@tanstack/react-query.gen";
 import type { ChapterProgress } from "../api/types.gen";
 import { useEta } from "../hooks/useEta";
+import { extractErrorMessage } from "../lib/apiError";
 import { formatEta } from "../lib/eta";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
 import { chapterStageLabel, isTerminal, type Status, statusTone, type Tone } from "../lib/status";
@@ -39,7 +40,7 @@ export function ProgressCard({
   startedAt: string | null | undefined;
 }) {
   const terminal = isTerminal(status);
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     ...getDownloadProgressOptions({ path: { download_id: jobId } }),
     refetchInterval: (q) => {
       const s = q.state.data?.status;
@@ -77,6 +78,17 @@ export function ProgressCard({
     // known ScrollArea height so the initial window isn't empty.
     initialRect: { width: 0, height: CHAPTER_LIST_HEIGHT },
   });
+
+  if (isError) {
+    return (
+      <Stack gap="sm">
+        <span className="app-section-kicker">{terminal ? "results" : "progress"}</span>
+        <Box className="app-alert">
+          <Text size="sm">{extractErrorMessage(error)}</Text>
+        </Box>
+      </Stack>
+    );
+  }
 
   if (isLoading || !data) {
     // Match the laid-out version so the card doesn't visually collapse while
