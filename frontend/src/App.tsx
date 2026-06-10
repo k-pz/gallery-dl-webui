@@ -175,10 +175,13 @@ export default function App() {
  *
  * The grid is always rendered as one stable root: a selection just flips
  * `data-has-selection` (CSS reads it to switch to two columns) and mounts the
- * detail card. Below --bp-split the grid collapses to a single column in CSS.
- * Because the root element never changes type, resizing the window — or
- * selecting/closing a job — never remounts the list or detail, so their local
- * state (search, sort, scroll position) survives.
+ * detail pane. Below --bp-split the grid collapses to a single column and CSS
+ * restyles the detail wrapper into a fixed bottom sheet over the lists (see
+ * .jobs-detail in global.css) — without it the card would render below both
+ * lists, off-screen. The scrim and the card's close button both clear the
+ * selection. Because the root element never changes type, resizing the
+ * window — or selecting/closing a job — never remounts the list or detail,
+ * so their local state (search, sort, scroll position) survives.
  */
 export function JobsTabBody({
   selectedId,
@@ -200,7 +203,19 @@ export function JobsTabBody({
           hideEmpty={!hasSelection && !hasAnyActive}
         />
       </Stack>
-      {hasSelection ? <ActiveJobCard jobId={selectedId} onClose={() => onSelect(null)} /> : null}
+      {hasSelection ? (
+        <div className="jobs-detail">
+          <button
+            type="button"
+            className="jobs-detail-scrim"
+            aria-label="Close job details"
+            onClick={() => onSelect(null)}
+          />
+          <div className="jobs-detail-sheet">
+            <ActiveJobCard jobId={selectedId} onClose={() => onSelect(null)} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

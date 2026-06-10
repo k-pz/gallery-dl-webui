@@ -892,6 +892,78 @@ a {
   }
 }
 
+/* Detail pane wrapper. On desktop it is simply the grid's second column.
+   Below --bp-split the single-column collapse would push the card under both
+   lists — selecting a job appeared to do nothing until you scrolled to the
+   bottom — so the wrapper becomes a fixed bottom sheet instead: scrim behind,
+   card scrolling inside, pinned to the bottom edge. Scrim tap and the card's
+   close button both clear the selection (JobsTabBody). The page behind stays
+   put without a JS body lock: touch-action on the scrim swallows drags and
+   overscroll-behavior on the sheet blocks scroll chaining. */
+.jobs-detail-scrim {
+  display: none;
+}
+@media (--bp-split) {
+  .jobs-detail {
+    position: fixed;
+    inset: 0;
+    /* Above the sticky header (60), below the nav drawer (80) and the
+       confirm-modal scrim (200). */
+    z-index: 70;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+  .jobs-detail-scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    background: var(--app-scrim);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    animation: jobs-sheet-fade 0.18s ease;
+  }
+  .jobs-detail-sheet {
+    position: relative;
+    max-height: 85dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--app-surface);
+    border-top: 1px solid var(--app-border);
+    border-radius: 14px 14px 0 0;
+    box-shadow: var(--app-shadow-lg);
+    /* Keep the card's last controls clear of the home-indicator inset. */
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    animation: jobs-sheet-rise 0.22s ease;
+  }
+  /* The sheet owns the chrome — flatten the Card (the sheet's only child) so
+     its border, radius and shadow don't double up against the sheet's own.
+     Targets the internal `.app-surface` class our theme stamps on Card root,
+     same as the --bp-phone padding override below; the child combinator keeps
+     any future nested surfaces untouched. */
+  .jobs-detail-sheet > .app-surface {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+@keyframes jobs-sheet-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes jobs-sheet-rise {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+
 /* Master-detail job list rows (left column on desktop). */
 .jobs-list-row {
   display: flex;
