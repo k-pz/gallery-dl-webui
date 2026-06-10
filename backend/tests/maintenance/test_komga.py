@@ -94,6 +94,8 @@ async def test_push_updates_single_matching_series(creds: KomgaCredentials) -> N
     )
     assert result.updated == 1
     assert result.total == 1
+    assert result.unmatched == []
+    assert result.ambiguous == []
     # `statusLock: True` pins the field so Komga's next library scan can't
     # silently revert our REST value via the Mylar series.json importer.
     assert patched == [
@@ -136,6 +138,8 @@ async def test_push_skips_zero_matches(creds: KomgaCredentials) -> None:
     )
     assert result.updated == 0
     assert result.skipped_no_match == 1
+    assert result.unmatched == ["Unknown"]
+    assert result.as_dict()["unmatched"] == ["Unknown"]
 
 
 async def test_push_skips_multiple_matches(creds: KomgaCredentials) -> None:
@@ -157,6 +161,8 @@ async def test_push_skips_multiple_matches(creds: KomgaCredentials) -> None:
     )
     assert result.updated == 0
     assert result.skipped_multi_match == 1
+    assert result.ambiguous == ["Ambiguous"]
+    assert result.as_dict()["ambiguous"] == ["Ambiguous"]
 
 
 async def test_push_filters_substring_matches_from_komga_search(creds: KomgaCredentials) -> None:

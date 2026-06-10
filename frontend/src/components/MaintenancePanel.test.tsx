@@ -11,7 +11,7 @@ type Job = {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
-  result: { renamed: number } | null;
+  result: Record<string, unknown> | null;
   error: string | null;
 };
 
@@ -464,6 +464,71 @@ describe("MaintenancePanel", () => {
     fireEvent.click(within(row1).getByText("1"));
     await screen.findByText(/Job #1/);
     expect(screen.getByText(/done: \{renamed: 4\}/)).toBeInTheDocument();
+  });
+
+  it("names the series a Komga push couldn't match", async () => {
+    const nextId = { value: 2 };
+    const jobs: Job[] = [
+      {
+        id: 1,
+        kind: "push_komga_series_status",
+        status: "completed",
+        created_at: "2025-01-01T00:00:00",
+        started_at: "2025-01-01T00:00:01",
+        finished_at: "2025-01-01T00:00:02",
+        result: {
+          updated: 1,
+          skipped_no_match: 2,
+          skipped_multi_match: 1,
+          failed: 0,
+          total: 4,
+          unmatched: ["Berserk", "One Piece"],
+          ambiguous: ["Monster"],
+        },
+        error: null,
+      },
+    ];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {
+      1: { status: "completed", total: 4, done: 4, lines: ["done"] },
+    };
+    mockFetch(jobsHandler({ jobs, nextId, progress }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    expect(await screen.findByText(/No Komga match \(2\): Berserk, One Piece/)).toBeInTheDocument();
+    expect(screen.getByText(/Ambiguous Komga match \(1\): Monster/)).toBeInTheDocument();
+  });
+
+  it("shows no Komga match warning when every series matched", async () => {
+    const nextId = { value: 2 };
+    const jobs: Job[] = [
+      {
+        id: 1,
+        kind: "push_komga_series_status",
+        status: "completed",
+        created_at: "2025-01-01T00:00:00",
+        started_at: "2025-01-01T00:00:01",
+        finished_at: "2025-01-01T00:00:02",
+        result: { updated: 3, total: 3, unmatched: [], ambiguous: [] },
+        error: null,
+      },
+    ];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {
+      1: { status: "completed", total: 3, done: 3, lines: ["done"] },
+    };
+    mockFetch(jobsHandler({ jobs, nextId, progress }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    await screen.findByText("push_komga_series_status");
+    expect(screen.queryByText(/No Komga match/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ambiguous Komga match/)).not.toBeInTheDocument();
   });
 
   it("renders '—' with no expand toggle for a completed job with null result and null error", async () => {
