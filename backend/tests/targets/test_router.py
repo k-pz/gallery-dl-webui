@@ -157,6 +157,24 @@ def test_delete_target_removes_it(client: TestClient, gallery_config: FakeGaller
     assert client.get("/api/targets").json() == []
 
 
+def test_delete_target_detaches_download_history(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    # Download history outlives the target: with FK enforcement on, the
+    # delete must null out downloads.target_id instead of failing or
+    # leaving a dangling reference.
+    gallery_config.manifest_for["https://example/x"] = []
+    created = client.post("/api/downloads", json={"url": "https://example/x"}).json()
+    _wait_terminal(client, created["id"])
+    target_id = client.get("/api/targets").json()[0]["id"]
+
+    assert client.delete(f"/api/targets/{target_id}").status_code == 200
+
+    row = client.get(f"/api/downloads/{created['id']}").json()
+    assert row["id"] == created["id"]
+    assert row["target_id"] is None
+
+
 def test_target_unknown_id_returns_404(client: TestClient) -> None:
     assert client.get("/api/targets/9999").status_code == 404
     assert client.patch("/api/targets/9999", json={"watched": True}).status_code == 404

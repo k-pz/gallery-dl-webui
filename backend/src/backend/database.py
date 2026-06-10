@@ -110,6 +110,9 @@ async def open_database(path: Path) -> aiosqlite.Connection:
     """Open the SQLite file, install the schema, run migrations, and return it."""
     db = await aiosqlite.connect(path)
     db.row_factory = aiosqlite.Row
+    # SQLite defaults foreign-key enforcement OFF per connection; without
+    # this the schema's REFERENCES / ON DELETE CASCADE clauses are inert.
+    await db.execute("PRAGMA foreign_keys = ON")
     await db.executescript(SCHEMA)
     await _migrate(db)
     await db.commit()
