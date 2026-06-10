@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { IconActivity, IconFileText, IconLibrary, IconSliders, IconWrench, IconX } from "./Icons";
 
 type NavKey = "library" | "jobs" | "config" | "maintenance" | "logs";
@@ -31,12 +31,38 @@ export function MobileNavDrawer({
   onChange: (key: NavKey) => void;
   onClose: () => void;
 }) {
-  // Close on Escape and lock body scroll while open. Both are cleaned up when
-  // the drawer hides so we don't leak listeners or freeze the page.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  // Close on Escape, lock body scroll, and manage focus while open: the
+  // dialog is aria-modal, so focus must move into it on open, stay trapped
+  // inside (Tab wraps), and return to the opener on close. All cleaned up
+  // when the drawer hides so we don't leak listeners or freeze the page.
   useEffect(() => {
     if (!open) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeBtnRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const root = rootRef.current;
+      if (!root) return;
+      const focusables = Array.from(
+        root.querySelectorAll<HTMLElement>("button:not([tabindex='-1'])"),
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
@@ -44,11 +70,12 @@ export function MobileNavDrawer({
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
+      opener?.focus();
     };
   }, [open, onClose]);
 
   return (
-    <div className="mob-drawer-root" data-open={open} aria-hidden={!open}>
+    <div className="mob-drawer-root" data-open={open} aria-hidden={!open} ref={rootRef}>
       <button
         type="button"
         className="mob-drawer-scrim"
@@ -65,6 +92,7 @@ export function MobileNavDrawer({
             aria-label="Close menu"
             onClick={onClose}
             tabIndex={open ? 0 : -1}
+            ref={closeBtnRef}
           >
             <IconX size={18} />
           </button>

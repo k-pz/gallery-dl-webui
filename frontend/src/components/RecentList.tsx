@@ -206,7 +206,6 @@ export function RecentList({
                 selected={item.id === selectedId}
                 cancelling={cancelIntent.isCancelling(item.id)}
                 inflight={inflightId === item.id}
-                isCancelPending={cancel.isPending}
                 isRequeuePending={requeue.isPending}
                 onSelect={onSelect}
                 onCancel={() => cancel.mutate({ path: { download_id: item.id } })}

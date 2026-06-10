@@ -73,8 +73,8 @@ describe("TargetsList refresh-watched button", () => {
     });
   });
 
-  it("is disabled when no watched series could be refreshed", async () => {
-    mockLibrary([
+  it("is inert (but hoverable) when no watched series could be refreshed", async () => {
+    const spy = mockLibrary([
       target({ id: 1, watched: false }),
       target({
         id: 2,
@@ -87,6 +87,16 @@ describe("TargetsList refresh-watched button", () => {
 
     renderWithProviders(<TargetsList />);
     const button = await screen.findByRole("button", { name: "Refresh watched" });
-    expect(button).toBeDisabled();
+    // aria-disabled rather than native disabled: the button stays hoverable
+    // so the tooltip can explain why it's inert; the click is guarded.
+    expect(button).toHaveAttribute("aria-disabled", "true");
+
+    await userEvent.click(button);
+    const call = findCall(
+      spy,
+      (input, init) =>
+        urlOf(input).includes("/api/targets/poll-watched") && methodOf(input, init) === "POST",
+    );
+    expect(call).toBeUndefined();
   });
 });
