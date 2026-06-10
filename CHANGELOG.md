@@ -1,3 +1,10 @@
+## v1.5.0 (2026-06-10)
+
+### Feat
+
+- **maintenance**: name unmatched series in Komga push result
+- **ui**: show job history by default, sorted newest first
+
 ## v1.4.1 (2026-06-10)
 
 ### Fix

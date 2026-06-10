@@ -10,7 +10,7 @@
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "1.4.1"
+version = "1.5.0"
 tag_format = "v$version"
 # Create annotated tags (`git tag -a`) rather than lightweight ones —
 # the release workflow uses `git push --follow-tags`, which silently
