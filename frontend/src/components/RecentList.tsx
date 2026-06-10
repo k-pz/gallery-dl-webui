@@ -1,19 +1,14 @@
 import { Card, Group, Select, Stack, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import {
-  cancelDownloadMutation,
-  listDownloadsOptions,
-  requeueDownloadMutation,
-} from "../api/@tanstack/react-query.gen";
+import { listDownloadsOptions } from "../api/@tanstack/react-query.gen";
 import type { Download } from "../api/types.gen";
-import { useDataInvalidators } from "../lib/invalidate";
+import { useCancelDownload, useRequeueDownload } from "../lib/downloadActions";
 import { makeNeedleMatcher } from "../lib/listFilters";
 import { useOptimisticCancelMany } from "../lib/optimisticCancel";
 import { usePagination } from "../lib/pagination";
 import { REFETCH_LIST_MS } from "../lib/polling";
 import { isActive } from "../lib/status";
-import { useNotifyingMutation } from "../lib/useNotifyingMutation";
 import { EmptyState } from "./EmptyState";
 import { IconActivity } from "./Icons";
 import { ListHeader } from "./ListHeader";
@@ -55,7 +50,6 @@ export function RecentList({
   selectedId: number | null;
   hideEmpty?: boolean;
 }) {
-  const invalidate = useDataInvalidators();
   const { data, isLoading } = useQuery({
     ...listDownloadsOptions(),
     refetchInterval: REFETCH_LIST_MS,
@@ -67,47 +61,14 @@ export function RecentList({
   const [sortKey, setSortKey] = useState<SortKey>("recent");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  const refresh = (id: number) => {
-    invalidate.downloads();
-    invalidate.download(id);
-  };
+  const cancel = useCancelDownload({
+    markCancelling: cancelIntent.mark,
+    clearCancelling: cancelIntent.clear,
+  });
 
-  const cancel = useNotifyingMutation(
-    {
-      ...cancelDownloadMutation(),
-      onMutate: (vars) => {
-        cancelIntent.mark(vars.path.download_id);
-      },
-      onSuccess: (d) => refresh(d.id),
-      onError: (_err, vars) => cancelIntent.clear(vars.path.download_id),
-    },
-    {
-      success: {
-        title: "Cancel requested",
-        message: (d) => `Job #${d.id} is being cancelled.`,
-        color: "orange",
-      },
-      error: { title: (_err, vars) => `Cancel failed (#${vars.path.download_id})` },
-    },
-  );
-
-  const requeue = useNotifyingMutation(
-    {
-      ...requeueDownloadMutation(),
-      onMutate: (vars) => {
-        cancelIntent.clear(vars.path.download_id);
-      },
-      onSuccess: (d) => refresh(d.id),
-    },
-    {
-      success: {
-        title: "Requeued",
-        message: (d) => `Job #${d.id} has been queued again.`,
-        color: "blue",
-      },
-      error: { title: (_err, vars) => `Requeue failed (#${vars.path.download_id})` },
-    },
-  );
+  const requeue = useRequeueDownload({
+    clearCancelling: cancelIntent.clear,
+  });
 
   const inflightId =
     cancel.isPending && cancel.variables
