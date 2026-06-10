@@ -139,13 +139,25 @@ def create_app(
 
     if serve_frontend and FRONTEND_DIST.is_dir():
         app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+        dist_root = FRONTEND_DIST.resolve()
 
         @app.get("/{full_path:path}", include_in_schema=False)
         async def spa_fallback(full_path: str) -> FileResponse:
-            candidate = FRONTEND_DIST / full_path
-            if full_path and candidate.is_file():
+            # The `:path` converter percent-decodes, so a crafted request can
+            # smuggle `../` segments past browser normalization. Resolve and
+            # require the candidate to stay inside dist before serving it.
+            try:
+                candidate = (dist_root / full_path).resolve()
+            except OSError, ValueError:
+                candidate = None
+            if (
+                full_path
+                and candidate is not None
+                and candidate.is_relative_to(dist_root)
+                and candidate.is_file()
+            ):
                 return FileResponse(candidate)
-            return FileResponse(FRONTEND_DIST / "index.html")
+            return FileResponse(dist_root / "index.html")
 
     return app
 
