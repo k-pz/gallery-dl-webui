@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter
@@ -19,7 +20,8 @@ async def list_output_dirs(db: DbDep) -> list[DirEntry]:
     if not root.is_dir():
         return []
     excluded = await service.resolve_excluded_dir_names(db)
-    return service.list_direct_children(root, excluded=excluded)
+    # iterdir against a NAS mount — keep it off the event loop.
+    return await asyncio.to_thread(service.list_direct_children, root, excluded=excluded)
 
 
 @router.post("/output-dirs", operation_id="createOutputDir")
@@ -45,5 +47,5 @@ async def create_output_dir(body: DirCreate, db: DbDep) -> DirEntry:
         if "/" in cleaned or cleaned in ("", ".", ".."):
             raise BadRequestError("path must be a single folder name (no separators)")
         target = root / cleaned
-    resolved = validate_under_root(str(target), root, field="path")
+    resolved = await validate_under_root(str(target), root, field="path")
     return DirEntry(path=str(resolved), name=resolved.name, depth=1)

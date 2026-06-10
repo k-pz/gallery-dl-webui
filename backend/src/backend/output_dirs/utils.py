@@ -11,6 +11,7 @@ These helpers are imported by every domain that accepts user-supplied paths
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -25,7 +26,23 @@ def coerce_optional(raw: str | None) -> str | None:
     return cleaned or None
 
 
-def validate_root(raw: str) -> Path:
+async def validate_root(raw: str) -> Path:
+    """Async front for `_validate_root_sync`.
+
+    The mkdir + write-probe regularly target a NAS mount; a hung mount must
+    stall only the request's worker thread, never the event loop.
+    """
+    return await asyncio.to_thread(_validate_root_sync, raw)
+
+
+async def validate_under_root(
+    raw: str, root: Path, *, field: str = "output_dir", create: bool = True
+) -> Path:
+    """Async front for `_validate_under_root_sync` — same NAS caveat as above."""
+    return await asyncio.to_thread(_validate_under_root_sync, raw, root, field=field, create=create)
+
+
+def _validate_root_sync(raw: str) -> Path:
     path = Path(raw)
     if not path.is_absolute():
         raise HTTPException(
@@ -46,7 +63,7 @@ def validate_root(raw: str) -> Path:
     return path.resolve()
 
 
-def validate_under_root(
+def _validate_under_root_sync(
     raw: str, root: Path, *, field: str = "output_dir", create: bool = True
 ) -> Path:
     path = Path(raw)

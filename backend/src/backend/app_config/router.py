@@ -99,12 +99,12 @@ async def put_config(body: AppConfigIn, db: DbDep, bus: EventBusDep) -> AppConfi
     root_raw = coerce_optional(body.postprocess_root)
     default_raw = coerce_optional(body.postprocess_default_output_dir)
 
-    root_path = validate_root(root_raw) if root_raw else None
+    root_path = await validate_root(root_raw) if root_raw else None
     default_path = None
     if default_raw is not None:
         if root_path is None:
             raise DefaultOutputDirWithoutRoot()
-        default_path = validate_under_root(
+        default_path = await validate_under_root(
             default_raw, root_path, field="postprocess_default_output_dir"
         )
 

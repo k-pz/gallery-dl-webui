@@ -99,7 +99,9 @@ async def import_library(request: Request, db: DbDep, poller: PollerDep) -> Libr
                 )
                 continue
             try:
-                output_dir = str(validate_under_root(output_dir_raw, root, field="output_dir"))
+                output_dir = str(
+                    await validate_under_root(output_dir_raw, root, field="output_dir")
+                )
             except HTTPException as exc:
                 errors.append(f"series[{idx}] ({url}): {exc.detail}")
                 continue
