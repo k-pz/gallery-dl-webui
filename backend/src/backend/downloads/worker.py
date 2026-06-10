@@ -20,8 +20,9 @@ from backend.downloads.live_progress import LiveProgress
 from backend.downloads.outcomes import ChapterSeed, reconcile_outcomes
 from backend.downloads.postprocess import (
     FileRecord,
+    PackedChapterIndex,
     SeriesMetadata,
-    chapter_already_packed,
+    build_packed_chapter_index,
     normalize_reading_direction,
     normalize_tags,
 )
@@ -226,15 +227,19 @@ class Worker:
         if not isinstance(output_dir_str, str) or not output_dir_str:
             return None
         output_dir = Path(output_dir_str)
-        # Memoise per (manga, chapter) — gallery-dl calls into this once per
-        # page URL, but the answer is the same for every page in a chapter.
-        cache: dict[tuple[str, str], bool] = {}
+        # One packed-chapter index per series, built lazily with a single
+        # directory scan. The callable does zip + XML I/O (often against a
+        # network mount) so it must only run off the event loop: the manifest
+        # filter threads it via `_filter_needed_chapters`, and during the real
+        # download gallery-dl calls it from its worker thread.
+        indexes: dict[str, PackedChapterIndex] = {}
 
         def skip(manga: str, chapter: str) -> bool:
-            key = (manga, chapter)
-            if key not in cache:
-                cache[key] = chapter_already_packed(output_dir, manga, chapter)
-            return cache[key]
+            index = indexes.get(manga)
+            if index is None:
+                index = build_packed_chapter_index(output_dir, manga)
+                indexes[manga] = index
+            return index.contains(chapter)
 
         return skip
 
@@ -254,11 +259,7 @@ class Worker:
             await targets_service.set_series_status(self._db, job.target_id, meta.series_status)
         if job.target_id is not None and meta.series_tags:
             await targets_service.set_series_tags(self._db, job.target_id, meta.series_tags)
-        needed: list[ChapterSeed] = []
-        for (manga, chapter), date in meta.chapter_dates.items():
-            if skip_chapter is not None and manga and chapter and skip_chapter(manga, chapter):
-                continue
-            needed.append(ChapterSeed(name=chapter, date=date))
+        needed = await asyncio.to_thread(_filter_needed_chapters, meta.chapter_dates, skip_chapter)
         return needed, len(meta.chapter_dates)
 
     async def _execute_download(
@@ -424,6 +425,24 @@ class Worker:
             reading_direction=normalize_reading_direction(reading_direction),
             status=series_status,
         )
+
+
+def _filter_needed_chapters(
+    chapter_dates: dict[tuple[str, str], str],
+    skip_chapter: SkipChapterFn | None,
+) -> list[ChapterSeed]:
+    """Drop chapters the skip callable says are already packed as CBZs.
+
+    Runs on a thread: the skip callable reads archives under the postprocess
+    output dir (potentially a slow network mount), and a large series checks
+    hundreds of chapters — that I/O must never block the event loop.
+    """
+    needed: list[ChapterSeed] = []
+    for (manga, chapter), date in chapter_dates.items():
+        if skip_chapter is not None and manga and chapter and skip_chapter(manga, chapter):
+            continue
+        needed.append(ChapterSeed(name=chapter, date=date))
+    return needed
 
 
 def _coerce_int(value: object, default: int) -> int:

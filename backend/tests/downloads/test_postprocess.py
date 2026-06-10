@@ -12,6 +12,7 @@ from backend.downloads.postprocess import (
     FileRecord,
     SeriesMetadata,
     build_comicinfo_xml,
+    build_packed_chapter_index,
     build_series_json_bytes,
     cbz_target_path,
     chapter_already_packed,
@@ -386,6 +387,41 @@ def test_chapter_already_packed_treats_file_at_series_path_as_missing(tmp_path: 
     # A file (not a dir) sitting where the series dir would be is a no-op.
     (tmp_path / "S").write_bytes(b"x")
     assert chapter_already_packed(tmp_path, "S", "1") is False
+
+
+def test_build_packed_chapter_index_covers_all_variants(tmp_path: Path) -> None:
+    _write_cbz_with_comicinfo(tmp_path / "S" / "S - c001.cbz", "S", "1")
+    _write_cbz_with_comicinfo(tmp_path / "S" / "S - c002 - Title.cbz", "S", "2", "Title")
+    # No ComicInfo.xml — only the stem pattern identifies the chapter.
+    with zipfile.ZipFile(tmp_path / "S" / "S - c003 (1).cbz", "w") as zf:
+        zf.writestr("001.jpg", b"x")
+
+    index = build_packed_chapter_index(tmp_path, "S")
+
+    assert index.contains("1") is True
+    assert index.contains("1.0") is True  # float-equivalent chapter numbers match
+    assert index.contains("2") is True
+    assert index.contains("3") is True
+    assert index.contains("4") is False
+    assert index.contains("") is False
+
+
+def test_build_packed_chapter_index_ignores_other_series(tmp_path: Path) -> None:
+    # A CBZ whose ComicInfo names a different series doesn't count, even when
+    # it sits inside this series' directory.
+    _write_cbz_with_comicinfo(tmp_path / "S" / "S - c001.cbz", "Other", "1")
+    index = build_packed_chapter_index(tmp_path, "S")
+    assert index.contains("1") is False
+
+
+def test_build_packed_chapter_index_missing_series_dir(tmp_path: Path) -> None:
+    index = build_packed_chapter_index(tmp_path, "Nope")
+    assert index.contains("1") is False
+
+
+def test_build_packed_chapter_index_empty_manga(tmp_path: Path) -> None:
+    index = build_packed_chapter_index(tmp_path, "")
+    assert index.contains("1") is False
 
 
 @pytest.mark.parametrize(
