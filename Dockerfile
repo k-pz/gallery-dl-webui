@@ -6,11 +6,16 @@
 # uses. The backend serves /api/* and mounts the built SPA at /, so a
 # single container is the whole app.
 #
-# Toolchain versions come from the repo's `mise.toml` (python = "3.14",
-# node = "24.15.0") — keep these base tags aligned with the pins there.
+# Toolchain versions come from the repo's `mise.toml` — docker-release.yml
+# extracts the pins and passes them as build args, so the image can't drift
+# from the mise.toml source of truth. The defaults below are a fallback for
+# bare `docker build` and must match mise.toml.
+
+ARG NODE_VERSION=24.15.0
+ARG PYTHON_VERSION=3.14
 
 # ---------- stage 1: build the frontend ----------
-FROM node:24.15.0-bookworm-slim AS frontend-build
+FROM node:${NODE_VERSION}-bookworm-slim AS frontend-build
 
 WORKDIR /app/frontend
 
@@ -29,7 +34,7 @@ COPY frontend/ ./
 RUN pnpm build
 
 # ---------- stage 2: runtime ----------
-FROM python:3.14-slim-bookworm AS runtime
+FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime
 
 # ca-certificates: gallery-dl talks to HTTPS sites.
 # curl: HEALTHCHECK + occasionally useful for debugging inside the container.
@@ -43,10 +48,11 @@ RUN apt-get update \
     && groupadd --system --gid 1000 webui \
     && useradd  --system --uid 1000 --gid webui --create-home --home-dir /home/webui webui
 
-# uv handles backend deps. Pull the binary from the upstream image
-# rather than pip-installing it — the layer is tiny and the version
-# tracks upstream releases.
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# uv handles backend deps. Pull the binary from the upstream image rather
+# than pip-installing it — the layer is tiny. Pinned (not :latest) so a
+# release rebuilt months later produces the same image; keep in lockstep
+# with the uv pin in mise.toml.
+COPY --from=ghcr.io/astral-sh/uv:0.11.20 /uv /usr/local/bin/uv
 
 WORKDIR /app
 
@@ -71,7 +77,10 @@ ENV WEBUI_DATA_DIR=/data \
     WEBUI_PORT=8000 \
     PATH="/app/backend/.venv/bin:${PATH}"
 
-RUN mkdir -p /data && chown -R webui:webui /data /app
+# Only /data needs to be writable by the service user; /app (venv + SPA)
+# is read-only at runtime, and a recursive chown would duplicate the whole
+# app tree into a new image layer.
+RUN mkdir -p /data && chown webui:webui /data
 
 USER webui
 WORKDIR /app/backend

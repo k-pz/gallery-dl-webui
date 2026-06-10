@@ -91,6 +91,24 @@ jobs:
         with:
           ref: ${{ steps.tag.outputs.tag }}
 
+      - name: Derive toolchain pins from mise.toml
+        id: pins
+        # mise.toml is the single source of truth for python/node versions;
+        # the Dockerfile defaults only exist for bare `docker build`.
+        run: |
+          node_version=$(sed -n 's/^node = "\(.*\)"$/\1/p' mise.toml)
+          python_version=$(sed -n 's/^python = "\(.*\)"$/\1/p' mise.toml)
+          test -n "$node_version" && test -n "$python_version"
+          echo "node=$node_version" >> "$GITHUB_OUTPUT"
+          echo "python=$python_version" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve built commit (for the sha tag)
+        id: rev
+        # github.sha points at the workflow's trigger commit, not the tag we
+        # checked out (they differ after release.yml's follow-up commits) —
+        # derive the traceability tag from the actual checkout.
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU (for cross-arch builds)
         uses: docker/setup-qemu-action@v3
 
@@ -124,7 +142,7 @@ jobs:
             type=semver,pattern=v{{version}},value=${{ steps.tag.outputs.tag }}
             type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }}
             type=raw,value=latest,enable=${{ !contains(steps.tag.outputs.tag, '-') }}
-            type=sha,prefix=sha-,format=short
+            type=raw,value=sha-${{ steps.rev.outputs.short }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -132,6 +150,9 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            NODE_VERSION=${{ steps.pins.outputs.node }}
+            PYTHON_VERSION=${{ steps.pins.outputs.python }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
