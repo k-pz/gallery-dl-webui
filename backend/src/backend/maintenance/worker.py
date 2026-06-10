@@ -16,23 +16,22 @@ from backend.app_config.constants import (
     DEFAULT_READING_DIRECTION,
     READING_DIRECTIONS,
 )
-from backend.downloads import postprocess
-from backend.downloads import service as downloads_service
-from backend.downloads.postprocess import (
-    MaintenanceCancelled,
+from backend.comic_metadata import (
     SeriesMetadata,
     normalize_reading_direction,
     normalize_tags,
     sanitize,
 )
+from backend.downloads import service as downloads_service
 from backend.events import EventBus, maintenance_event, maintenance_progress_event, targets_event
-from backend.maintenance import service
+from backend.maintenance import library_ops, service
 from backend.maintenance.komga import (
     KomgaPushResult,
     TargetForPush,
     load_credentials,
     push_series_statuses,
 )
+from backend.maintenance.library_ops import MaintenanceCancelled
 from backend.maintenance.live_progress import MaintenanceLiveProgress
 from backend.targets import service as targets_service
 from backend.tasks import log_task_death
@@ -362,7 +361,7 @@ class MaintenanceWorker:
         exclude_dirs = _exclude_dirs(cfg)
         output_roots = await _designated_output_dirs(self._db, cfg)
         result = await asyncio.to_thread(
-            postprocess.rename_packed_chapters,
+            library_ops.rename_packed_chapters,
             output_roots,
             template,
             sink,
@@ -399,7 +398,7 @@ class MaintenanceWorker:
         exclude_dirs = _exclude_dirs(cfg)
         output_roots = await _designated_output_dirs(self._db, cfg)
         result = await asyncio.to_thread(
-            postprocess.regenerate_series_metadata,
+            library_ops.regenerate_series_metadata,
             output_roots,
             lookup,
             sink,

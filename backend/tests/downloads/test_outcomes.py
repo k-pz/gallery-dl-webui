@@ -1,7 +1,7 @@
 from pathlib import Path
 
+from backend.comic_metadata import FileRecord
 from backend.downloads.outcomes import ChapterSeed, reconcile_outcomes
-from backend.downloads.postprocess import FileRecord
 
 
 def _rec(chapter: str, name: str, *, title: str = "", date: str = "") -> FileRecord:

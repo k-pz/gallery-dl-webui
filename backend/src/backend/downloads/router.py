@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from backend.app_config import service as app_config_service
 from backend.app_config.constants import READING_DIRECTIONS
 from backend.app_config.exceptions import PostprocessRootNotConfigured
+from backend.comic_metadata import normalize_tags
 from backend.dependencies import DbDep, EventBusDep, SettingsDep
 from backend.downloads import service
 from backend.downloads.constants import TERMINAL_STATUSES
@@ -20,7 +21,6 @@ from backend.downloads.exceptions import (
     DownloadVanished,
 )
 from backend.downloads.outcomes import ChapterOutcome
-from backend.downloads.postprocess import normalize_tags
 from backend.downloads.progress import chapter_progress, chapter_progress_from_completed
 from backend.downloads.schemas import (
     ChapterProgress,

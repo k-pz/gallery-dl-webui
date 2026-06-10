@@ -6,7 +6,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from backend.downloads.postprocess import (
+from backend.comic_metadata import (
     ChapterRecord,
     FileRecord,
     build_comicinfo_xml,
