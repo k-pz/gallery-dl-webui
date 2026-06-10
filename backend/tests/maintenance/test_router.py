@@ -7,6 +7,15 @@ from fastapi.testclient import TestClient
 from .._helpers import write_cbz_with_comicinfo as _write_cbz
 
 
+def _wait_download_terminal(client: TestClient, download_id: int) -> None:
+    for _ in range(60):
+        row = client.get(f"/api/downloads/{download_id}").json()
+        if row["status"] in ("completed", "failed", "cancelled"):
+            return
+        time.sleep(0.05)
+    raise AssertionError("download did not settle in time")
+
+
 def _wait_for_completion(client: TestClient, job_id: int) -> dict[str, object]:
     for _ in range(30):
         jobs = client.get("/api/maintenance/jobs").json()
@@ -470,6 +479,9 @@ def test_rebuild_library_wipes_and_reenqueues(
         "/api/downloads", json={"url": "https://example/x", "output_dir": str(output_dir)}
     )
     assert sub.status_code == 200
+    # The rebuild refuses to run while downloads are active, so wait for the
+    # seeded download to settle first — same as a real user would have to.
+    _wait_download_terminal(client, sub.json()["id"])
 
     created = client.post("/api/maintenance/jobs", json={"kind": "rebuild_library"})
     assert created.status_code == 200, created.json()
@@ -485,6 +497,29 @@ def test_rebuild_library_wipes_and_reenqueues(
     assert (recycle / "marker.txt").read_text() == "keep me"
     # ...and content sitting under root outside any designated dir is untouched.
     assert (unrelated / "irreplaceable.txt").read_text() == "priceless"
+
+
+def test_rebuild_library_refuses_while_download_in_flight(
+    client: TestClient, gallery_config
+) -> None:
+    """The rebuild wipe deletes directories an in-flight download writes into,
+    so the job must refuse to start while anything is queued or running."""
+    import threading
+
+    gate = threading.Event()
+    gallery_config.manifest_for["https://example/busy"] = ["ch1/001.jpg"]
+    gallery_config.gate_for["https://example/busy"] = gate
+    sub = client.post("/api/downloads", json={"url": "https://example/busy"})
+    assert sub.status_code == 200
+    try:
+        created = client.post("/api/maintenance/jobs", json={"kind": "rebuild_library"})
+        assert created.status_code == 200, created.json()
+        done = _wait_for_completion(client, created.json()["id"])
+        assert done["status"] == "failed"
+        assert "in flight" in str(done["error"])
+    finally:
+        gate.set()
+        _wait_download_terminal(client, sub.json()["id"])
 
 
 def test_rename_ignores_archives_outside_designated_output_dirs(

@@ -314,6 +314,15 @@ async def delete_all(db: aiosqlite.Connection) -> int:
     return count
 
 
+async def has_any_active(db: aiosqlite.Connection) -> bool:
+    """True if any download is pending or in flight (extracting/running)."""
+    async with db.execute(
+        "SELECT 1 FROM downloads WHERE status IN ('pending', 'extracting', 'running') LIMIT 1"
+    ) as cur:
+        row = await cur.fetchone()
+    return row is not None
+
+
 async def has_active_for_target(db: aiosqlite.Connection, target_id: int) -> bool:
     async with db.execute(
         "SELECT 1 FROM downloads WHERE target_id = ? AND status IN "

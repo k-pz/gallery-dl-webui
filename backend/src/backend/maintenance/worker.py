@@ -465,6 +465,15 @@ class MaintenanceWorker:
         """
         if self._settings is None or self._downloads_worker is None:
             raise ValueError("rebuild_library requires settings + downloads worker")
+        # The wipe below unlinks the gallery-dl archive and rmtrees the
+        # downloads dir — directories an in-flight download is actively
+        # writing into. Refuse to start while anything is queued or running;
+        # the user can cancel or wait and re-schedule.
+        if await downloads_service.has_any_active(self._db):
+            raise ValueError(
+                "downloads are pending or in flight — cancel them or wait for "
+                "them to finish before rebuilding the library"
+            )
         cfg = await app_config_service.get_all(self._db)
         excluded = {name.lower() for name in _exclude_dirs(cfg)}
 
