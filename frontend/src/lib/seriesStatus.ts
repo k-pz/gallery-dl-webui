@@ -11,6 +11,11 @@ export const SERIES_STATUS_OPTIONS = [
 
 export const SERIES_STATUS_VALUES = SERIES_STATUS_OPTIONS.map((o) => o.value);
 
+// Series that are done publishing — a refresh would never find new chapters.
+// Keep in sync with REFRESH_EXCLUDED_SERIES_STATUSES in
+// backend/src/backend/targets/service.py.
+export const FINISHED_SERIES_STATUSES: ReadonlyArray<string> = ["Ended", "Abandoned"];
+
 export type SeriesStatus = (typeof SERIES_STATUS_OPTIONS)[number]["value"];
 
 const TONES: Record<SeriesStatus, PillTone> = {

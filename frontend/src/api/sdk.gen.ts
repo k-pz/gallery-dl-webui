@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CancelMaintenanceJobData, CancelMaintenanceJobErrors, CancelMaintenanceJobResponses, CheckForUpdatesData, CheckForUpdatesErrors, CheckForUpdatesResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, ExportLibraryData, ExportLibraryResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetMaintenanceJobProgressData, GetMaintenanceJobProgressErrors, GetMaintenanceJobProgressResponses, GetTargetData, GetTargetErrors, GetTargetResponses, GetUpdatePreviewRefData, GetUpdatePreviewRefResponses, ImportLibraryData, ImportLibraryResponses, ListDownloadsData, ListDownloadsResponses, ListMaintenanceJobsData, ListMaintenanceJobsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, ScheduleMaintenanceJobData, ScheduleMaintenanceJobErrors, ScheduleMaintenanceJobResponses, SetUpdatePreviewRefData, SetUpdatePreviewRefErrors, SetUpdatePreviewRefResponses, TailLogsApiLogsTailGetData, TailLogsApiLogsTailGetErrors, TailLogsApiLogsTailGetResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
+import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CancelMaintenanceJobData, CancelMaintenanceJobErrors, CancelMaintenanceJobResponses, CheckForUpdatesData, CheckForUpdatesErrors, CheckForUpdatesResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, ExportLibraryData, ExportLibraryResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetMaintenanceJobProgressData, GetMaintenanceJobProgressErrors, GetMaintenanceJobProgressResponses, GetTargetData, GetTargetErrors, GetTargetResponses, GetUpdatePreviewRefData, GetUpdatePreviewRefResponses, ImportLibraryData, ImportLibraryResponses, ListDownloadsData, ListDownloadsResponses, ListMaintenanceJobsData, ListMaintenanceJobsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PollWatchedTargetsData, PollWatchedTargetsResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, ScheduleMaintenanceJobData, ScheduleMaintenanceJobErrors, ScheduleMaintenanceJobResponses, SetUpdatePreviewRefData, SetUpdatePreviewRefErrors, SetUpdatePreviewRefResponses, TailLogsApiLogsTailGetData, TailLogsApiLogsTailGetErrors, TailLogsApiLogsTailGetResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -86,6 +86,17 @@ export const updateTarget = <ThrowOnError extends boolean = false>(options: Opti
         ...options.headers
     }
 });
+
+/**
+ * Poll Watched Targets
+ *
+ * Queue a download for every watched series that may still get chapters.
+ *
+ * Mirrors a per-target poll fanned out over the watched library, minus the
+ * 409: targets with an in-flight download are skipped (and counted) so one
+ * busy series never fails the batch.
+ */
+export const pollWatchedTargets = <ThrowOnError extends boolean = false>(options?: Options<PollWatchedTargetsData, ThrowOnError>) => (options?.client ?? client).post<PollWatchedTargetsResponses, unknown, ThrowOnError>({ url: '/api/targets/poll-watched', ...options });
 
 /**
  * Poll Target

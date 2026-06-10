@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelDownload, cancelMaintenanceJob, checkForUpdates, createDownload, createOutputDir, deleteTarget, exportLibrary, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, getUpdatePreviewRef, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, putConfig, requeueDownload, scheduleMaintenanceJob, setUpdatePreviewRef, tailLogsApiLogsTailGet, updateTarget } from '../sdk.gen';
-import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CancelMaintenanceJobData, CancelMaintenanceJobError, CancelMaintenanceJobResponse, CheckForUpdatesData, CheckForUpdatesError, CheckForUpdatesResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, ExportLibraryData, ExportLibraryResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetError, GetTargetResponse, GetUpdatePreviewRefData, GetUpdatePreviewRefResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, SetUpdatePreviewRefData, SetUpdatePreviewRefError, SetUpdatePreviewRefResponse, TailLogsApiLogsTailGetData, TailLogsApiLogsTailGetError, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
+import { cancelDownload, cancelMaintenanceJob, checkForUpdates, createDownload, createOutputDir, deleteTarget, exportLibrary, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, getUpdatePreviewRef, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, pollWatchedTargets, putConfig, requeueDownload, scheduleMaintenanceJob, setUpdatePreviewRef, tailLogsApiLogsTailGet, updateTarget } from '../sdk.gen';
+import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CancelMaintenanceJobData, CancelMaintenanceJobError, CancelMaintenanceJobResponse, CheckForUpdatesData, CheckForUpdatesError, CheckForUpdatesResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, ExportLibraryData, ExportLibraryResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetError, GetTargetResponse, GetUpdatePreviewRefData, GetUpdatePreviewRefResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PollWatchedTargetsData, PollWatchedTargetsResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, SetUpdatePreviewRefData, SetUpdatePreviewRefError, SetUpdatePreviewRefResponse, TailLogsApiLogsTailGetData, TailLogsApiLogsTailGetError, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -222,6 +222,29 @@ export const updateTargetMutation = (options?: Partial<Options<UpdateTargetData>
     const mutationOptions: UseMutationOptions<UpdateTargetResponse, UpdateTargetError, Options<UpdateTargetData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await updateTarget({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Poll Watched Targets
+ *
+ * Queue a download for every watched series that may still get chapters.
+ *
+ * Mirrors a per-target poll fanned out over the watched library, minus the
+ * 409: targets with an in-flight download are skipped (and counted) so one
+ * busy series never fails the batch.
+ */
+export const pollWatchedTargetsMutation = (options?: Partial<Options<PollWatchedTargetsData>>): UseMutationOptions<PollWatchedTargetsResponse, DefaultError, Options<PollWatchedTargetsData>> => {
+    const mutationOptions: UseMutationOptions<PollWatchedTargetsResponse, DefaultError, Options<PollWatchedTargetsData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await pollWatchedTargets({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
