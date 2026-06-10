@@ -7,9 +7,12 @@ migrations live in this one place so the DB shape has a single source of truth.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import asyncio
+from collections.abc import AsyncIterator, Iterable
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from weakref import WeakKeyDictionary
 
 import aiosqlite
 
@@ -91,6 +94,38 @@ CREATE INDEX IF NOT EXISTS idx_maintenance_jobs_created_at ON maintenance_jobs(c
 
 def now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+_write_locks: WeakKeyDictionary[aiosqlite.Connection, asyncio.Lock] = WeakKeyDictionary()
+
+
+def _write_lock(db: aiosqlite.Connection) -> asyncio.Lock:
+    lock = _write_locks.get(db)
+    if lock is None:
+        lock = asyncio.Lock()
+        _write_locks[db] = lock
+    return lock
+
+
+@asynccontextmanager
+async def transaction(db: aiosqlite.Connection) -> AsyncIterator[None]:
+    """Serialize a multi-statement write and make it atomic.
+
+    Every task in the process (request handlers, workers, poller) shares one
+    aiosqlite connection, and a bare `commit()` commits whatever statements
+    happen to be pending — including another task's half-finished write.
+    Multi-statement writes must run under this context manager so concurrent
+    multi-statement writers can't interleave, and so an exception rolls the
+    partial work back instead of leaving it for the next commit to flush.
+    """
+    async with _write_lock(db):
+        try:
+            yield
+        except BaseException:
+            await db.rollback()
+            raise
+        else:
+            await db.commit()
 
 
 async def insert_returning_id(db: aiosqlite.Connection, sql: str, params: Iterable[object]) -> int:

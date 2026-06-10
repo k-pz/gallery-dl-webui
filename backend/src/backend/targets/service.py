@@ -6,7 +6,7 @@ import json
 
 import aiosqlite
 
-from backend.database import insert_returning_id, now_iso
+from backend.database import insert_returning_id, now_iso, transaction
 from backend.targets.schemas import Target
 
 
@@ -302,7 +302,7 @@ async def delete(db: aiosqlite.Connection, id_: int) -> bool:
     # Download history outlives its target: detach referencing rows first so
     # the delete passes FK enforcement (downloads.target_id has no ON DELETE
     # action) and the rows keep their URL for the Recent list.
-    await db.execute("UPDATE downloads SET target_id = NULL WHERE target_id = ?", (id_,))
-    cursor = await db.execute("DELETE FROM targets WHERE id = ?", (id_,))
-    await db.commit()
+    async with transaction(db):
+        await db.execute("UPDATE downloads SET target_id = NULL WHERE target_id = ?", (id_,))
+        cursor = await db.execute("DELETE FROM targets WHERE id = ?", (id_,))
     return (cursor.rowcount or 0) > 0

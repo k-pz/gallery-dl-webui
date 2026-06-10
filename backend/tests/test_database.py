@@ -1,8 +1,9 @@
 from pathlib import Path
 
 import aiosqlite
+import pytest
 
-from backend.database import open_database
+from backend.database import open_database, transaction
 from backend.downloads import service as downloads_service
 
 
@@ -76,16 +77,53 @@ async def test_manifest_cascades_on_download_delete(tmp_path: Path) -> None:
     """download_files has ON DELETE CASCADE; verify with a manual DELETE.
 
     The application never deletes downloads today, but the schema declares the
-    constraint, so this guards against accidental removal of the cascade.
+    constraint (and open_database turns FK enforcement on), so this guards
+    against accidental removal of the cascade.
     """
     conn = await open_database(tmp_path / "jobs.db")
     try:
         d = await downloads_service.insert_pending(conn, "https://example/x", "fake")
         await downloads_service.save_manifest(conn, d.id, ["a.jpg"])
-        # Enable FK enforcement (off by default in sqlite).
-        await conn.execute("PRAGMA foreign_keys = ON")
         await conn.execute("DELETE FROM downloads WHERE id = ?", (d.id,))
         await conn.commit()
         assert await downloads_service.get_manifest(conn, d.id) == []
+    finally:
+        await conn.close()
+
+
+async def test_foreign_keys_enabled_by_open_database(tmp_path: Path) -> None:
+    conn = await open_database(tmp_path / "jobs.db")
+    try:
+        async with conn.execute("PRAGMA foreign_keys") as cur:
+            row = await cur.fetchone()
+        assert row is not None and row[0] == 1
+    finally:
+        await conn.close()
+
+
+async def test_transaction_rolls_back_on_error(tmp_path: Path) -> None:
+    conn = await open_database(tmp_path / "jobs.db")
+    try:
+        with pytest.raises(RuntimeError):
+            async with transaction(conn):
+                await conn.execute("INSERT INTO app_config(key, value) VALUES('doomed', '\"v\"')")
+                raise RuntimeError("boom")
+        # The partial write must not survive — neither immediately nor via a
+        # later unrelated commit (the historical failure mode: the next
+        # commit from any other task flushed orphaned statements).
+        await conn.commit()
+        async with conn.execute("SELECT 1 FROM app_config WHERE key = 'doomed'") as cur:
+            assert await cur.fetchone() is None
+    finally:
+        await conn.close()
+
+
+async def test_transaction_commits_on_success(tmp_path: Path) -> None:
+    conn = await open_database(tmp_path / "jobs.db")
+    try:
+        async with transaction(conn):
+            await conn.execute("INSERT INTO app_config(key, value) VALUES('k', '\"v\"')")
+        async with conn.execute("SELECT value FROM app_config WHERE key = 'k'") as cur:
+            assert await cur.fetchone() is not None
     finally:
         await conn.close()
