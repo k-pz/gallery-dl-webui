@@ -84,7 +84,8 @@ async def upsert(
             await db.commit()
             async with db.execute(f"{_BARE_SELECT} WHERE id = ?", (row["id"],)) as cur2:
                 row = await cur2.fetchone()
-        assert row is not None
+        if row is None:
+            raise RuntimeError("target row vanished mid-update")
         return Target.from_row(row)
 
     created_at = now_iso()

@@ -21,5 +21,7 @@ DEFAULT_READING_DIRECTION = "ltr"
 
 # Parallel CBZ packing inside one job's postprocess pass. zipfile releases the
 # GIL during deflate, so a small handful of threads is enough to overlap
-# packing with shutil.rmtree on the previous chapter.
+# packing with shutil.rmtree on the previous chapter. Clamped to the cap so a
+# typo'd config value can't spawn a thread storm.
 DEFAULT_MAX_PARALLEL_POSTPROCESS = 3
+MAX_PARALLEL_POSTPROCESS_CAP = 16

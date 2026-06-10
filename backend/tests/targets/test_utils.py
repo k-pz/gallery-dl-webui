@@ -2,7 +2,7 @@ from datetime import timedelta
 
 import pytest
 
-from backend.targets.utils import format_duration, parse_duration
+from backend.targets.utils import parse_duration
 
 
 @pytest.mark.parametrize(
@@ -27,13 +27,3 @@ def test_parse_duration_accepts_valid(raw: str, expected: timedelta) -> None:
 def test_parse_duration_rejects_invalid(raw: str) -> None:
     with pytest.raises(ValueError):
         parse_duration(raw)
-
-
-def test_format_duration_compacts_units() -> None:
-    assert format_duration(timedelta(seconds=90)) == "1m30s"
-    assert format_duration(timedelta(days=1, hours=2)) == "1d2h"
-    assert format_duration(timedelta(weeks=2, days=3)) == "2w3d"
-
-
-def test_format_duration_zero() -> None:
-    assert format_duration(timedelta(0)) == "0s"

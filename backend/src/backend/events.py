@@ -14,7 +14,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -46,22 +46,21 @@ class Event:
         return {"topic": self.topic, "type": self.type, "data": self.data}
 
 
-def open_request_event_buffer() -> list[Event]:
+def open_request_event_buffer() -> tuple[list[Event], Token[list[Event] | None]]:
     """Start collecting events for the duration of this contextvar scope.
 
-    Returns the list `EventBus.publish` will append to; the caller is
-    responsible for resetting the contextvar via `close_request_event_buffer`.
-    Idempotent within nested calls — the inner buffer is preferred so a
-    sub-request (e.g. background task scheduled mid-handler) doesn't bleed
-    into the outer response.
+    Returns the list `EventBus.publish` will append to plus the contextvar
+    token the caller must hand back to `close_request_event_buffer`. Nested
+    calls work: the inner buffer wins while open, and resetting via the token
+    restores the outer one instead of blanking it.
     """
     buf: list[Event] = []
-    _request_events.set(buf)
-    return buf
+    token = _request_events.set(buf)
+    return buf, token
 
 
-def close_request_event_buffer() -> None:
-    _request_events.set(None)
+def close_request_event_buffer(token: Token[list[Event] | None]) -> None:
+    _request_events.reset(token)
 
 
 class EventBus:
@@ -121,10 +120,6 @@ class EventBus:
         finally:
             async with self._lock:
                 self._subscribers.discard(q)
-
-    @property
-    def subscriber_count(self) -> int:
-        return len(self._subscribers)
 
 
 # Convenience constructors used by the publishers below — keeping the topic /

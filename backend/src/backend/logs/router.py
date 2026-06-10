@@ -118,12 +118,14 @@ async def _stream(request: Request, lines: int) -> AsyncIterator[bytes]:
     ]
     logger.debug("starting journalctl tail: %s", " ".join(cmd))
     try:
+        # stderr goes to DEVNULL: a chatty journalctl could fill an
+        # undrained pipe and stall the stream; the exit code is logged below.
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
         )
-    except (OSError, FileNotFoundError) as exc:
+    except OSError as exc:
         yield _sse("error", {"message": f"failed to start journalctl: {exc}"})
         return
 
@@ -164,17 +166,7 @@ async def _stream(request: Request, lines: int) -> AsyncIterator[bytes]:
                     pass
                 await proc.wait()
         if proc.returncode and proc.returncode != 0:
-            stderr = b""
-            if proc.stderr is not None:
-                try:
-                    stderr = await proc.stderr.read()
-                except OSError, ValueError:
-                    stderr = b""
-            logger.warning(
-                "journalctl exited with %s: %s",
-                proc.returncode,
-                stderr.decode("utf-8", errors="replace").strip(),
-            )
+            logger.warning("journalctl exited with %s", proc.returncode)
 
 
 @router.get("/logs/tail")

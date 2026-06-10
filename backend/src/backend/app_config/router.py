@@ -10,6 +10,7 @@ from backend.app_config.constants import (
     DEFAULT_MAX_PARALLEL_POSTPROCESS,
     DEFAULT_READING_DIRECTION,
     DEFAULT_WATCH_PERIOD,
+    MAX_PARALLEL_POSTPROCESS_CAP,
     READING_DIRECTIONS,
 )
 from backend.app_config.exceptions import DefaultOutputDirWithoutRoot
@@ -52,8 +53,11 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
     reading_direction = cfg.get("default_reading_direction")
     if not isinstance(reading_direction, str) or reading_direction not in READING_DIRECTIONS:
         reading_direction = DEFAULT_READING_DIRECTION
-    max_postprocess = _coerce_clamped_int(
-        cfg.get("max_parallel_postprocess"), DEFAULT_MAX_PARALLEL_POSTPROCESS
+    max_postprocess = service.coerce_clamped_int(
+        cfg.get("max_parallel_postprocess"),
+        DEFAULT_MAX_PARALLEL_POSTPROCESS,
+        lo=1,
+        hi=MAX_PARALLEL_POSTPROCESS_CAP,
     )
     komga_base_url = cfg.get("komga_base_url")
     if not isinstance(komga_base_url, str) or not komga_base_url:
@@ -74,19 +78,6 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
         komga_base_url=komga_base_url,
         komga_api_key=komga_api_key,
     )
-
-
-def _coerce_clamped_int(value: object, default: int) -> int:
-    if isinstance(value, bool):
-        return default
-    if isinstance(value, int):
-        return max(1, min(value, 16))
-    if isinstance(value, str):
-        try:
-            return max(1, min(int(value), 16))
-        except ValueError:
-            return default
-    return default
 
 
 @router.get("/config", operation_id="getConfig")
@@ -156,21 +147,34 @@ async def put_config(body: AppConfigIn, db: DbDep, bus: EventBusDep) -> AppConfi
             seen.add(cleaned)
             excluded_norm.append(cleaned)
 
-    max_post = _coerce_clamped_int(
+    max_post = service.coerce_clamped_int(
         body.max_parallel_postprocess
         if body.max_parallel_postprocess is not None
         else existing.get("max_parallel_postprocess"),
         DEFAULT_MAX_PARALLEL_POSTPROCESS,
+        lo=1,
+        hi=MAX_PARALLEL_POSTPROCESS_CAP,
     )
 
-    komga_base_url_raw = coerce_optional(body.komga_base_url)
+    # Komga credentials: an *omitted* field preserves the stored value (so a
+    # client that doesn't know about Komga can't silently wipe a saved API
+    # key); an explicit null clears it. Distinguished via model_fields_set.
+    if "komga_base_url" in body.model_fields_set:
+        komga_base_url_raw = coerce_optional(body.komga_base_url)
+    else:
+        stored_base = existing.get("komga_base_url")
+        komga_base_url_raw = stored_base if isinstance(stored_base, str) and stored_base else None
     if komga_base_url_raw is not None:
         komga_base_url_raw = komga_base_url_raw.rstrip("/")
         if not (
             komga_base_url_raw.startswith("http://") or komga_base_url_raw.startswith("https://")
         ):
             raise BadRequestError("komga_base_url must start with http:// or https://")
-    komga_api_key_raw = coerce_optional(body.komga_api_key)
+    if "komga_api_key" in body.model_fields_set:
+        komga_api_key_raw = coerce_optional(body.komga_api_key)
+    else:
+        stored_key = existing.get("komga_api_key")
+        komga_api_key_raw = stored_key if isinstance(stored_key, str) and stored_key else None
 
     updates: dict[str, object] = {
         "postprocess_root": root_str,

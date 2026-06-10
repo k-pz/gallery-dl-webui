@@ -105,6 +105,58 @@ def load_credentials(cfg: dict[str, Any]) -> KomgaCredentials:
     return KomgaCredentials(base_url=base_url, api_key=api_key_raw.strip())
 
 
+_SEARCH_PAGE_SIZE = 50
+# Hard ceiling on paging so a pathologically broad search term can't loop
+# forever; 10 pages x 50 results is far beyond any realistic name collision.
+_SEARCH_MAX_PAGES = 10
+
+
+async def _find_exact_matches(
+    http: httpx.AsyncClient, name: str
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Search Komga for `name`, paging until the exact matches are collected.
+
+    Matches against both the raw target name and the post-`sanitize`
+    directory name: Komga shows the imported series.json `name` when
+    available (raw), but falls back to the on-disk directory name (sanitized)
+    when series.json hasn't been imported yet. `casefold` so non-ASCII titles
+    (ß, Turkish dotless i, etc.) compare under the same Unicode rules Komga
+    uses server-side. Returns (matches, None) or ([], error_line).
+    """
+    wanted = {name.strip().casefold(), sanitize(name).strip().casefold()}
+    matches: list[dict[str, Any]] = []
+    for page in range(_SEARCH_MAX_PAGES):
+        try:
+            resp = await http.get(
+                "/api/v1/series",
+                params={"search": name, "size": _SEARCH_PAGE_SIZE, "page": page},
+            )
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            return [], f"search failed: {exc}"
+        try:
+            payload = resp.json()
+        except ValueError as exc:
+            return [], f"search returned non-JSON: {exc}"
+        content = payload.get("content") if isinstance(payload, dict) else None
+        if not isinstance(content, list):
+            content = []
+        matches.extend(
+            s
+            for s in content
+            if isinstance(s, dict)
+            and isinstance(s.get("name"), str)
+            and s["name"].strip().casefold() in wanted
+        )
+        # Komga's paged responses carry `last`; only an explicit False keeps
+        # paging — a missing field (e.g. a single mocked page in tests)
+        # stops the loop.
+        is_last = payload.get("last") if isinstance(payload, dict) else None
+        if is_last is not False:
+            break
+    return matches, None
+
+
 async def push_series_statuses(
     creds: KomgaCredentials,
     targets: list[TargetForPush],
@@ -166,44 +218,11 @@ async def push_series_statuses(
                 emit(f"skip (unknown status {target.series_status!r}): {target.name}")
                 continue
 
-            try:
-                resp = await http.get(
-                    "/api/v1/series",
-                    params={"search": target.name, "size": 50},
-                )
-                resp.raise_for_status()
-            except httpx.HTTPError as exc:
+            exact, search_error = await _find_exact_matches(http, target.name)
+            if search_error is not None:
                 result.failed += 1
-                emit(f"search failed for {target.name!r}: {exc}")
+                emit(f"{search_error} for {target.name!r}")
                 continue
-
-            try:
-                payload = resp.json()
-            except ValueError as exc:
-                result.failed += 1
-                emit(f"search returned non-JSON for {target.name!r}: {exc}")
-                continue
-
-            content = payload.get("content") if isinstance(payload, dict) else None
-            if not isinstance(content, list):
-                content = []
-            # Match against both the raw target name and the post-`sanitize`
-            # directory name: Komga shows the imported series.json `name` when
-            # available (raw), but falls back to the on-disk directory name
-            # (sanitized) when series.json hasn't been imported yet. `casefold`
-            # so non-ASCII titles (ß, Turkish dotless i, etc.) compare under
-            # the same Unicode rules Komga uses server-side.
-            wanted = {
-                target.name.strip().casefold(),
-                sanitize(target.name).strip().casefold(),
-            }
-            exact = [
-                s
-                for s in content
-                if isinstance(s, dict)
-                and isinstance(s.get("name"), str)
-                and s["name"].strip().casefold() in wanted
-            ]
 
             if len(exact) == 0:
                 result.skipped_no_match += 1

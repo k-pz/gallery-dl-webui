@@ -41,11 +41,11 @@ async def request_event_collector_middleware(
     buffer (in addition to fanning out to websocket subscribers). On the
     way out, the collected events become the `X-Events` header.
     """
-    buf = open_request_event_buffer()
+    buf, token = open_request_event_buffer()
     try:
         response = await call_next(request)
     finally:
-        close_request_event_buffer()
+        close_request_event_buffer(token)
     if buf:
         payload = json.dumps([e.to_json() for e in buf], separators=(",", ":"))
         if len(payload.encode("utf-8")) <= _MAX_HEADER_BYTES:

@@ -139,6 +139,9 @@ async def requeue_download(
         raise DownloadNotTerminal(download.status)
     if not await service.reset_to_pending(db, download.id):
         raise ConflictError("download is no longer terminal")
+    # A cancel recorded while the job sat pending must not fire on the
+    # requeued run.
+    worker.discard_cancel_request(download.id)
     worker.notify()
     bus.publish(downloads_event("updated", id=download.id, status="pending"))
     return await _refresh_view(db, download.id)

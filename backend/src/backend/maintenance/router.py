@@ -19,8 +19,7 @@ from backend.maintenance.schemas import (
     UpdateRefOut,
 )
 from backend.maintenance.update_check import check_for_updates
-
-UPDATE_PREVIEW_REF_KEY = "update_preview_ref"
+from backend.maintenance.worker import UPDATE_PREVIEW_REF_KEY
 
 router = APIRouter(tags=["maintenance"])
 
