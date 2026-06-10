@@ -123,6 +123,16 @@ run = "pnpm test"
 description = "Run backend + frontend unit tests"
 depends = ["test:backend", "test:frontend"]
 
+[tasks."test:coverage:backend"]
+description = "pytest with the coverage reports CI publishes"
+dir = "{{config_root}}/backend"
+run = "uv run pytest --cov=backend --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml --cov-report=html:htmlcov"
+
+[tasks."test:coverage:frontend"]
+description = "vitest with the coverage reports CI publishes"
+dir = "{{config_root}}/frontend"
+run = "pnpm exec vitest run --coverage --coverage.reporter=text --coverage.reporter=html --coverage.reporter=json-summary --coverage.reportsDirectory=./coverage"
+
 [tasks.check]
 description = "All CI-safe checks: lint + typecheck + test"
 depends = ["lint", "typecheck", "test"]
