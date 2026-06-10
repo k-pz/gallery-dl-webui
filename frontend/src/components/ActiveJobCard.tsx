@@ -12,26 +12,20 @@ import {
 } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import {
-  cancelDownloadMutation,
-  getDownloadOptions,
-  requeueDownloadMutation,
-} from "../api/@tanstack/react-query.gen";
+import { getDownloadOptions } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
+import { useCancelDownload, useRequeueDownload } from "../lib/downloadActions";
 import { formatEta } from "../lib/eta";
-import { useDataInvalidators } from "../lib/invalidate";
 import { useOptimisticCancel } from "../lib/optimisticCancel";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
 import { isCancellable, isTerminal, jobStep } from "../lib/status";
 import { formatAbs } from "../lib/time";
-import { useNotifyingMutation } from "../lib/useNotifyingMutation";
 import { IconAlertTriangle, IconX } from "./Icons";
 import { JobDetailField } from "./JobDetailField";
 import { JobStepper } from "./JobStepper";
 import { ProgressCard } from "./ProgressCard";
 
 export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () => void }) {
-  const invalidate = useDataInvalidators();
   const [actionError, setActionError] = useState<string | null>(null);
 
   const {
@@ -54,59 +48,18 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
     setActionError(null);
   }, [jobId]);
 
-  const refresh = () => {
-    invalidate.downloads();
-    invalidate.download(jobId);
-  };
+  const cancel = useCancelDownload({
+    markCancelling: () => cancelIntent.mark(),
+    clearCancelling: () => cancelIntent.clear(),
+    onSuccess: () => setActionError(null),
+    onError: (err) => setActionError(extractErrorMessage(err)),
+  });
 
-  const cancel = useNotifyingMutation(
-    {
-      ...cancelDownloadMutation(),
-      onMutate: () => {
-        cancelIntent.mark();
-      },
-      onSuccess: () => {
-        setActionError(null);
-        refresh();
-      },
-      onError: (err) => {
-        cancelIntent.clear();
-        setActionError(extractErrorMessage(err));
-      },
-    },
-    {
-      success: {
-        title: "Cancel requested",
-        message: `Job #${jobId} is being cancelled.`,
-        color: "orange",
-      },
-      error: { title: "Cancel failed" },
-    },
-  );
-
-  const requeue = useNotifyingMutation(
-    {
-      ...requeueDownloadMutation(),
-      onMutate: () => {
-        cancelIntent.clear();
-      },
-      onSuccess: () => {
-        setActionError(null);
-        refresh();
-      },
-      onError: (err) => {
-        setActionError(extractErrorMessage(err));
-      },
-    },
-    {
-      success: {
-        title: "Requeued",
-        message: `Job #${jobId} has been queued again.`,
-        color: "blue",
-      },
-      error: { title: "Requeue failed" },
-    },
-  );
+  const requeue = useRequeueDownload({
+    clearCancelling: () => cancelIntent.clear(),
+    onSuccess: () => setActionError(null),
+    onError: (err) => setActionError(extractErrorMessage(err)),
+  });
 
   if (isError) {
     // A persistent failure (job pruned server-side, backend down) must not
