@@ -66,7 +66,7 @@ async def create_download(
         root_raw = cfg.get("postprocess_root")
         if not isinstance(root_raw, str) or not root_raw:
             raise PostprocessRootNotConfigured("output_dir")
-        resolved = validate_under_root(output_dir, Path(root_raw), field="output_dir")
+        resolved = await validate_under_root(output_dir, Path(root_raw), field="output_dir")
         output_dir_str = str(resolved)
         await app_config_service.remember_output_dir(db, output_dir_str)
 

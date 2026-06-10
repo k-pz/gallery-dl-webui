@@ -76,7 +76,7 @@ async def update_target(
             root_raw = cfg.get("postprocess_root")
             if not isinstance(root_raw, str) or not root_raw:
                 raise PostprocessRootNotConfigured("output_dir")
-            resolved = validate_under_root(out_raw, Path(root_raw), field="output_dir")
+            resolved = await validate_under_root(out_raw, Path(root_raw), field="output_dir")
             new_output_dir = str(resolved)
             await app_config_service.remember_output_dir(db, new_output_dir)
 
