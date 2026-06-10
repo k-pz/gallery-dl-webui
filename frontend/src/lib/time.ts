@@ -1,3 +1,19 @@
+/** Format an ISO timestamp as a short absolute local time ("Jun 10, 14:33"),
+ * including the year only once it differs from the current one. */
+export function formatAbs(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  const d = new Date(t);
+  return d.toLocaleString(undefined, {
+    ...(d.getFullYear() !== new Date().getFullYear() ? { year: "numeric" as const } : {}),
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 /** Format an ISO timestamp as a short relative-time string ("3h ago"). */
 export function formatRel(iso: string | null | undefined): string {
   if (!iso) return "—";

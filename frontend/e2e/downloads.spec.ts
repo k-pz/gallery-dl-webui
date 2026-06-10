@@ -126,10 +126,13 @@ async function openJobByUrl(page: import("@playwright/test").Page, url: string) 
 }
 
 function activeJobButton(page: import("@playwright/test").Page, name: RegExp) {
-  // Buttons inside the active-job card are textual (size="xs", variant="light")
+  // Buttons inside the job detail card are textual (size="xs", variant="light")
   // — the row-level cancel/requeue are ActionIcons with aria-labels like
-  // "Cancel #3". Filtering by role=button + name keeps us on the card.
+  // "Cancel #3". Filtering by role=button + name keeps us on the card. The
+  // card's kicker reads "active job" while running and "job" once terminal.
   return page
-    .locator(".mantine-Card-root", { has: page.getByText(/active job/i) })
+    .locator(".mantine-Card-root", {
+      has: page.locator(".app-section-kicker", { hasText: /^(active )?job$/i }),
+    })
     .getByRole("button", { name });
 }

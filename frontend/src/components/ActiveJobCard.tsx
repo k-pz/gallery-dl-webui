@@ -18,10 +18,12 @@ import {
   requeueDownloadMutation,
 } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
+import { formatEta } from "../lib/eta";
 import { useDataInvalidators } from "../lib/invalidate";
 import { useOptimisticCancel } from "../lib/optimisticCancel";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
 import { isCancellable, isTerminal, jobStep } from "../lib/status";
+import { formatAbs } from "../lib/time";
 import { useNotifyingMutation } from "../lib/useNotifyingMutation";
 import { IconAlertTriangle, IconX } from "./Icons";
 import { JobDetailField } from "./JobDetailField";
@@ -107,7 +109,7 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
         <Stack gap="lg">
           <Stack gap={4}>
             <Group gap="sm">
-              <span className="app-section-kicker">active job</span>
+              <span className="app-section-kicker">job</span>
               <span className="app-sk" style={{ width: 30, height: 11 }} />
             </Group>
             <span className="app-sk" style={{ width: "70%", height: 24 }} />
@@ -147,11 +149,16 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
 
   const showCancelling = cancelIntent.cancelling;
   const step = jobStep(job.status, job.postprocess_status, showCancelling);
+  const terminal = isTerminal(job.status);
   const canCancel = isCancellable(job.status) && !showCancelling;
-  const canRequeue = isTerminal(job.status);
+  const canRequeue = terminal;
   const busy = cancel.isPending || requeue.isPending;
   const displayName = job.name ?? job.url;
   const showUrlSubtitle = Boolean(job.name);
+  const duration =
+    job.started_at && job.finished_at
+      ? formatEta(Date.parse(job.finished_at) - Date.parse(job.started_at))
+      : null;
 
   return (
     <Card>
@@ -159,18 +166,18 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
         <Stack gap={4}>
           <Group justify="space-between" align="center" wrap="nowrap">
             <Group gap="sm" wrap="wrap" align="center">
-              <span className="app-section-kicker">active job</span>
+              <span className="app-section-kicker">{terminal ? "job" : "active job"}</span>
               <Text size="xs" c="dimmed" ff="monospace">
                 #{job.id}
               </Text>
             </Group>
             {onClose && (
-              <Tooltip label="Close active job" withArrow>
+              <Tooltip label="Close job details" withArrow>
                 <button
                   type="button"
                   className="icon-btn"
                   data-size="sm"
-                  aria-label="Close active job"
+                  aria-label="Close job details"
                   onClick={onClose}
                 >
                   <IconX size={14} />
@@ -225,9 +232,11 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
         <Divider />
         <Group gap="xl" wrap="wrap">
           <JobDetailField label="Extractor" value={job.extractor ?? "—"} mono />
-          {job.exit_code !== null && (
-            <JobDetailField label="Exit code" value={String(job.exit_code)} mono />
+          <JobDetailField label="Started" value={formatAbs(job.started_at)} mono />
+          {job.finished_at && (
+            <JobDetailField label="Finished" value={formatAbs(job.finished_at)} mono />
           )}
+          {duration && <JobDetailField label="Duration" value={duration} mono />}
         </Group>
         {job.error && (
           <Box className="app-alert">
