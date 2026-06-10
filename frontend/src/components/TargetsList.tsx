@@ -1,14 +1,21 @@
-import { Card, Group, SegmentedControl, Select, Stack, Text } from "@mantine/core";
+import { Button, Card, Group, SegmentedControl, Select, Stack, Text, Tooltip } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { getConfigOptions, listTargetsOptions } from "../api/@tanstack/react-query.gen";
+import {
+  getConfigOptions,
+  listTargetsOptions,
+  pollWatchedTargetsMutation,
+} from "../api/@tanstack/react-query.gen";
 import type { Target } from "../api/types.gen";
+import { useDataInvalidators } from "../lib/invalidate";
 import { makeNeedleMatcher } from "../lib/listFilters";
 import { usePagination } from "../lib/pagination";
 import { REFETCH_LIST_MS } from "../lib/polling";
+import { FINISHED_SERIES_STATUSES } from "../lib/seriesStatus";
 import { isActive } from "../lib/status";
+import { useNotifyingMutation } from "../lib/useNotifyingMutation";
 import { EmptyState } from "./EmptyState";
-import { IconLibrary } from "./Icons";
+import { IconLibrary, IconRefresh } from "./Icons";
 import { ListHeader } from "./ListHeader";
 import { ListPagination } from "./ListPagination";
 import { ListToolbar } from "./ListToolbar";
@@ -26,6 +33,38 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
   });
   const { data: config } = useQuery(getConfigOptions());
   const defaultPeriod = config?.default_watch_period ?? "1d";
+  const invalidate = useDataInvalidators();
+
+  const refreshWatched = useNotifyingMutation(
+    {
+      ...pollWatchedTargetsMutation(),
+      onSuccess: () => {
+        invalidate.targets();
+        invalidate.downloads();
+      },
+    },
+    {
+      success: {
+        title: "Refresh scheduled",
+        message: (res) =>
+          res.skipped_active > 0
+            ? `${res.scheduled} series queued · ${res.skipped_active} skipped (already downloading)`
+            : `${res.scheduled} series queued`,
+        color: "blue",
+      },
+      error: { title: "Refresh failed" },
+    },
+  );
+
+  // Mirrors the backend's poll-watched eligibility so the button can disable
+  // itself when a refresh would be a no-op.
+  const refreshableCount = useMemo(
+    () =>
+      (targets ?? []).filter(
+        (t) => t.watched && !FINISHED_SERIES_STATUSES.includes(t.series_status ?? ""),
+      ).length,
+    [targets],
+  );
 
   const [search, setSearch] = useState("");
   const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>("any");
@@ -104,6 +143,25 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
             filtersActive={filtersActive}
             isLoading={isLoading}
             formatTotal={(n) => `${n} series`}
+            actions={
+              totalCount > 0 && (
+                <Tooltip
+                  label="Schedule a sync for every watched series still expecting chapters"
+                  withArrow
+                >
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<IconRefresh size={14} />}
+                    loading={refreshWatched.isPending}
+                    disabled={refreshableCount === 0}
+                    onClick={() => refreshWatched.mutate({})}
+                  >
+                    Refresh watched
+                  </Button>
+                </Tooltip>
+              )
+            }
           />
         </Stack>
         {totalCount > 0 && (

@@ -427,6 +427,22 @@ export type MaintenanceScheduleIn = {
 };
 
 /**
+ * PollWatchedResult
+ *
+ * Outcome of a bulk poll of the watched library.
+ */
+export type PollWatchedResult = {
+    /**
+     * Scheduled
+     */
+    scheduled: number;
+    /**
+     * Skipped Active
+     */
+    skipped_active: number;
+};
+
+/**
  * ProgressOut
  */
 export type ProgressOut = {
@@ -999,6 +1015,22 @@ export type UpdateTargetResponses = {
 };
 
 export type UpdateTargetResponse = UpdateTargetResponses[keyof UpdateTargetResponses];
+
+export type PollWatchedTargetsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/targets/poll-watched';
+};
+
+export type PollWatchedTargetsResponses = {
+    /**
+     * Successful Response
+     */
+    200: PollWatchedResult;
+};
+
+export type PollWatchedTargetsResponse = PollWatchedTargetsResponses[keyof PollWatchedTargetsResponses];
 
 export type PollTargetData = {
     body?: never;

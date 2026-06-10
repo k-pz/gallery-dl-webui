@@ -1,10 +1,12 @@
 import { Group, Loader, Text, Title } from "@mantine/core";
+import type { ReactNode } from "react";
 
 /**
  * Title + count + spinner row shared by Library and Recent.
  *
  * The dimmed count reads "<visible> of <total>" when filters are active and
  * `formatTotal(total)` otherwise (defaulting to the bare number).
+ * `actions` renders right-aligned, after the loading spinner.
  */
 export function ListHeader({
   title,
@@ -14,6 +16,7 @@ export function ListHeader({
   filtersActive,
   isLoading,
   formatTotal,
+  actions,
 }: {
   title: string;
   titleOrder?: 3 | 4;
@@ -22,6 +25,7 @@ export function ListHeader({
   filtersActive: boolean;
   isLoading?: boolean;
   formatTotal?: (n: number) => string;
+  actions?: ReactNode;
 }) {
   return (
     <Group justify="space-between" align="center" wrap="wrap">
@@ -35,7 +39,10 @@ export function ListHeader({
           </Text>
         )}
       </Group>
-      {isLoading && <Loader size="xs" />}
+      <Group gap="xs" align="center">
+        {isLoading && <Loader size="xs" />}
+        {actions}
+      </Group>
     </Group>
   );
 }
