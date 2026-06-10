@@ -1,6 +1,6 @@
 import { Box, Container, Stack, Tabs } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { listDownloadsOptions } from "./api/@tanstack/react-query.gen";
 import { ActiveJobCard } from "./components/ActiveJobCard";
 import { AppVersion } from "./components/AppVersion";
@@ -15,21 +15,16 @@ import { RecentList } from "./components/RecentList";
 import { RunningJobsPanel } from "./components/RunningJobsPanel";
 import { SubmitForm } from "./components/SubmitForm";
 import { TargetsList } from "./components/TargetsList";
+import { useAutoSelectJob } from "./hooks/useAutoSelectJob";
 import { useRouteTab } from "./hooks/useRouteTab";
 import { useEventStream } from "./lib/eventStream";
 import { REFETCH_LIST_MS } from "./lib/polling";
-import { isRunning, isScheduled, isTerminal, pickCurrentActiveJobId } from "./lib/status";
-
-// Sentinel for lastAutoSelectedRef: the user explicitly closed the detail
-// pane, so the auto-open must stay off until a fresh auto pick is warranted.
-// Never collides with a real job id (ids are positive).
-const USER_CLOSED = -1;
+import { isRunning, isScheduled } from "./lib/status";
 
 export default function App() {
   // Open one websocket for the app lifetime — push events into the cache so
   // lists refresh immediately on server-side state changes.
   useEventStream();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [tab, setTab] = useRouteTab();
   const [navOpen, setNavOpen] = useState(false);
 
@@ -45,40 +40,7 @@ export default function App() {
     };
   }, [downloads]);
 
-  // Auto-open the "current" job (running, falling back to pending) so the
-  // Jobs tab shows what's happening by default, and advance to the next
-  // active job when the one we opened finishes. We only act on selections
-  // we made ourselves — manual picks and explicit closes are respected.
-  const lastAutoSelectedRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (!downloads) return;
-    const current = pickCurrentActiveJobId(downloads);
-    if (current === null) return;
-
-    if (selectedId === null) {
-      if (lastAutoSelectedRef.current === null) {
-        lastAutoSelectedRef.current = current;
-        setSelectedId(current);
-      }
-      return;
-    }
-
-    if (selectedId === lastAutoSelectedRef.current && current !== selectedId) {
-      const sel = downloads.find((d) => d.id === selectedId);
-      if (sel && isTerminal(sel.status)) {
-        lastAutoSelectedRef.current = current;
-        setSelectedId(current);
-      }
-    }
-  }, [downloads, selectedId]);
-
-  // Manual picks and closes take the selection out of auto-advance custody:
-  // null means "our last auto pick is gone, feel free to auto-open", while
-  // USER_CLOSED blocks the auto-open after an explicit close.
-  const selectJob = (id: number | null) => {
-    lastAutoSelectedRef.current = id === null ? USER_CLOSED : null;
-    setSelectedId(id);
-  };
+  const { selectedId, selectJob } = useAutoSelectJob(downloads);
 
   const openJob = (id: number) => {
     selectJob(id);
