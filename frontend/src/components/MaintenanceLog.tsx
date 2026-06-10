@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { getMaintenanceJobProgressOptions } from "../api/@tanstack/react-query.gen";
 import { useEta } from "../hooks/useEta";
+import { extractErrorMessage } from "../lib/apiError";
 import { formatEta } from "../lib/eta";
 import { maintStatusLabel, TERMINAL_STATUSES } from "../lib/maintenance";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
@@ -32,7 +33,7 @@ export function MaintenanceLog({
   jobId: number;
   startedAt: string | null | undefined;
 }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     ...getMaintenanceJobProgressOptions({ path: { job_id: jobId } }),
     refetchInterval: (q) => {
       const status = q.state.data?.status;
@@ -64,6 +65,14 @@ export function MaintenanceLog({
     total: data && data.total > 0 ? data.total : null,
     active: !!data && !terminal,
   });
+
+  if (isError) {
+    return (
+      <Text size="sm" c="red">
+        Couldn't load the job log: {extractErrorMessage(error)}
+      </Text>
+    );
+  }
 
   if (isLoading || !data) {
     return (

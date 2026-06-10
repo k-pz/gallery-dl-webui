@@ -34,7 +34,12 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
   const invalidate = useDataInvalidators();
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const { data: job, isLoading } = useQuery({
+  const {
+    data: job,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     ...getDownloadOptions({ path: { download_id: jobId } }),
     refetchInterval: (q) => {
       const status = q.state.data?.status;
@@ -102,6 +107,19 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
       error: { title: "Requeue failed" },
     },
   );
+
+  if (isError) {
+    // A persistent failure (job pruned server-side, backend down) must not
+    // render as an eternal skeleton.
+    return (
+      <Card>
+        <Box className="app-alert">
+          <IconAlertTriangle size={16} className="alert-icon" />
+          <Text size="sm">{extractErrorMessage(error)}</Text>
+        </Box>
+      </Card>
+    );
+  }
 
   if (isLoading || !job) {
     return (
