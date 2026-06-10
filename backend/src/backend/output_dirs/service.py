@@ -12,19 +12,15 @@ from pathlib import Path
 import aiosqlite
 
 from backend.app_config import service as app_config_service
-from backend.exceptions import BadRequestError
+from backend.app_config.exceptions import PostprocessRootNotConfigured
 from backend.output_dirs.schemas import DirEntry
-
-
-class PostprocessRootNotConfigured(BadRequestError):
-    detail = "postprocess_root is not configured"
 
 
 async def resolve_root(db: aiosqlite.Connection) -> Path:
     cfg = await app_config_service.get_all(db)
     root_raw = cfg.get("postprocess_root")
     if not isinstance(root_raw, str) or not root_raw:
-        raise PostprocessRootNotConfigured()
+        raise PostprocessRootNotConfigured("listing output dirs")
     return Path(root_raw)
 
 

@@ -201,3 +201,25 @@ def test_put_config_clears_komga_fields_with_null(client: TestClient) -> None:
     body = resp.json()
     assert body["komga_base_url"] is None
     assert body["komga_api_key"] is None
+
+
+def test_put_config_preserves_komga_credentials_when_omitted(client: TestClient) -> None:
+    saved = _put(
+        client,
+        komga_base_url="https://komga.example.com",
+        komga_api_key="secret-key",
+    )
+    assert saved.status_code == 200, saved.json()
+
+    # A PUT that doesn't mention the Komga fields must not wipe them — only
+    # an explicit null clears.
+    resp = _put(client, default_watch_period="2h")
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    assert body["komga_base_url"] == "https://komga.example.com"
+    assert body["komga_api_key"] == "secret-key"
+
+    cleared = _put(client, komga_base_url=None, komga_api_key=None)
+    assert cleared.status_code == 200, cleared.json()
+    assert cleared.json()["komga_base_url"] is None
+    assert cleared.json()["komga_api_key"] is None

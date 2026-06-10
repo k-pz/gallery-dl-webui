@@ -16,6 +16,24 @@ from backend.app_config.constants import KNOWN_OUTPUT_DIRS_LIMIT
 from backend.database import transaction
 
 
+def coerce_clamped_int(value: Any, default: int, *, lo: int, hi: int) -> int:
+    """Coerce a stored config value (int or numeric string) into [lo, hi].
+
+    Anything unparseable — including bools, which are ints to Python but
+    never a sane config value — falls back to `default`.
+    """
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return max(lo, min(value, hi))
+    if isinstance(value, str):
+        try:
+            return max(lo, min(int(value), hi))
+        except ValueError:
+            return default
+    return default
+
+
 async def get_all(db: aiosqlite.Connection) -> dict[str, Any]:
     async with db.execute("SELECT key, value FROM app_config") as cur:
         rows = await cur.fetchall()

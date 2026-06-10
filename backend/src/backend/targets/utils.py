@@ -24,21 +24,3 @@ def parse_duration(raw: str) -> timedelta:
     if total <= 0:
         raise ValueError(f"duration must be > 0: {raw!r}")
     return timedelta(seconds=total)
-
-
-def format_duration(td: timedelta) -> str:
-    secs = int(td.total_seconds())
-    if secs <= 0:
-        return "0s"
-    parts: list[str] = []
-    for unit_secs, unit_label in (
-        (604800, "w"),
-        (86400, "d"),
-        (3600, "h"),
-        (60, "m"),
-        (1, "s"),
-    ):
-        if secs >= unit_secs:
-            n, secs = divmod(secs, unit_secs)
-            parts.append(f"{n}{unit_label}")
-    return "".join(parts)

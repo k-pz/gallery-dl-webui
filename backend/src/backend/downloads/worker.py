@@ -12,6 +12,7 @@ from backend.app_config.constants import (
     DEFAULT_CHAPTER_NAMING_TEMPLATE,
     DEFAULT_MAX_PARALLEL_POSTPROCESS,
     DEFAULT_READING_DIRECTION,
+    MAX_PARALLEL_POSTPROCESS_CAP,
     READING_DIRECTIONS,
 )
 from backend.comic_metadata import (
@@ -100,6 +101,11 @@ class Worker:
         # the asyncio loop; the bool value is also read from the gallery-dl
         # worker thread.
         self._cancel_flags: dict[int, bool] = {}
+        # Ids cancelled while not yet claimed: a cancel landing in the window
+        # between the router's status read and the worker's claim would
+        # otherwise miss both request_cancel and cancel_pending. Checked (and
+        # drained) at claim time.
+        self._requested_cancels: set[int] = set()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._max_postprocess = DEFAULT_MAX_PARALLEL_POSTPROCESS
 
@@ -126,11 +132,20 @@ class Worker:
     def notify(self) -> None:
         self._wakeup.set()
 
+    def discard_cancel_request(self, id_: int) -> None:
+        """Forget a pre-claim cancel record (the job was requeued)."""
+        self._requested_cancels.discard(id_)
+
     def request_cancel(self, id_: int) -> bool:
-        """Flag an in-flight job for cancellation. Returns True if it matched."""
+        """Flag an in-flight job for cancellation. Returns True if it matched.
+
+        Ids that aren't in flight are remembered so a job claimed inside the
+        router's check-then-signal window still gets cancelled at claim time.
+        """
         if id_ in self._cancel_flags:
             self._cancel_flags[id_] = True
             return True
+        self._requested_cancels.add(id_)
         return False
 
     def _publish(self, *args, **kwargs) -> None:
@@ -148,8 +163,12 @@ class Worker:
             cfg = await app_config_service.get_all(self._db)
         except Exception:
             cfg = {}
-        post = _coerce_int(cfg.get("max_parallel_postprocess"), DEFAULT_MAX_PARALLEL_POSTPROCESS)
-        self._max_postprocess = max(1, min(post, 16))
+        self._max_postprocess = app_config_service.coerce_clamped_int(
+            cfg.get("max_parallel_postprocess"),
+            DEFAULT_MAX_PARALLEL_POSTPROCESS,
+            lo=1,
+            hi=MAX_PARALLEL_POSTPROCESS_CAP,
+        )
 
         while not self._stop.is_set():
             self._wakeup.clear()
@@ -161,6 +180,16 @@ class Worker:
                 continue
             if job is None:
                 await self._wakeup.wait()
+                continue
+            if job.id in self._requested_cancels:
+                # Cancel arrived between the router's status read and our
+                # claim — honour it before doing any work.
+                self._requested_cancels.discard(job.id)
+                try:
+                    await service.mark_cancelled(self._db, job.id, 0)
+                except Exception:
+                    logger.exception("failed to mark pre-claim cancel for %d", job.id)
+                self._publish(downloads_event("updated", id=job.id, status="cancelled"))
                 continue
             self._cancel_flags[job.id] = False
             self._publish(downloads_event("updated", id=job.id, status="extracting"))
@@ -455,16 +484,3 @@ def _filter_needed_chapters(
             continue
         needed.append(ChapterSeed(name=chapter, date=date))
     return needed
-
-
-def _coerce_int(value: object, default: int) -> int:
-    if isinstance(value, bool):
-        return default
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except ValueError:
-            return default
-    return default
