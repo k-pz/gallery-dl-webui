@@ -33,6 +33,15 @@ class FakeEventSource {
   log(payload: Record<string, unknown>) {
     this.listeners.get("log")?.(new MessageEvent("log", { data: JSON.stringify(payload) }));
   }
+  backendError(message: string) {
+    this.listeners.get("error")?.(new MessageEvent("error", { data: JSON.stringify({ message }) }));
+  }
+  nativeError() {
+    // A real EventSource connection drop fires a plain Event of type "error"
+    // at BOTH the addEventListener("error") listeners and onerror.
+    this.listeners.get("error")?.(new Event("error") as MessageEvent);
+    this.onerror?.(new Event("error"));
+  }
 }
 
 // jsdom doesn't simulate layout — override descriptors so we can drive the
@@ -179,6 +188,75 @@ describe("LogsPanel follow behavior", () => {
     await user.click(getFollowSwitch());
     expect(getFollowSwitch()).toBeChecked();
     expect(geom.scrollTop).toBe(1000);
+  });
+});
+
+describe("LogsPanel connection lifecycle", () => {
+  beforeEach(() => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal("EventSource", FakeEventSource);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("treats a native connection drop as reconnecting, not a fatal error", () => {
+    renderWithProviders(<LogsPanel />);
+    const es = FakeEventSource.instances[0];
+    act(() => {
+      es.ready();
+    });
+    expect(screen.getByText("live")).toBeInTheDocument();
+
+    act(() => {
+      es.nativeError();
+    });
+    // EventSource auto-reconnects — the badge must show "connecting…",
+    // and no error banner appears.
+    expect(screen.getByText("connecting…")).toBeInTheDocument();
+    expect(screen.queryByText("error")).not.toBeInTheDocument();
+    expect(screen.queryByText("unknown error")).not.toBeInTheDocument();
+  });
+
+  it("shows the backend's custom error payload as a fatal error", () => {
+    renderWithProviders(<LogsPanel />);
+    const es = FakeEventSource.instances[0];
+    act(() => {
+      es.ready();
+      es.backendError("journalctl not found");
+    });
+    expect(screen.getByText("error")).toBeInTheDocument();
+    expect(screen.getByText("journalctl not found")).toBeInTheDocument();
+  });
+
+  it("Reconnect opens a fresh EventSource and closes the old one", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<LogsPanel />);
+    expect(FakeEventSource.instances).toHaveLength(1);
+    const first = FakeEventSource.instances[0];
+
+    await user.click(screen.getByRole("button", { name: /reconnect/i }));
+    expect(FakeEventSource.instances).toHaveLength(2);
+    expect(first.closed).toBe(true);
+  });
+
+  it("buffers entries while paused and flushes them on resume", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<LogsPanel />);
+    const es = FakeEventSource.instances[0];
+    act(() => {
+      es.ready();
+    });
+
+    await user.click(screen.getByRole("button", { name: /pause/i }));
+    act(() => {
+      es.log(makeLog("while-paused", 1));
+    });
+    expect(screen.queryByText("while-paused")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /resume/i }));
+    expect(screen.getByText("while-paused")).toBeInTheDocument();
   });
 });
 

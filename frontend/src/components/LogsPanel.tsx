@@ -27,26 +27,12 @@ import {
   TextInput,
 } from "@mantine/core";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLogTail } from "../hooks/useLogTail";
 import { IconRefresh, IconSearch, IconTrash } from "./Icons";
-
-type LogEntry = {
-  id: number;
-  ts_ms: number | null;
-  priority: number;
-  level: string;
-  message: string;
-  unit?: string | null;
-  ident?: string | null;
-  pid?: string | null;
-};
 
 const DEFAULT_LINES = 500;
 const MIN_LINES = 1;
 const MAX_LINES = 50_000;
-// Cap how many entries we keep in memory regardless of the requested
-// history. A wide-open follow on a chatty backend can otherwise grow
-// unbounded.
-const MEMORY_CAP = 5_000;
 // How close to the bottom (in px) counts as "at the bottom" for the
 // auto-follow logic. Anything under this snaps + re-engages follow.
 const FOLLOW_THRESHOLD_PX = 32;
@@ -89,73 +75,13 @@ export function LogsPanel() {
   const [filter, setFilter] = useState("");
   const [levelThreshold, setLevelThreshold] = useState("7");
   const [paused, setPaused] = useState(false);
-  const [entries, setEntries] = useState<LogEntry[]>([]);
-  const [status, setStatus] = useState<"connecting" | "live" | "error" | "closed">("connecting");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const seqRef = useRef(0);
-  const pausedRef = useRef(paused);
-  pausedRef.current = paused;
+  const { entries, status, errorMessage, clear, reconnect } = useLogTail(lines, { paused });
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [following, setFollowing] = useState(true);
   const followingRef = useRef(following);
   followingRef.current = following;
-
-  // Reconnect every time the requested history depth changes; the backend
-  // doesn't expose a way to change `-n` mid-stream.
-  useEffect(() => {
-    setEntries([]);
-    setStatus("connecting");
-    setErrorMessage(null);
-    const es = new EventSource(`/api/logs/tail?lines=${lines}`);
-
-    const onReady = () => {
-      setStatus("live");
-    };
-    const onLog = (e: MessageEvent) => {
-      if (pausedRef.current) return;
-      let payload: Omit<LogEntry, "id">;
-      try {
-        payload = JSON.parse(e.data);
-      } catch {
-        return;
-      }
-      seqRef.current += 1;
-      const entry: LogEntry = { id: seqRef.current, ...payload };
-      setEntries((prev) => {
-        const next =
-          prev.length >= MEMORY_CAP ? prev.slice(prev.length - MEMORY_CAP + 1) : prev.slice();
-        next.push(entry);
-        return next;
-      });
-    };
-    const onErrorEvent = (e: MessageEvent) => {
-      try {
-        const payload = JSON.parse(e.data) as { message?: string };
-        setErrorMessage(payload.message ?? "unknown error");
-      } catch {
-        setErrorMessage("unknown error");
-      }
-      setStatus("error");
-    };
-    const onConnectionError = () => {
-      // EventSource auto-reconnects; surface the state so the user knows.
-      setStatus((s) => (s === "live" ? "connecting" : s));
-    };
-
-    es.addEventListener("ready", onReady);
-    es.addEventListener("log", onLog);
-    es.addEventListener("error", onErrorEvent);
-    es.onerror = onConnectionError;
-
-    return () => {
-      es.removeEventListener("ready", onReady);
-      es.removeEventListener("log", onLog);
-      es.removeEventListener("error", onErrorEvent);
-      es.close();
-    };
-  }, [lines]);
 
   const threshold = Number(levelThreshold);
   const filterLower = filter.trim().toLowerCase();
@@ -292,17 +218,12 @@ export function LogsPanel() {
             variant="default"
             size="xs"
             leftSection={<IconRefresh size={14} />}
-            onClick={() => setLines((n) => n)}
+            onClick={reconnect}
             title="Reconnect"
           >
             Reconnect
           </Button>
-          <Button
-            variant="default"
-            size="xs"
-            leftSection={<IconTrash size={14} />}
-            onClick={() => setEntries([])}
-          >
+          <Button variant="default" size="xs" leftSection={<IconTrash size={14} />} onClick={clear}>
             Clear
           </Button>
         </Group>
