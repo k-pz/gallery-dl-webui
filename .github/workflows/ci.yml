@@ -31,6 +31,7 @@ jobs:
   backend:
     name: backend (pytest)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: backend
@@ -59,13 +60,8 @@ jobs:
         run: mise run typecheck:backend
 
       - name: Test (pytest + coverage)
-        run: |
-          uv run pytest \
-            --cov=backend \
-            --cov-report=term-missing:skip-covered \
-            --cov-report=xml:coverage.xml \
-            --cov-report=html:htmlcov \
-            | tee pytest-output.txt
+        # Same command as locally: `mise run test:coverage:backend`.
+        run: mise run test:coverage:backend | tee pytest-output.txt
 
       - name: Append coverage summary
         if: always()
@@ -92,6 +88,7 @@ jobs:
   frontend:
     name: frontend (vitest)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
@@ -127,14 +124,8 @@ jobs:
         run: mise run typecheck:frontend
 
       - name: Test (vitest + coverage)
-        run: |
-          pnpm exec vitest run \
-            --coverage \
-            --coverage.reporter=text \
-            --coverage.reporter=html \
-            --coverage.reporter=json-summary \
-            --coverage.reportsDirectory=./coverage \
-            | tee vitest-output.txt
+        # Same command as locally: `mise run test:coverage:frontend`.
+        run: mise run test:coverage:frontend | tee vitest-output.txt
 
       - name: Append coverage summary
         if: always()
@@ -170,6 +161,7 @@ jobs:
   e2e:
     name: e2e (playwright)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Only burn an e2e run if the unit suites are green — saves ~5min on
     # broken PRs while still covering the integration path.
     needs: [backend, frontend]
