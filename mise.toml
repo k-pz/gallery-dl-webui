@@ -21,7 +21,9 @@
 
 [tools]
 python = "3.14"
-uv = "latest"
+# Pinned (not "latest") so CI, the LXC, and dev machines resolve the same
+# uv; keep in lockstep with the uv COPY in the Dockerfile.
+uv = "0.11.20"
 node = "24.15.0"
 
 [env]
@@ -168,22 +170,22 @@ run = "pnpm generate"
 [tasks."release:preview"]
 description = "Preview the next version commitizen would bump to (dry run, no writes)"
 dir = "{{config_root}}"
-run = "uv tool run --from commitizen cz bump --dry-run --yes"
+run = "uv tool run --from 'commitizen==4.16.3' cz bump --dry-run --yes"
 
 [tasks."release:preview:rc"]
 description = "Preview the next release-candidate version (`X.Y.Z-rc.N`, dry run, no writes)"
 dir = "{{config_root}}"
-run = "uv tool run --from commitizen cz bump --dry-run --yes --prerelease rc"
+run = "uv tool run --from 'commitizen==4.16.3' cz bump --dry-run --yes --prerelease rc"
 
 [tasks."release:bump"]
 description = "Run `cz bump`: update version files, append CHANGELOG, commit, and tag `v$version`"
 dir = "{{config_root}}"
-run = "uv tool run --from commitizen cz bump --yes"
+run = "uv tool run --from 'commitizen==4.16.3' cz bump --yes"
 
 [tasks."release:bump:rc"]
 description = "Run `cz bump --prerelease rc`: bump to the next release candidate and tag `v$version`"
 dir = "{{config_root}}"
-run = "uv tool run --from commitizen cz bump --yes --prerelease rc"
+run = "uv tool run --from 'commitizen==4.16.3' cz bump --yes --prerelease rc"
 
 # ---- Cleanup -------------------------------------------------------------
 
