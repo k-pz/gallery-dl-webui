@@ -76,3 +76,12 @@ class TargetUpdate(BaseModel):
     reading_direction: str | None = None
     # Empty string clears; otherwise one of postprocess.SERIES_STATUSES.
     series_status: str | None = None
+
+
+class PollWatchedResult(BaseModel):
+    """Outcome of a bulk poll of the watched library."""
+
+    # Targets a fresh download was queued for.
+    scheduled: int
+    # Targets left alone because a download of theirs is already in flight.
+    skipped_active: int

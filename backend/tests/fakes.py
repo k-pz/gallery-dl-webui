@@ -1,5 +1,6 @@
 """Test doubles used by both unit and integration tests."""
 
+import threading
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
@@ -44,6 +45,11 @@ class FakeGalleryConfig:
         # Optional per-URL captured per-chapter errors (chapter name -> reason),
         # surfaced by run_download to exercise outcome reconciliation.
         self.chapter_errors_for: dict[str, dict[str, str]] = {}
+        # Optional per-URL gate: when set, run_download blocks until the event
+        # fires (or a safety timeout), keeping the job deterministically
+        # "running" while a test pokes at concurrent-download behaviour.
+        # run_download executes via asyncio.to_thread, so blocking is safe.
+        self.gate_for: dict[str, threading.Event] = {}
         self.default_extractor: str | None = "fake"
         self.write_files: bool = True
 
@@ -94,6 +100,11 @@ class FakeGallery:
         skip_chapter: SkipChapterFn | None = None,
     ) -> tuple[int, list[FileRecord], dict[str, str]]:
         self.download_calls.append(url)
+        gate = self._config.gate_for.get(url)
+        if gate is not None:
+            # Timeout so a test that forgets to set the gate can't wedge the
+            # worker thread past its own failure.
+            gate.wait(timeout=10)
         emitted_records: list[FileRecord] = []
         for rel in self._config.manifest_for.get(url, []):
             manga, chapter = self._chapter_for(url, rel)

@@ -255,6 +255,25 @@ async def list_watched(db: aiosqlite.Connection) -> list[Target]:
     return [Target.from_row(r) for r in rows]
 
 
+# Series that are done publishing — a bulk refresh would never find new
+# chapters for these, so they're excluded (same reasoning as unwatch_ended).
+REFRESH_EXCLUDED_SERIES_STATUSES: tuple[str, ...] = ("Ended", "Abandoned")
+
+
+async def list_watched_refreshable(db: aiosqlite.Connection) -> list[Target]:
+    """Watched targets that may still get new chapters: series_status unset
+    or anything outside REFRESH_EXCLUDED_SERIES_STATUSES."""
+    placeholders = ",".join("?" * len(REFRESH_EXCLUDED_SERIES_STATUSES))
+    async with db.execute(
+        f"{_BARE_SELECT} WHERE watched = 1 "
+        f"AND (series_status IS NULL OR series_status NOT IN ({placeholders})) "
+        "ORDER BY id ASC",
+        REFRESH_EXCLUDED_SERIES_STATUSES,
+    ) as cur:
+        rows = await cur.fetchall()
+    return [Target.from_row(r) for r in rows]
+
+
 async def unwatch_ended(db: aiosqlite.Connection) -> list[int]:
     """Flip `watched = 0` on every watched target whose series_status is "Ended".
 
