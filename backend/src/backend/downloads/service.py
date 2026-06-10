@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import aiosqlite
 
-from backend.database import insert_returning_id, now_iso
+from backend.database import insert_returning_id, now_iso, transaction
 from backend.downloads.outcomes import ChapterOutcome
 from backend.downloads.schemas import Download
 
@@ -103,20 +103,20 @@ async def save_manifest(
     skip-filtering (defaults to the needed count when not supplied).
     """
     dates = dates or {}
-    await db.execute("DELETE FROM download_files WHERE download_id = ?", (download_id,))
-    await db.executemany(
-        "INSERT INTO download_files(download_id, idx, relpath, status, date) "
-        "VALUES(?, ?, ?, 'pending', ?)",
-        [(download_id, i, name, dates.get(name, "")) for i, name in enumerate(chapter_names)],
-    )
-    n = len(chapter_names)
-    disc = discovered if discovered is not None else n
-    await db.execute(
-        "UPDATE downloads SET files_expected = ?, chapters_total = ?, "
-        "chapters_discovered = ? WHERE id = ?",
-        (n, n, disc, download_id),
-    )
-    await db.commit()
+    async with transaction(db):
+        await db.execute("DELETE FROM download_files WHERE download_id = ?", (download_id,))
+        await db.executemany(
+            "INSERT INTO download_files(download_id, idx, relpath, status, date) "
+            "VALUES(?, ?, ?, 'pending', ?)",
+            [(download_id, i, name, dates.get(name, "")) for i, name in enumerate(chapter_names)],
+        )
+        n = len(chapter_names)
+        disc = discovered if discovered is not None else n
+        await db.execute(
+            "UPDATE downloads SET files_expected = ?, chapters_total = ?, "
+            "chapters_discovered = ? WHERE id = ?",
+            (n, n, disc, download_id),
+        )
 
 
 async def get_manifest(db: aiosqlite.Connection, download_id: int) -> list[str]:
@@ -155,26 +155,26 @@ async def save_chapter_outcomes(
                 (download_id, next_idx, o.name, o.status, o.pages, o.title, o.date, o.error)
             )
             next_idx += 1
-    if updates:
-        await db.executemany(
-            "UPDATE download_files SET status = ?, pages = ?, title = ?, "
-            "date = COALESCE(NULLIF(?, ''), date), error = ? "
-            "WHERE download_id = ? AND relpath = ?",
-            updates,
-        )
-    if inserts:
-        await db.executemany(
-            "INSERT INTO download_files"
-            "(download_id, idx, relpath, status, pages, title, date, error) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-            inserts,
-        )
     failed = sum(1 for o in outcomes if o.status == "failed")
-    await db.execute(
-        "UPDATE downloads SET chapters_failed = ? WHERE id = ?",
-        (failed, download_id),
-    )
-    await db.commit()
+    async with transaction(db):
+        if updates:
+            await db.executemany(
+                "UPDATE download_files SET status = ?, pages = ?, title = ?, "
+                "date = COALESCE(NULLIF(?, ''), date), error = ? "
+                "WHERE download_id = ? AND relpath = ?",
+                updates,
+            )
+        if inserts:
+            await db.executemany(
+                "INSERT INTO download_files"
+                "(download_id, idx, relpath, status, pages, title, date, error) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                inserts,
+            )
+        await db.execute(
+            "UPDATE downloads SET chapters_failed = ? WHERE id = ?",
+            (failed, download_id),
+        )
 
 
 async def get_chapter_outcomes(db: aiosqlite.Connection, download_id: int) -> list[ChapterOutcome]:
@@ -255,21 +255,20 @@ async def reset_to_pending(db: aiosqlite.Connection, id_: int) -> bool:
     Also clears the cached manifest so the next run re-extracts (the gallery
     may have grown new chapters since the last attempt).
     """
-    cursor = await db.execute(
-        "UPDATE downloads SET status = 'pending', started_at = NULL, "
-        "finished_at = NULL, exit_code = NULL, files_downloaded = 0, "
-        "files_expected = NULL, chapters_total = NULL, "
-        "chapters_discovered = NULL, chapters_failed = NULL, error = NULL, "
-        "postprocess_status = NULL, postprocess_chapters_packed = NULL, "
-        "postprocess_error = NULL "
-        "WHERE id = ? AND status IN ('completed', 'failed', 'cancelled')",
-        (id_,),
-    )
-    if (cursor.rowcount or 0) == 0:
-        await db.commit()
-        return False
-    await db.execute("DELETE FROM download_files WHERE download_id = ?", (id_,))
-    await db.commit()
+    async with transaction(db):
+        cursor = await db.execute(
+            "UPDATE downloads SET status = 'pending', started_at = NULL, "
+            "finished_at = NULL, exit_code = NULL, files_downloaded = 0, "
+            "files_expected = NULL, chapters_total = NULL, "
+            "chapters_discovered = NULL, chapters_failed = NULL, error = NULL, "
+            "postprocess_status = NULL, postprocess_chapters_packed = NULL, "
+            "postprocess_error = NULL "
+            "WHERE id = ? AND status IN ('completed', 'failed', 'cancelled')",
+            (id_,),
+        )
+        if (cursor.rowcount or 0) == 0:
+            return False
+        await db.execute("DELETE FROM download_files WHERE download_id = ?", (id_,))
     return True
 
 
@@ -309,9 +308,9 @@ async def delete_all(db: aiosqlite.Connection) -> int:
     async with db.execute("SELECT COUNT(*) AS c FROM downloads") as cur:
         row = await cur.fetchone()
     count = int(row["c"]) if row else 0
-    await db.execute("DELETE FROM download_files")
-    await db.execute("DELETE FROM downloads")
-    await db.commit()
+    async with transaction(db):
+        await db.execute("DELETE FROM download_files")
+        await db.execute("DELETE FROM downloads")
     return count
 
 

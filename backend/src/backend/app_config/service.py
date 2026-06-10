@@ -13,6 +13,7 @@ from typing import Any
 import aiosqlite
 
 from backend.app_config.constants import KNOWN_OUTPUT_DIRS_LIMIT
+from backend.database import transaction
 
 
 async def get_all(db: aiosqlite.Connection) -> dict[str, Any]:
@@ -22,13 +23,12 @@ async def get_all(db: aiosqlite.Connection) -> dict[str, Any]:
 
 
 async def set_many(db: aiosqlite.Connection, updates: dict[str, Any]) -> None:
-    for key, value in updates.items():
-        await db.execute(
+    async with transaction(db):
+        await db.executemany(
             "INSERT INTO app_config(key, value) VALUES(?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (key, json.dumps(value)),
+            [(key, json.dumps(value)) for key, value in updates.items()],
         )
-    await db.commit()
 
 
 async def remember_output_dir(
