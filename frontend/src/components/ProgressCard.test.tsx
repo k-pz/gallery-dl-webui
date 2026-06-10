@@ -157,4 +157,60 @@ describe("ProgressCard (terminal job)", () => {
     expect(screen.getByText(/discovered 3/i)).toBeInTheDocument();
     expect(screen.getByText(/failed 1/i)).toBeInTheDocument();
   });
+
+  it("shows results without a progress bar or live labels", async () => {
+    mockFetch(async (input) => {
+      if (urlOf(input).includes("/progress")) return jsonResponse(PROGRESS);
+      return jsonResponse({});
+    });
+
+    renderWithProviders(<ProgressCard jobId={1} status="completed" startedAt={null} />);
+
+    expect(await screen.findByText("1 / 2 chapters")).toBeInTheDocument();
+    expect(screen.getByText("results")).toBeInTheDocument();
+    expect(screen.queryByText("progress")).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  it("never shows 'fetching…' for a finished job without a manifest", async () => {
+    mockFetch(async (input) => {
+      if (urlOf(input).includes("/progress"))
+        return jsonResponse({
+          status: "failed",
+          files_expected: null,
+          files_present: 0,
+          chapters_discovered: null,
+          chapters_needed: null,
+          chapters_downloaded: 0,
+          chapters_failed: 0,
+          chapters_skipped: 0,
+          chapters: [],
+        });
+      return jsonResponse({});
+    });
+
+    renderWithProviders(<ProgressCard jobId={4} status="failed" startedAt={null} />);
+
+    expect(
+      await screen.findByText("No chapter details were recorded for this run."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("fetching…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+});
+
+describe("ProgressCard (active job)", () => {
+  it("keeps the progress bar while the job is running", async () => {
+    mockFetch(async (input) => {
+      if (urlOf(input).includes("/progress"))
+        return jsonResponse({ ...PROGRESS, status: "running" });
+      return jsonResponse({});
+    });
+
+    renderWithProviders(<ProgressCard jobId={6} status="running" startedAt={null} />);
+
+    expect(await screen.findByText("1 / 2 chapters")).toBeInTheDocument();
+    expect(screen.getByText("progress")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toBeInTheDocument();
+  });
 });

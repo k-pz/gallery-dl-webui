@@ -67,10 +67,10 @@ export function ProgressCard({
     return (
       <Stack gap="sm" aria-busy="true">
         <Group justify="space-between" align="baseline">
-          <span className="app-section-kicker">progress</span>
+          <span className="app-section-kicker">{terminal ? "results" : "progress"}</span>
           <span className="app-sk" style={{ width: 80, height: 11 }} />
         </Group>
-        <span className="app-sk" style={{ width: "100%", height: 8 }} />
+        {!terminal && <span className="app-sk" style={{ width: "100%", height: 8 }} />}
         <Box
           style={{
             border: "1px solid var(--app-border-subtle)",
@@ -106,8 +106,10 @@ export function ProgressCard({
     chapterKeys.push(dup === 0 ? label : `${label}#${dup}`);
   }
 
-  let rightLabel: string;
-  if (!manifestReady) rightLabel = "fetching…";
+  // Finished jobs only report what happened — no transient "fetching…"/ETA
+  // labels and no progress bar; the settled chapter tally is the result.
+  let rightLabel: string | null;
+  if (!manifestReady) rightLabel = terminal ? null : "fetching…";
   else if (packing) rightLabel = `processing… · ${settledChapters} / ${totalChapters} chapters`;
   else if (eta.kind === "eta") {
     rightLabel = `~${formatEta(eta.remainingMs)} · ${settledChapters} / ${totalChapters} chapters`;
@@ -116,12 +118,14 @@ export function ProgressCard({
   return (
     <Stack gap="sm">
       <Group justify="space-between" align="baseline">
-        <span className="app-section-kicker">progress</span>
-        <Text size="sm" c="dimmed" ff="monospace">
-          {rightLabel}
-        </Text>
+        <span className="app-section-kicker">{terminal ? "results" : "progress"}</span>
+        {rightLabel && (
+          <Text size="sm" c="dimmed" ff="monospace">
+            {rightLabel}
+          </Text>
+        )}
       </Group>
-      <Progress value={pct} size="md" radius="sm" striped={!terminal} animated={!terminal} />
+      {!terminal && <Progress value={pct} size="md" radius="sm" striped animated />}
       {(() => {
         const downloaded = data.chapters_downloaded ?? 0;
         const failed = data.chapters_failed ?? 0;
@@ -141,6 +145,11 @@ export function ProgressCard({
           </Text>
         );
       })()}
+      {terminal && !manifestReady && (
+        <Text size="sm" c="dimmed">
+          No chapter details were recorded for this run.
+        </Text>
+      )}
       {manifestReady && (
         <Box
           className="active-job-chapters"
