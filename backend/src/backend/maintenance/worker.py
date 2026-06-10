@@ -35,6 +35,7 @@ from backend.maintenance.komga import (
 )
 from backend.maintenance.live_progress import MaintenanceLiveProgress
 from backend.targets import service as targets_service
+from backend.tasks import log_task_death
 
 if TYPE_CHECKING:
     from backend.config import Settings
@@ -254,8 +255,9 @@ class MaintenanceWorker:
         self._cancel_requested: bool = False
 
     def start(self) -> None:
-        self._loop = asyncio.get_event_loop()
+        self._loop = asyncio.get_running_loop()
         self._task = asyncio.create_task(self._run(), name="maintenance-worker")
+        self._task.add_done_callback(log_task_death)
 
     def _emit(self, action: str, **data) -> None:
         if self._bus is not None:
@@ -283,7 +285,12 @@ class MaintenanceWorker:
     async def _run(self) -> None:
         while not self._stop.is_set():
             self._wakeup.clear()
-            job = await service.claim_next_pending(self._db)
+            try:
+                job = await service.claim_next_pending(self._db)
+            except Exception:
+                logger.exception("claim_next_pending failed")
+                await asyncio.sleep(1.0)
+                continue
             if job is None:
                 await self._wakeup.wait()
                 continue
@@ -291,32 +298,34 @@ class MaintenanceWorker:
             self._cancel_requested = False
             self._live.start(job.id)
             self._emit("updated", id=job.id, status="running")
+            status = "failed"
             try:
-                result = await self._execute(job.kind, job.id)
-            except MaintenanceCancelled as cancelled:
-                logger.info("maintenance job %d cancelled", job.id)
-                self._live.record(job.id, f"cancelled: {cancelled.partial}")
-                await service.mark_cancelled(self._db, job.id, cancelled.partial)
+                try:
+                    result = await self._execute(job.kind, job.id)
+                except MaintenanceCancelled as cancelled:
+                    logger.info("maintenance job %d cancelled", job.id)
+                    self._live.record(job.id, f"cancelled: {cancelled.partial}")
+                    await service.mark_cancelled(self._db, job.id, cancelled.partial)
+                    status = "cancelled"
+                except Exception as exc:
+                    logger.exception("maintenance job %d failed", job.id)
+                    self._live.record(job.id, f"failed: {exc!r}")
+                    await service.mark_failed(self._db, job.id, repr(exc))
+                else:
+                    self._live.record(job.id, f"done: {result}")
+                    await service.mark_completed(self._db, job.id, result)
+                    status = "completed"
+            except Exception:
+                # Persisting the terminal state failed (transient DB/OS
+                # error). The job row stays in whatever state it was, but the
+                # loop must survive — a silently dead maintenance queue is
+                # worse than one stuck row.
+                logger.exception("maintenance job %d: could not persist terminal state", job.id)
+            finally:
                 self._live.clear(job.id)
                 self._current_id = None
                 self._cancel_requested = False
-                self._emit("updated", id=job.id, status="cancelled")
-                continue
-            except Exception as exc:
-                logger.exception("maintenance job %d failed", job.id)
-                self._live.record(job.id, f"failed: {exc!r}")
-                await service.mark_failed(self._db, job.id, repr(exc))
-                self._live.clear(job.id)
-                self._current_id = None
-                self._cancel_requested = False
-                self._emit("updated", id=job.id, status="failed")
-                continue
-            self._live.record(job.id, f"done: {result}")
-            await service.mark_completed(self._db, job.id, result)
-            self._live.clear(job.id)
-            self._current_id = None
-            self._cancel_requested = False
-            self._emit("updated", id=job.id, status="completed")
+                self._emit("updated", id=job.id, status=status)
 
     def _should_cancel(self) -> bool:
         return self._cancel_requested

@@ -23,6 +23,7 @@ from backend.events import EventBus, downloads_event, targets_event
 from backend.targets import service as targets_service
 from backend.targets.schemas import Target
 from backend.targets.utils import parse_duration
+from backend.tasks import log_task_death
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,7 @@ class Poller:
 
     def start(self) -> None:
         self._task = asyncio.create_task(self._run(), name="poller")
+        self._task.add_done_callback(log_task_death)
 
     async def stop(self) -> None:
         self._stop.set()

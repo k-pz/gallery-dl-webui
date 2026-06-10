@@ -30,6 +30,7 @@ from backend.downloads.progress import count_present_chapters
 from backend.downloads.schemas import Download
 from backend.events import EventBus, downloads_event, progress_event
 from backend.targets import service as targets_service
+from backend.tasks import log_task_death
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +105,9 @@ class Worker:
         self._max_postprocess = DEFAULT_MAX_PARALLEL_POSTPROCESS
 
     def start(self) -> None:
-        self._loop = asyncio.get_event_loop()
+        self._loop = asyncio.get_running_loop()
         self._task = asyncio.create_task(self._run(), name="downloads-worker")
+        self._task.add_done_callback(log_task_death)
 
     async def stop(self) -> None:
         self._stop.set()
@@ -160,6 +162,12 @@ class Worker:
             self._publish(downloads_event("updated", id=job.id, status="extracting"))
             try:
                 await self._process(job)
+            except Exception:
+                # _process persists its own failures; this guards the tail
+                # work after that handler (target naming, postprocess
+                # bookkeeping) so one transient DB/OS error can't kill the
+                # worker task and stall the queue for good.
+                logger.exception("unhandled error processing download %d", job.id)
             finally:
                 self._cancel_flags.pop(job.id, None)
 
