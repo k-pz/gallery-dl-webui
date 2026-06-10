@@ -1,3 +1,4 @@
+import threading
 import time
 
 from fastapi.testclient import TestClient
@@ -323,3 +324,101 @@ def test_manifest_series_tags_do_not_overwrite_user_tags(
     _wait_terminal(client, client.get("/api/targets").json()[0]["last_download_id"])
 
     assert client.get(f"/api/targets/{target_id}").json()["tags"] == ["Shounen"]
+
+
+def _make_target(
+    client: TestClient,
+    gallery_config: FakeGalleryConfig,
+    url: str,
+    *,
+    watched: bool = False,
+    series_status: str | None = None,
+) -> int:
+    """Create a target by running a download for `url` to completion, then
+    patch the watch flag / series status onto it. Returns the target id."""
+    gallery_config.manifest_for[url] = []
+    created = client.post("/api/downloads", json={"url": url}).json()
+    _wait_terminal(client, created["id"])
+    target = next(t for t in client.get("/api/targets").json() if t["url"] == url)
+    patch: dict = {}
+    if watched:
+        patch["watched"] = True
+    if series_status is not None:
+        patch["series_status"] = series_status
+    if patch:
+        resp = client.patch(f"/api/targets/{target['id']}", json=patch)
+        assert resp.status_code == 200
+    return target["id"]
+
+
+def _download_counts(client: TestClient) -> dict[int, int]:
+    return {t["id"]: t["download_count"] for t in client.get("/api/targets").json()}
+
+
+def test_poll_watched_schedules_watched_skips_finished_series(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    ongoing = _make_target(
+        client, gallery_config, "https://example/ongoing", watched=True, series_status="Ongoing"
+    )
+    no_status = _make_target(client, gallery_config, "https://example/no-status", watched=True)
+    hiatus = _make_target(
+        client, gallery_config, "https://example/hiatus", watched=True, series_status="Hiatus"
+    )
+    ended = _make_target(
+        client, gallery_config, "https://example/ended", watched=True, series_status="Ended"
+    )
+    abandoned = _make_target(
+        client, gallery_config, "https://example/abandoned", watched=True, series_status="Abandoned"
+    )
+    unwatched = _make_target(client, gallery_config, "https://example/unwatched")
+
+    resp = client.post("/api/targets/poll-watched")
+    assert resp.status_code == 200
+    assert resp.json() == {"scheduled": 3, "skipped_active": 0}
+
+    counts = _download_counts(client)
+    assert counts[ongoing] == 2
+    assert counts[no_status] == 2
+    assert counts[hiatus] == 2
+    assert counts[ended] == 1
+    assert counts[abandoned] == 1
+    assert counts[unwatched] == 1
+
+    # Let the newly queued jobs drain so shutdown doesn't race the worker.
+    for t in client.get("/api/targets").json():
+        if t["last_status"] not in {"completed", "failed", "cancelled"}:
+            _wait_terminal(client, t["last_download_id"])
+
+
+def test_poll_watched_skips_targets_with_active_download(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    busy = _make_target(client, gallery_config, "https://example/busy", watched=True)
+    idle = _make_target(client, gallery_config, "https://example/idle", watched=True)
+
+    # Park a download for `busy` in the running state: the fake's gate keeps
+    # run_download blocked until we release it.
+    gate = threading.Event()
+    gallery_config.gate_for["https://example/busy"] = gate
+    poll = client.post(f"/api/targets/{busy}/poll")
+    assert poll.status_code == 200
+
+    resp = client.post("/api/targets/poll-watched")
+    gate.set()
+    assert resp.status_code == 200
+    assert resp.json() == {"scheduled": 1, "skipped_active": 1}
+
+    counts = _download_counts(client)
+    assert counts[busy] == 2  # the gated poll, not the bulk one
+    assert counts[idle] == 2
+
+    for t in client.get("/api/targets").json():
+        if t["last_status"] not in {"completed", "failed", "cancelled"}:
+            _wait_terminal(client, t["last_download_id"])
+
+
+def test_poll_watched_with_empty_library_schedules_nothing(client: TestClient) -> None:
+    resp = client.post("/api/targets/poll-watched")
+    assert resp.status_code == 200
+    assert resp.json() == {"scheduled": 0, "skipped_active": 0}

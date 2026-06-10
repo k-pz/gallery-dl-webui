@@ -21,7 +21,7 @@ from backend.targets.exceptions import (
     TargetHasActiveDownloadOnDelete,
     TargetNotFound,
 )
-from backend.targets.schemas import Target, TargetUpdate
+from backend.targets.schemas import PollWatchedResult, Target, TargetUpdate
 from backend.targets.service import UNSET, Unset
 from backend.targets.utils import parse_duration
 
@@ -125,6 +125,32 @@ async def update_target(
         raise TargetNotFound()
     bus.publish(targets_event("updated", id=target.id))
     return summary
+
+
+@router.post("/targets/poll-watched", operation_id="pollWatchedTargets")
+async def poll_watched_targets(db: DbDep, worker: WorkerDep, bus: EventBusDep) -> PollWatchedResult:
+    """Queue a download for every watched series that may still get chapters.
+
+    Mirrors a per-target poll fanned out over the watched library, minus the
+    409: targets with an in-flight download are skipped (and counted) so one
+    busy series never fails the batch.
+    """
+    scheduled = 0
+    skipped_active = 0
+    for target in await service.list_watched_refreshable(db):
+        if await downloads_service.has_active_for_target(db, target.id):
+            skipped_active += 1
+            continue
+        download = await downloads_service.insert_pending(
+            db, target.url, target.extractor, output_dir=target.output_dir, target_id=target.id
+        )
+        await service.mark_polled(db, target.id)
+        bus.publish(downloads_event("created", id=download.id))
+        bus.publish(targets_event("updated", id=target.id))
+        scheduled += 1
+    if scheduled:
+        worker.notify()
+    return PollWatchedResult(scheduled=scheduled, skipped_active=skipped_active)
 
 
 @router.post("/targets/{target_id}/poll", operation_id="pollTarget")
