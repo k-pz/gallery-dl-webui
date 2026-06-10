@@ -1,3 +1,14 @@
+## v1.4.0 (2026-06-10)
+
+### Feat
+
+- **ui**: present the selected job as a bottom sheet on small screens
+
+### Fix
+
+- **ui**: virtualize the ProgressCard chapter list
+- **downloads**: throttle per-file progress events to one per second
+
 ## v1.3.0 (2026-06-10)
 
 ### Feat
