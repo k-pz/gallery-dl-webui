@@ -1,3 +1,16 @@
+## v1.3.0 (2026-06-10)
+
+### Feat
+
+- **ui**: refresh-watched button in the library pane
+- **targets**: bulk poll-watched endpoint
+- **ui**: show plain results instead of live progress for finished jobs
+- **ui**: result-focused job detail header for finished jobs
+
+### Fix
+
+- **ui**: stop mobile header clipping the wordmark descenders
+
 ## v1.2.1 (2026-06-09)
 
 ### Fix
