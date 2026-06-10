@@ -107,8 +107,8 @@ in_ct_sh "
 set -e
 cd '$APP_DIR'
 find . -mindepth 1 -maxdepth 1 ! -name backend ! -name frontend -exec rm -rf {} +
-[ -d backend ]  && find backend  -mindepth 1 -maxdepth 1 ! -name .venv        -exec rm -rf {} +
-[ -d frontend ] && find frontend -mindepth 1 -maxdepth 1 ! -name node_modules -exec rm -rf {} +
+[ -d backend ]  && find backend  -mindepth 1 -maxdepth 1 ! -name .venv        -exec rm -rf {} + || true
+[ -d frontend ] && find frontend -mindepth 1 -maxdepth 1 ! -name node_modules -exec rm -rf {} + || true
 "
 
 log "copying source into CT at $APP_DIR"
@@ -118,6 +118,7 @@ log "copying source into CT at $APP_DIR"
 # .git/ is small (~tens of KB).
 tar -C "$SRC_DIR" \
     --exclude='./.venv' \
+    --exclude='./**/.venv' \
     --exclude='./.pytest_cache' \
     --exclude='./.ruff_cache' \
     --exclude='./node_modules' \
@@ -125,6 +126,8 @@ tar -C "$SRC_DIR" \
     --exclude='./**/dist' \
     --exclude='./__pycache__' \
     --exclude='./**/__pycache__' \
+    --exclude='./data' \
+    --exclude='./data-e2e' \
     --exclude='./.local' \
     --exclude='./.claude' \
     -cf - . \

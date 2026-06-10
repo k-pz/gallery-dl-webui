@@ -116,6 +116,7 @@ log "copying source into $APP_DIR"
 # .git/ is small (~tens of KB).
 tar -C "$SRC_DIR" \
     --exclude='./.venv' \
+    --exclude='./**/.venv' \
     --exclude='./.pytest_cache' \
     --exclude='./.ruff_cache' \
     --exclude='./node_modules' \
@@ -123,6 +124,8 @@ tar -C "$SRC_DIR" \
     --exclude='./**/dist' \
     --exclude='./__pycache__' \
     --exclude='./**/__pycache__' \
+    --exclude='./data' \
+    --exclude='./data-e2e' \
     --exclude='./.local' \
     --exclude='./.claude' \
     -cf - . \
