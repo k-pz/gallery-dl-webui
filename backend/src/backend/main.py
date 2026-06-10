@@ -98,10 +98,13 @@ def create_app(
         try:
             yield
         finally:
-            await poller.stop()
-            await maintenance_worker.stop()
-            await worker.stop()
-            await db.close()
+            # Each step must run even if an earlier one fails — a stuck
+            # poller must not keep the db open, etc.
+            for shutdown_step in (poller.stop, maintenance_worker.stop, worker.stop, db.close):
+                try:
+                    await shutdown_step()
+                except Exception:
+                    logger.exception("shutdown step %r failed", shutdown_step)
 
     app = FastAPI(title="gallery-dl-webui", lifespan=lifespan)
     app.include_router(health_router, prefix="/api")

@@ -111,6 +111,11 @@ class Worker:
 
     async def stop(self) -> None:
         self._stop.set()
+        # Flag any in-flight job for cancellation so shutdown doesn't block
+        # behind a multi-hour gallery-dl run; the job is marked cancelled the
+        # same way a user-requested cancel would be.
+        for job_id in self._cancel_flags:
+            self._cancel_flags[job_id] = True
         self._wakeup.set()
         if self._task is not None:
             try:
