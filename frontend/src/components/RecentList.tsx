@@ -36,7 +36,7 @@ const STATUS_ORDER: Record<string, number> = {
 
 // Queue-order ranking: in-flight first (running, extracting), then pending
 // in FIFO order (smallest id = next to be processed). Terminal jobs trail
-// behind by recency. Used for the default sort on the Jobs tab.
+// behind by recency.
 const QUEUE_RANK: Record<string, number> = {
   running: 0,
   extracting: 1,
@@ -63,9 +63,9 @@ export function RecentList({
 
   const cancelIntent = useOptimisticCancelMany(data);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
-  const [sortKey, setSortKey] = useState<SortKey>("queue");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("any");
+  const [sortKey, setSortKey] = useState<SortKey>("recent");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const refresh = (id: number) => {
     invalidate.downloads();
@@ -157,7 +157,7 @@ export function RecentList({
   }, [data, search, statusFilter, sortKey, sortDir]);
 
   const totalCount = data?.length ?? 0;
-  const filtersActive = search.trim().length > 0 || statusFilter !== "active";
+  const filtersActive = search.trim().length > 0 || statusFilter !== "any";
 
   const pagination = usePagination(visible, `${search}|${statusFilter}|${sortKey}|${sortDir}`);
 
@@ -210,7 +210,13 @@ export function RecentList({
                   { value: "status", label: "Status" },
                 ]}
                 value={sortKey}
-                onChange={(v) => setSortKey((v as SortKey) ?? "queue")}
+                onChange={(v) => {
+                  const key = (v as SortKey) ?? "recent";
+                  setSortKey(key);
+                  // Each key has a natural direction: newest first for
+                  // recency, ascending for queue/status order.
+                  setSortDir(key === "recent" ? "desc" : "asc");
+                }}
                 style={{ flex: 1 }}
                 comboboxProps={{ withinPortal: true }}
               />
