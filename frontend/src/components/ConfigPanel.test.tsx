@@ -109,6 +109,26 @@ describe("ConfigPanel", () => {
     expect(save).not.toBeDisabled();
   });
 
+  it("keeps unsaved edits when a config refetch lands", async () => {
+    const state = { current: { ...emptyConfig } };
+    mockFetch(configHandler(state));
+
+    const { client } = renderWithProviders(<ConfigPanel />);
+
+    const rootInput = (await screen.findByLabelText(/^root$/i)) as HTMLInputElement;
+    fireEvent.change(rootInput, { target: { value: "/mnt/nas/Drafting" } });
+
+    // Another tab saves a different watch period — the resulting refetch
+    // must not clobber the in-progress root edit.
+    state.current = { ...state.current, default_watch_period: "6h" };
+    await client.refetchQueries();
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /save/i })).toBeInTheDocument(),
+    );
+    expect(rootInput.value).toBe("/mnt/nas/Drafting");
+  });
+
   it("submits the new config", async () => {
     const state = { current: { ...emptyConfig } };
     const fetchSpy = mockFetch(configHandler(state));
