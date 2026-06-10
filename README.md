@@ -199,9 +199,11 @@ mise run release:bump       # write version files, append CHANGELOG, tag v$versi
 ```
 
 The `release` GH workflow (`workflow_dispatch`-only) does the same thing on
-`main` and pushes the tag back. The tag push then triggers `tag-release.yml`
-(publishes the GitHub Release with notes sliced from `CHANGELOG.md`) and
-`docker-release.yml` (publishes the GHCR image).
+`main` and pushes the tag back. Tags pushed with `GITHUB_TOKEN` can't trigger
+other workflows, so the rest of the pipeline chains via `workflow_run`
+instead: `release` → `tag-release.yml` (publishes the GitHub Release with
+notes sliced from `CHANGELOG.md`) → `docker-release.yml` (publishes the GHCR
+image).
 
 ## Regenerating the API client
 
