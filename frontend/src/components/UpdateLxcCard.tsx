@@ -81,11 +81,20 @@ export function UpdateLxcCard({
   const trackedJob =
     trackedJobId !== null ? (jobs.data ?? []).find((j) => j.id === trackedJobId) : undefined;
 
-  const refresh = () => {
-    qc.invalidateQueries({ queryKey: checkForUpdatesQueryKey() });
-    // Bypass the in-process backend cache too, so the user can force-pull on
-    // demand right after pushing a commit upstream.
-    qc.fetchQuery({ ...checkForUpdatesOptions({ query: { force: true } }) });
+  const refresh = async () => {
+    // Bypass the in-process backend cache, then write the fresh result onto
+    // the key this card renders from — the forced variant lives under its
+    // own query key (the options are part of the generated key), so an
+    // invalidate alone would refetch the unforced key straight back out of
+    // the backend's 60 s cache.
+    try {
+      const fresh = await qc.fetchQuery(checkForUpdatesOptions({ query: { force: true } }));
+      qc.setQueryData(checkForUpdatesQueryKey(), fresh);
+    } catch {
+      // Network hiccup on a manual refresh — fall back to a plain refetch so
+      // the user still gets whatever the backend can serve.
+      qc.invalidateQueries({ queryKey: checkForUpdatesQueryKey() });
+    }
   };
 
   const confirm = async () => {
@@ -437,6 +446,10 @@ function PreviewRefControl({
   const setMutation = useMutation({
     ...setUpdatePreviewRefMutation(),
     onSuccess: () => {
+      // Hand the input back to the seeding effect only once the save landed;
+      // doing it synchronously in save() re-seeded from the *stale* saved
+      // ref until the invalidated refetch arrived, flickering the input.
+      setHasTyped(false);
       qc.invalidateQueries({ queryKey: getUpdatePreviewRefQueryKey() });
       qc.invalidateQueries({ queryKey: checkForUpdatesQueryKey() });
     },
@@ -461,12 +474,10 @@ function PreviewRefControl({
   const save = () => {
     const next = trimmed === "" || trimmed === fallback ? null : trimmed;
     setMutation.mutate({ body: { ref: next } });
-    setHasTyped(false);
   };
 
   const reset = () => {
     setDraft("");
-    setHasTyped(false);
     setMutation.mutate({ body: { ref: null } });
   };
 
