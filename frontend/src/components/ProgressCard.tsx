@@ -1,5 +1,7 @@
 import { Box, Group, Progress, ScrollArea, Stack, Text, Tooltip } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useRef } from "react";
 import { getDownloadProgressOptions } from "../api/@tanstack/react-query.gen";
 import type { ChapterProgress } from "../api/types.gen";
 import { useEta } from "../hooks/useEta";
@@ -9,6 +11,8 @@ import { chapterStageLabel, isTerminal, type Status, statusTone, type Tone } fro
 import { Pill } from "./Pill";
 
 type ChapterStage = "downloading" | "downloaded" | "processing" | "completed";
+
+const CHAPTER_LIST_HEIGHT = 220;
 
 function chapterStage(ch: ChapterProgress): ChapterStage {
   if (ch.stage === "downloaded" || ch.stage === "completed" || ch.stage === "processing") {
@@ -58,6 +62,20 @@ export function ProgressCard({
     done: settledChapters,
     total: manifestReady ? totalChapters : null,
     active: manifestReady && !terminal && !packing,
+  });
+
+  // Large series carry 1000+ chapters; rendering them all would rebuild the
+  // whole list on every progress refetch and freeze the page. Virtualize so
+  // only the rows inside the 220px viewport (plus overscan) hit the DOM.
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: totalChapters,
+    getScrollElement: () => viewportRef.current,
+    estimateSize: () => 48,
+    overscan: 10,
+    // The first render happens before the viewport is measured; seed the
+    // known ScrollArea height so the initial window isn't empty.
+    initialRect: { width: 0, height: CHAPTER_LIST_HEIGHT },
   });
 
   if (isLoading || !data) {
@@ -159,60 +177,79 @@ export function ProgressCard({
             background: "var(--app-surface-muted)",
           }}
         >
-          <ScrollArea h={220} type="auto">
-            <Stack gap={0} p="xs">
-              {data.chapters.map((ch, i) => {
+          <ScrollArea h={CHAPTER_LIST_HEIGHT} type="auto" viewportRef={viewportRef}>
+            <div
+              style={{
+                height: virtualizer.getTotalSize(),
+                width: "100%",
+                position: "relative",
+              }}
+            >
+              {virtualizer.getVirtualItems().map((row) => {
+                const ch = data.chapters[row.index];
                 const badge = chapterBadge(ch);
                 const label = ch.name || "(untitled)";
                 const meta = [ch.pages ? `${ch.pages}p` : null, ch.date || null]
                   .filter(Boolean)
                   .join(" · ");
                 return (
-                  <Group
-                    key={chapterKeys[i]}
-                    justify="space-between"
-                    gap="xs"
-                    wrap="nowrap"
-                    py={6}
-                    px="xs"
+                  <div
+                    key={chapterKeys[row.index]}
+                    data-index={row.index}
+                    ref={virtualizer.measureElement}
                     style={{
-                      borderTop: i > 0 ? "1px solid var(--app-border-subtle)" : undefined,
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${row.start}px)`,
                     }}
                   >
-                    <Stack gap={0} style={{ minWidth: 0 }}>
-                      <Text
-                        size="sm"
-                        ff="monospace"
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        title={ch.title || label}
-                      >
-                        {label}
-                      </Text>
-                      {meta && (
-                        <Text size="xs" c="dimmed" ff="monospace">
-                          {meta}
-                        </Text>
-                      )}
-                    </Stack>
-                    <Tooltip
-                      label={ch.error ?? ""}
-                      disabled={!ch.error}
-                      withArrow
-                      multiline
-                      w={260}
+                    <Group
+                      justify="space-between"
+                      gap="xs"
+                      wrap="nowrap"
+                      py={6}
+                      px="xs"
+                      style={{
+                        borderTop: row.index > 0 ? "1px solid var(--app-border-subtle)" : undefined,
+                      }}
                     >
-                      <span style={{ display: "inline-flex" }}>
-                        <Pill tone={badge.tone}>{badge.label}</Pill>
-                      </span>
-                    </Tooltip>
-                  </Group>
+                      <Stack gap={0} style={{ minWidth: 0 }}>
+                        <Text
+                          size="sm"
+                          ff="monospace"
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={ch.title || label}
+                        >
+                          {label}
+                        </Text>
+                        {meta && (
+                          <Text size="xs" c="dimmed" ff="monospace">
+                            {meta}
+                          </Text>
+                        )}
+                      </Stack>
+                      <Tooltip
+                        label={ch.error ?? ""}
+                        disabled={!ch.error}
+                        withArrow
+                        multiline
+                        w={260}
+                      >
+                        <span style={{ display: "inline-flex" }}>
+                          <Pill tone={badge.tone}>{badge.label}</Pill>
+                        </span>
+                      </Tooltip>
+                    </Group>
+                  </div>
                 );
               })}
-            </Stack>
+            </div>
           </ScrollArea>
         </Box>
       )}
