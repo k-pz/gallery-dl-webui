@@ -1,3 +1,9 @@
+## v1.4.1 (2026-06-10)
+
+### Fix
+
+- **downloads**: stop large-series skip filter blocking the event loop
+
 ## v1.4.0 (2026-06-10)
 
 ### Feat
