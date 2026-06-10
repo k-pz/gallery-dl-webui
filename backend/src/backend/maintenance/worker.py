@@ -265,6 +265,11 @@ class MaintenanceWorker:
 
     async def stop(self) -> None:
         self._stop.set()
+        # Cancel the in-flight job (if any) so shutdown doesn't block behind
+        # a long NAS-wide rename/regen; it lands as 'cancelled' with partial
+        # progress persisted, same as a user-requested cancel.
+        if self._current_id is not None:
+            self._cancel_requested = True
         self._wakeup.set()
         if self._task is not None:
             try:
