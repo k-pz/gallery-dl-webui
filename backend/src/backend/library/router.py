@@ -24,8 +24,8 @@ from fastapi.responses import PlainTextResponse
 
 from backend.app_config import service as app_config_service
 from backend.app_config.constants import READING_DIRECTIONS
+from backend.comic_metadata import SERIES_STATUSES, normalize_tags
 from backend.dependencies import DbDep
-from backend.downloads.postprocess import SERIES_STATUSES, normalize_tags
 from backend.exceptions import BadRequestError
 from backend.library import service
 from backend.library.constants import SCHEMA_VERSION

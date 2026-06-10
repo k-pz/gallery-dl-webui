@@ -14,8 +14,8 @@ from backend.app_config.constants import (
 )
 from backend.app_config.exceptions import DefaultOutputDirWithoutRoot
 from backend.app_config.schemas import AppConfigIn, AppConfigOut
+from backend.comic_metadata import validate_chapter_naming_template
 from backend.dependencies import DbDep, EventBusDep
-from backend.downloads.postprocess import validate_chapter_naming_template
 from backend.events import config_event
 from backend.exceptions import BadRequestError
 from backend.output_dirs.utils import coerce_optional, validate_root, validate_under_root

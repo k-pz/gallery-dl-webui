@@ -6,9 +6,9 @@ from pathlib import Path, PurePosixPath
 
 from gallery_dl.exception import StopExtraction
 
+from backend.comic_metadata import FileRecord
 from backend.config import Settings
 from backend.downloads.gallery import MetadataResult, SkipChapterFn
-from backend.downloads.postprocess import FileRecord
 
 
 class FakeGalleryConfig:

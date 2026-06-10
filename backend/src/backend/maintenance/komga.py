@@ -17,9 +17,9 @@ from typing import Any
 
 import httpx
 
-from backend.downloads.postprocess import sanitize
+from backend.comic_metadata import sanitize
 
-# Local series_status labels (defined in downloads.postprocess.SERIES_STATUSES)
+# Local series_status labels (defined in comic_metadata.SERIES_STATUSES)
 # mapped to Komga's REST enum. Komga's series metadata endpoint accepts only
 # the four uppercase labels below; anything else is rejected with a 400.
 LOCAL_TO_KOMGA_STATUS: dict[str, str] = {

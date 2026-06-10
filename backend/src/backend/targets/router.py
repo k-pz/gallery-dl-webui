@@ -7,10 +7,10 @@ from fastapi import APIRouter
 from backend.app_config import service as app_config_service
 from backend.app_config.constants import READING_DIRECTIONS
 from backend.app_config.exceptions import PostprocessRootNotConfigured
+from backend.comic_metadata import SERIES_STATUSES, normalize_tags
 from backend.dependencies import DbDep, EventBusDep
 from backend.downloads import service as downloads_service
 from backend.downloads.dependencies import WorkerDep
-from backend.downloads.postprocess import SERIES_STATUSES, normalize_tags
 from backend.events import downloads_event, targets_event
 from backend.exceptions import BadRequestError
 from backend.output_dirs.utils import coerce_optional, validate_under_root

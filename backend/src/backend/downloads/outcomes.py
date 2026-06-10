@@ -10,7 +10,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal
 
-from backend.downloads.postprocess import IMAGE_SUFFIXES, FileRecord
+from backend.comic_metadata import IMAGE_SUFFIXES, FileRecord
 
 # reconcile_outcomes only ever emits the first three; "pending" is the
 # persisted state of a not-yet-reconciled manifest row (and legacy NULL rows),

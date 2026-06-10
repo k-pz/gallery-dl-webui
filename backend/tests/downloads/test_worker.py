@@ -5,12 +5,12 @@ import aiosqlite
 import pytest
 
 from backend.app_config import service as app_config_service
+from backend.comic_metadata import FileRecord
 from backend.config import Settings
 from backend.database import open_database
 from backend.downloads import service as downloads_service
 from backend.downloads.gallery import MetadataResult
 from backend.downloads.live_progress import LiveProgress
-from backend.downloads.postprocess import FileRecord
 from backend.downloads.worker import Worker
 from backend.targets import service as targets_service
 from tests.fakes import FakeGallery, FakeGalleryConfig

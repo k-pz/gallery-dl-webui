@@ -122,7 +122,7 @@ def test_progress_reports_persisted_outcomes_for_terminal_job(
 ) -> None:
     from pathlib import Path
 
-    from backend.downloads.postprocess import FileRecord
+    from backend.comic_metadata import FileRecord
 
     gallery_config.chapter_dates_for["https://example/x"] = {
         ("S", "1"): "2026-01-01",

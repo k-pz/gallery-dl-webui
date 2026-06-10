@@ -10,9 +10,7 @@ from gallery_dl import config, extractor, output
 from gallery_dl.exception import StopExtraction
 from gallery_dl.job import DownloadJob, SimulationJob
 
-from backend.config import Settings
-from backend.downloads.capture import ChapterErrorCollector
-from backend.downloads.postprocess import (
+from backend.comic_metadata import (
     FileRecord,
     chapter_with_minor,
     coerce_record_from_kwdict,
@@ -20,6 +18,8 @@ from backend.downloads.postprocess import (
     normalize_series_status,
     normalize_tags,
 )
+from backend.config import Settings
+from backend.downloads.capture import ChapterErrorCollector
 
 # Predicate: given (manga, chapter) from a gallery-dl kwdict, returns True if
 # the chapter is already represented as a CBZ in the postprocess output dir,
