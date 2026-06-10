@@ -9,6 +9,7 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
@@ -68,7 +69,20 @@ export function TargetRow({
       setPeriodError(null);
       invalidate.targets();
     },
-    onError: (err) => setPeriodError(extractErrorMessage(err)),
+    onError: (err, vars) => {
+      // Only period submissions render inline under the "Poll every" field;
+      // a failed tags / status / watch update would otherwise surface its
+      // error under an unrelated input (or go unnoticed entirely).
+      if (vars.body && "watch_period" in vars.body) {
+        setPeriodError(extractErrorMessage(err));
+      } else {
+        notifications.show({
+          title: "Update failed",
+          message: extractErrorMessage(err),
+          color: "red",
+        });
+      }
+    },
   });
 
   const poll = useNotifyingMutation(
