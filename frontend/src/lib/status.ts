@@ -6,24 +6,10 @@ export type Status = Download["status"];
 // worker has reflected it in the persisted status. Not a backend status.
 export const CANCELLING_LABEL = "cancelling";
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "gray",
-  extracting: "yellow",
-  running: "blue",
-  [CANCELLING_LABEL]: "orange",
-  completed: "green",
-  failed: "red",
-  cancelled: "orange",
-};
-
 const TERMINAL_STATUSES: ReadonlyArray<Status> = ["completed", "failed", "cancelled"];
 
 const ACTIVE_STATUSES: ReadonlySet<string> = new Set(["pending", "extracting", "running"]);
 const RUNNING_STATUSES: ReadonlySet<string> = new Set(["extracting", "running"]);
-
-export function statusColor(status: string): string {
-  return STATUS_COLORS[status] ?? "gray";
-}
 
 // Maps any job/chapter status string to the canonical `.pill` tone slots so
 // every list, badge, and progress strip pulls the same five-tone palette.

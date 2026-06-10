@@ -20,6 +20,11 @@ import { useEventStream } from "./lib/eventStream";
 import { REFETCH_LIST_MS } from "./lib/polling";
 import { isRunning, isScheduled, isTerminal, pickCurrentActiveJobId } from "./lib/status";
 
+// Sentinel for lastAutoSelectedRef: the user explicitly closed the detail
+// pane, so the auto-open must stay off until a fresh auto pick is warranted.
+// Never collides with a real job id (ids are positive).
+const USER_CLOSED = -1;
+
 export default function App() {
   // Open one websocket for the app lifetime — push events into the cache so
   // lists refresh immediately on server-side state changes.
@@ -67,8 +72,16 @@ export default function App() {
     }
   }, [downloads, selectedId]);
 
-  const openJob = (id: number) => {
+  // Manual picks and closes take the selection out of auto-advance custody:
+  // null means "our last auto pick is gone, feel free to auto-open", while
+  // USER_CLOSED blocks the auto-open after an explicit close.
+  const selectJob = (id: number | null) => {
+    lastAutoSelectedRef.current = id === null ? USER_CLOSED : null;
     setSelectedId(id);
+  };
+
+  const openJob = (id: number) => {
+    selectJob(id);
     setTab("jobs");
   };
 
@@ -137,7 +150,7 @@ export default function App() {
             <Tabs.Panel value="jobs" pt="xl">
               <JobsTabBody
                 selectedId={selectedId}
-                onSelect={setSelectedId}
+                onSelect={selectJob}
                 hasAnyActive={running > 0 || scheduled > 0}
               />
             </Tabs.Panel>

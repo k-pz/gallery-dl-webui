@@ -18,7 +18,6 @@ export function RecentRow({
   selected,
   cancelling,
   inflight,
-  isCancelPending,
   isRequeuePending,
   onSelect,
   onCancel,
@@ -28,7 +27,6 @@ export function RecentRow({
   selected: boolean;
   cancelling: boolean;
   inflight: boolean;
-  isCancelPending: boolean;
   isRequeuePending: boolean;
   onSelect: (id: number) => void;
   onCancel: () => void;
@@ -84,7 +82,7 @@ export function RecentRow({
               data-tone="danger"
               data-size="sm"
               aria-label={`Cancel #${item.id}`}
-              disabled={inflight || showCancelling || (inflight && isCancelPending)}
+              disabled={inflight || showCancelling}
               onClick={onCancel}
             >
               <IconX size={14} />

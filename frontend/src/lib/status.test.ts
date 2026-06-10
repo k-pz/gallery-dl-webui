@@ -5,26 +5,8 @@ import {
   jobStatusLabel,
   jobStep,
   pickCurrentActiveJobId,
-  statusColor,
   statusTone,
 } from "./status";
-
-describe("statusColor", () => {
-  it("maps each known status to its color", () => {
-    expect(statusColor("pending")).toBe("gray");
-    expect(statusColor("extracting")).toBe("yellow");
-    expect(statusColor("running")).toBe("blue");
-    expect(statusColor("completed")).toBe("green");
-    expect(statusColor("failed")).toBe("red");
-    expect(statusColor("cancelled")).toBe("orange");
-    expect(statusColor("cancelling")).toBe("orange");
-  });
-
-  it("falls back to gray for unknown statuses", () => {
-    expect(statusColor("anything-else")).toBe("gray");
-    expect(statusColor("")).toBe("gray");
-  });
-});
 
 describe("chapter outcome presentation", () => {
   it("labels downloaded/skipped/failed chapter outcomes", () => {

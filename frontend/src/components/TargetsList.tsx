@@ -146,7 +146,11 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
             actions={
               totalCount > 0 && (
                 <Tooltip
-                  label="Schedule a sync for every watched series still expecting chapters"
+                  label={
+                    refreshableCount === 0
+                      ? "No watched series are expecting chapters right now"
+                      : "Schedule a sync for every watched series still expecting chapters"
+                  }
                   withArrow
                 >
                   <Button
@@ -154,8 +158,15 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
                     variant="light"
                     leftSection={<IconRefresh size={14} />}
                     loading={refreshWatched.isPending}
-                    disabled={refreshableCount === 0}
-                    onClick={() => refreshWatched.mutate({})}
+                    // aria-disabled (not native disabled) keeps the button
+                    // hoverable so the tooltip can explain *why* it's inert;
+                    // the click is guarded below.
+                    aria-disabled={refreshableCount === 0 || undefined}
+                    data-disabled={refreshableCount === 0 || undefined}
+                    onClick={() => {
+                      if (refreshableCount === 0) return;
+                      refreshWatched.mutate({});
+                    }}
                   >
                     Refresh watched
                   </Button>
