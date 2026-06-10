@@ -75,6 +75,15 @@ id -u "$APP_USER" >/dev/null 2>&1 || die "user '$APP_USER' does not exist"
 command -v git >/dev/null \
     || die "git not found — install with: apt-get install -y git"
 
+# The .update-ref sidecar is written by the unprivileged, network-facing
+# webapp and consumed here as root, so treat the ref as untrusted input:
+# accept only a plausible git ref (branch / tag / SHA) built from safe
+# characters and not starting with a dash, so nothing can be smuggled into
+# git as an option. REPO_URL stays pinned regardless — a hostile ref can at
+# worst select a ref that already exists in the trusted repo.
+[[ "$REPO_REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$ ]] \
+    || die "refusing suspicious REPO_REF: '$REPO_REF' (expected a branch / tag / SHA)"
+
 # ---- Fetch source ---------------------------------------------------------
 
 SRC_DIR="$(mktemp -d -t gallery-dl-webui.XXXXXX)"
