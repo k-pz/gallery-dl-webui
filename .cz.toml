@@ -28,6 +28,9 @@ changelog_incremental = true
 changelog_merge_prerelease = true
 major_version_zero = false
 version_scheme = "semver"
+# Re-lock backend/uv.lock after the version files are rewritten so the
+# lockfile lands inside the tagged bump commit (see the script header).
+pre_bump_hooks = ["scripts/release-sync-lock.sh"]
 version_files = [
     "backend/pyproject.toml:^version",
     "backend/src/backend/__init__.py:^__version__",
