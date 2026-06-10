@@ -71,6 +71,10 @@ export function MaintenancePanel() {
   }, [jobList, userPicked]);
 
   const scheduleError = schedule.isError ? extractErrorMessage(schedule.error) : null;
+  // One shared mutation backs six unrelated buttons; gate each button's
+  // spinner on the kind it actually submits so clicking one doesn't put
+  // the whole tab into a loading state.
+  const schedulingKind = schedule.isPending ? schedule.variables?.body?.kind : undefined;
 
   return (
     <Stack gap="lg">
@@ -89,7 +93,7 @@ export function MaintenancePanel() {
               variant="light"
               leftSection={<IconRefresh size={14} />}
               onClick={() => schedule.mutate({ body: { kind: "rename_chapters" } })}
-              loading={schedule.isPending}
+              loading={schedulingKind === "rename_chapters"}
             >
               Schedule chapter rename
             </Button>
@@ -97,7 +101,7 @@ export function MaintenancePanel() {
               variant="light"
               leftSection={<IconFileText size={14} />}
               onClick={() => schedule.mutate({ body: { kind: "regenerate_series_metadata" } })}
-              loading={schedule.isPending}
+              loading={schedulingKind === "regenerate_series_metadata"}
             >
               Regenerate series metadata
             </Button>
@@ -105,7 +109,7 @@ export function MaintenancePanel() {
               variant="light"
               leftSection={<IconEyeOff size={14} />}
               onClick={() => schedule.mutate({ body: { kind: "unwatch_ended_series" } })}
-              loading={schedule.isPending}
+              loading={schedulingKind === "unwatch_ended_series"}
             >
               Unwatch ended series
             </Button>
@@ -119,17 +123,17 @@ export function MaintenancePanel() {
       </Card>
 
       <PushKomgaStatusCard
-        scheduling={schedule.isPending}
+        scheduling={schedulingKind === "push_komga_series_status"}
         onSchedule={() => schedule.mutate({ body: { kind: "push_komga_series_status" } })}
       />
 
       <UpdateLxcCard
-        scheduling={schedule.isPending}
+        scheduling={schedulingKind === "update_lxc"}
         onSchedule={() => schedule.mutateAsync({ body: { kind: "update_lxc" } })}
       />
 
       <RebuildLibraryCard
-        scheduling={schedule.isPending}
+        scheduling={schedulingKind === "rebuild_library"}
         onSchedule={() => schedule.mutate({ body: { kind: "rebuild_library" } })}
       />
 
