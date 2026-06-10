@@ -74,9 +74,13 @@ jobs:
         # we can't use `workflow_run.head_branch` because tag-release now
         # runs on `main` (via workflow_run off the release workflow) rather
         # than on a tag push. For manual dispatch we take the tag from input.
+        env:
+          # Expanded via env, never interpolated into the script body —
+          # same convention tag-release.yml documents for its tag input.
+          DISPATCH_TAG: ${{ inputs.tag }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ inputs.tag }}"
+            tag="$DISPATCH_TAG"
           else
             tag=$(cat artifacts/tag)
           fi
