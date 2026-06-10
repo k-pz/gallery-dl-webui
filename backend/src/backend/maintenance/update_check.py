@@ -24,11 +24,13 @@ swap for up to a minute.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -108,10 +110,6 @@ class _LocalGitState:
     current_version: str | None
     owner: str
     repo: str
-
-
-_cache: dict[tuple[str | None, str], UpdateCheckResult] = {}
-_cache_at: dict[tuple[str | None, str], float] = {}
 
 
 def _read_first_line(path: Path) -> str | None:
@@ -250,31 +248,52 @@ def _parse_semver(version: str | None) -> tuple[int, int, int] | None:
     return int(match.group(1)), int(match.group(2)), int(match.group(3))
 
 
+async def _github_get(
+    client: httpx.AsyncClient, url: str, *, params: dict[str, str] | None = None
+) -> httpx.Response | None:
+    """One unauthenticated GitHub API GET. None on transport errors."""
+    try:
+        return await client.get(
+            url, headers={"Accept": "application/vnd.github+json"}, params=params
+        )
+    except httpx.TimeoutException, httpx.TransportError:
+        return None
+
+
+def _json_or_none(resp: httpx.Response, *, what: str) -> Any:
+    """Decode a 2xx response's JSON; warn + None on HTTP or decode errors."""
+    if resp.status_code >= 400:
+        logger.warning(
+            "update-check: GitHub %s returned %s for %s", what, resp.status_code, resp.url
+        )
+        return None
+    try:
+        return resp.json()
+    except ValueError:
+        return None
+
+
 async def _fetch_commit(
     client: httpx.AsyncClient, owner: str, repo: str, ref: str
 ) -> tuple[dict | None, str | None]:
-    """One unauthenticated GET to GitHub's commits endpoint.
+    """Fetch the head commit of `ref`.
 
     Errors collapse into a single `reason` so the UI can show "couldn't
     reach upstream" without unspooling stack traces. 404 is its own bucket
     because it usually means the branch was renamed or removed upstream.
     """
     url = f"https://api.github.com/repos/{owner}/{repo}/commits/{ref}"
-    try:
-        resp = await client.get(url, headers={"Accept": "application/vnd.github+json"})
-    except httpx.TimeoutException, httpx.TransportError:
+    resp = await _github_get(client, url)
+    if resp is None:
         return None, "network_error"
     if resp.status_code == 404:
         return None, "branch_not_on_remote"
     if resp.status_code == 403 and "rate limit" in resp.text.lower():
         return None, "rate_limited"
-    if resp.status_code >= 400:
-        logger.warning("update-check: GitHub returned %s for %s", resp.status_code, url)
+    payload = _json_or_none(resp, what="commit")
+    if payload is None:
         return None, "upstream_error"
-    try:
-        return resp.json(), None
-    except ValueError:
-        return None, "upstream_error"
+    return payload, None
 
 
 async def _fetch_releases(
@@ -288,21 +307,10 @@ async def _fetch_releases(
     the caller filters them.
     """
     url = f"https://api.github.com/repos/{owner}/{repo}/releases"
-    try:
-        resp = await client.get(
-            url,
-            headers={"Accept": "application/vnd.github+json"},
-            params={"per_page": str(per_page)},
-        )
-    except httpx.TimeoutException, httpx.TransportError:
+    resp = await _github_get(client, url, params={"per_page": str(per_page)})
+    if resp is None:
         return None
-    if resp.status_code >= 400:
-        logger.warning("update-check: GitHub releases returned %s for %s", resp.status_code, url)
-        return None
-    try:
-        payload = resp.json()
-    except ValueError:
-        return None
+    payload = _json_or_none(resp, what="releases")
     return payload if isinstance(payload, list) else None
 
 
@@ -318,21 +326,10 @@ async def _fetch_tags(
     nightly / non-version tags don't pollute the picker.
     """
     url = f"https://api.github.com/repos/{owner}/{repo}/tags"
-    try:
-        resp = await client.get(
-            url,
-            headers={"Accept": "application/vnd.github+json"},
-            params={"per_page": str(per_page)},
-        )
-    except httpx.TimeoutException, httpx.TransportError:
+    resp = await _github_get(client, url, params={"per_page": str(per_page)})
+    if resp is None:
         return None
-    if resp.status_code >= 400:
-        logger.warning("update-check: GitHub tags returned %s for %s", resp.status_code, url)
-        return None
-    try:
-        payload = resp.json()
-    except ValueError:
-        return None
+    payload = _json_or_none(resp, what="tags")
     if not isinstance(payload, list):
         return None
     names: list[tuple[tuple[int, int, int], str]] = []
@@ -360,17 +357,10 @@ async def _fetch_compare(
     the preview-mode changelog just stays empty in that case.
     """
     url = f"https://api.github.com/repos/{owner}/{repo}/compare/{base}...{head}"
-    try:
-        resp = await client.get(url, headers={"Accept": "application/vnd.github+json"})
-    except httpx.TimeoutException, httpx.TransportError:
+    resp = await _github_get(client, url)
+    if resp is None:
         return None
-    if resp.status_code >= 400:
-        logger.warning("update-check: GitHub compare returned %s for %s", resp.status_code, url)
-        return None
-    try:
-        payload = resp.json()
-    except ValueError:
-        return None
+    payload = _json_or_none(resp, what="compare")
     commits = payload.get("commits") if isinstance(payload, dict) else None
     return commits if isinstance(commits, list) else None
 
@@ -463,6 +453,162 @@ def _build_compare_changelog(commits: list[dict]) -> list[ChangelogEntry]:
     return entries
 
 
+class UpdateChecker:
+    """Update checker with a per-instance TTL cache.
+
+    One instance lives for the app's lifetime (the module-level default
+    below); tests construct their own so cache state never leaks between
+    assertions.
+    """
+
+    def __init__(self, ttl_seconds: float = _CACHE_TTL_SECONDS) -> None:
+        self._ttl = ttl_seconds
+        self._cache: dict[tuple[str | None, str], tuple[float, UpdateCheckResult]] = {}
+
+    def _cached(self, key: tuple[str | None, str], now: float) -> UpdateCheckResult | None:
+        entry = self._cache.get(key)
+        if entry is None:
+            return None
+        cached_at, result = entry
+        if now - cached_at >= self._ttl:
+            return None
+        return result
+
+    async def check(
+        self,
+        *,
+        repo_root: Path | None = None,
+        timeout: float = 5.0,
+        force: bool = False,
+        ref_override: str | None = None,
+    ) -> UpdateCheckResult:
+        """Compare the local checkout's commit to upstream on GitHub.
+
+        `ref_override` selects a non-default ref to track (e.g. `develop`,
+        `feature/foo`, a tag, or a SHA). When None, we track the branch from
+        `.git/HEAD` (production: `main`). `force=True` skips the in-memory
+        TTL cache — used by manual "refresh" actions in the UI.
+        """
+        now = time.monotonic()
+        state, reason = read_local_state(repo_root if repo_root is not None else REPO_ROOT)
+        # The cache key includes the tracked ref so flipping preview refs
+        # in the UI doesn't get masked by a 60 s stale entry from the
+        # previous ref. When we can't read local state we still cache the
+        # (None, "") slot so an inert repo doesn't hammer the filesystem.
+        cache_key = (ref_override, state.branch if state is not None else "")
+        if not force:
+            cached = self._cached(cache_key, now)
+            if cached is not None:
+                return cached
+
+        if state is None:
+            result = UpdateCheckResult(
+                branch=None,
+                current_sha=None,
+                current_version=None,
+                tracked_ref=ref_override,
+                tracked_ref_is_default=ref_override is None,
+                latest_sha=None,
+                latest_message=None,
+                latest_committed_at=None,
+                latest_version=None,
+                behind=None,
+                changelog=[],
+                reason=reason,
+            )
+            self._cache[cache_key] = (now, result)
+            return result
+
+        tracked_ref = ref_override if ref_override else state.branch
+        tracked_is_default = ref_override is None or ref_override == state.branch
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            # Tags drive the picker in the maintenance card and are wanted on
+            # every outcome (even rollback while up-to-date), so fetch them
+            # concurrently with the head commit.
+            head, tags = await asyncio.gather(
+                _fetch_commit(client, state.owner, state.repo, tracked_ref),
+                _fetch_tags(client, state.owner, state.repo),
+            )
+            head_payload, fetch_reason = head
+            if head_payload is None:
+                result = UpdateCheckResult(
+                    branch=state.branch,
+                    current_sha=state.current_sha,
+                    current_version=state.current_version,
+                    tracked_ref=tracked_ref,
+                    tracked_ref_is_default=tracked_is_default,
+                    latest_sha=None,
+                    latest_message=None,
+                    latest_committed_at=None,
+                    latest_version=None,
+                    behind=None,
+                    changelog=[],
+                    available_tags=tags or [],
+                    reason=fetch_reason,
+                )
+                self._cache[cache_key] = (now, result)
+                return result
+
+            latest_sha_raw = head_payload.get("sha")
+            latest_sha = latest_sha_raw if isinstance(latest_sha_raw, str) else None
+            commit = head_payload.get("commit") or {}
+            full_message = commit.get("message") if isinstance(commit, dict) else None
+            latest_message = (
+                full_message.splitlines()[0]
+                if isinstance(full_message, str) and full_message
+                else None
+            )
+            committer = commit.get("committer") if isinstance(commit, dict) else None
+            latest_committed_at_raw = committer.get("date") if isinstance(committer, dict) else None
+            latest_committed_at = (
+                latest_committed_at_raw if isinstance(latest_committed_at_raw, str) else None
+            )
+
+            behind = latest_sha is not None and latest_sha != state.current_sha
+
+            # Default-branch tracking: pull GitHub Releases between the
+            # installed version and the latest tag. Preview-ref tracking: list
+            # the commits between current_sha and the ref's HEAD via /compare.
+            changelog: list[ChangelogEntry] = []
+            latest_version: str | None = None
+            if behind:
+                if tracked_is_default:
+                    releases = await _fetch_releases(client, state.owner, state.repo)
+                    if releases is not None:
+                        changelog, latest_version = _build_release_changelog(
+                            releases, state.current_version
+                        )
+                else:
+                    commits = await _fetch_compare(
+                        client, state.owner, state.repo, state.current_sha, tracked_ref
+                    )
+                    if commits is not None:
+                        changelog = _build_compare_changelog(commits)
+
+        result = UpdateCheckResult(
+            branch=state.branch,
+            current_sha=state.current_sha,
+            current_version=state.current_version,
+            tracked_ref=tracked_ref,
+            tracked_ref_is_default=tracked_is_default,
+            latest_sha=latest_sha,
+            latest_message=latest_message,
+            latest_committed_at=latest_committed_at,
+            latest_version=latest_version,
+            behind=behind,
+            changelog=changelog,
+            available_tags=tags or [],
+            reason=None,
+        )
+        self._cache[cache_key] = (now, result)
+        return result
+
+
+# Default instance used by the router; lives for the process lifetime.
+_default_checker = UpdateChecker()
+
+
 async def check_for_updates(
     *,
     repo_root: Path | None = None,
@@ -470,139 +616,15 @@ async def check_for_updates(
     force: bool = False,
     ref_override: str | None = None,
 ) -> UpdateCheckResult:
-    """Compare the local checkout's commit to upstream on GitHub.
-
-    `ref_override` selects a non-default ref to track (e.g. `develop`,
-    `feature/foo`, a tag, or a SHA). When None, we track the branch from
-    `.git/HEAD` (production: `main`). `force=True` skips the in-memory
-    TTL cache — used by manual "refresh" actions in the UI.
-    """
-    global _cache, _cache_at
-    now = time.monotonic()
-    state, reason = read_local_state(repo_root if repo_root is not None else REPO_ROOT)
-    # The cache key includes the tracked ref so flipping preview refs
-    # in the UI doesn't get masked by a 60 s stale entry from the
-    # previous ref. When we can't read local state we still cache the
-    # (None, "") slot so an inert repo doesn't hammer the filesystem.
-    cache_key = (ref_override, state.branch if state is not None else "")
-    if not force:
-        cached = _cache.get(cache_key)
-        cached_at = _cache_at.get(cache_key)
-        if cached is not None and cached_at is not None and now - cached_at < _CACHE_TTL_SECONDS:
-            return cached
-
-    if state is None:
-        result = UpdateCheckResult(
-            branch=None,
-            current_sha=None,
-            current_version=None,
-            tracked_ref=ref_override,
-            tracked_ref_is_default=ref_override is None,
-            latest_sha=None,
-            latest_message=None,
-            latest_committed_at=None,
-            latest_version=None,
-            behind=None,
-            changelog=[],
-            reason=reason,
-        )
-        _cache[cache_key] = result
-        _cache_at[cache_key] = now
-        return result
-
-    tracked_ref = ref_override if ref_override else state.branch
-    tracked_is_default = ref_override is None or ref_override == state.branch
-
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        head_payload, fetch_reason = await _fetch_commit(
-            client, state.owner, state.repo, tracked_ref
-        )
-        if head_payload is None:
-            # Still try for tags even when the commit fetch failed — the
-            # picker stays usable on transient errors against a single ref.
-            tags = await _fetch_tags(client, state.owner, state.repo)
-            result = UpdateCheckResult(
-                branch=state.branch,
-                current_sha=state.current_sha,
-                current_version=state.current_version,
-                tracked_ref=tracked_ref,
-                tracked_ref_is_default=tracked_is_default,
-                latest_sha=None,
-                latest_message=None,
-                latest_committed_at=None,
-                latest_version=None,
-                behind=None,
-                changelog=[],
-                available_tags=tags or [],
-                reason=fetch_reason,
-            )
-            _cache[cache_key] = result
-            _cache_at[cache_key] = now
-            return result
-
-        latest_sha_raw = head_payload.get("sha")
-        latest_sha = latest_sha_raw if isinstance(latest_sha_raw, str) else None
-        commit = head_payload.get("commit") or {}
-        full_message = commit.get("message") if isinstance(commit, dict) else None
-        latest_message = (
-            full_message.splitlines()[0] if isinstance(full_message, str) and full_message else None
-        )
-        committer = commit.get("committer") if isinstance(commit, dict) else None
-        latest_committed_at_raw = committer.get("date") if isinstance(committer, dict) else None
-        latest_committed_at = (
-            latest_committed_at_raw if isinstance(latest_committed_at_raw, str) else None
-        )
-
-        behind = latest_sha is not None and latest_sha != state.current_sha
-
-        # Default-branch tracking: pull GitHub Releases between the
-        # installed version and the latest tag. Preview-ref tracking: list
-        # the commits between current_sha and the ref's HEAD via /compare.
-        changelog: list[ChangelogEntry] = []
-        latest_version: str | None = None
-        if behind:
-            if tracked_is_default:
-                releases = await _fetch_releases(client, state.owner, state.repo)
-                if releases is not None:
-                    changelog, latest_version = _build_release_changelog(
-                        releases, state.current_version
-                    )
-            else:
-                commits = await _fetch_compare(
-                    client, state.owner, state.repo, state.current_sha, tracked_ref
-                )
-                if commits is not None:
-                    changelog = _build_compare_changelog(commits)
-
-        # Tags drive the picker in the maintenance card. Fetch them
-        # regardless of `behind` — the user can still want to roll back
-        # to an older release when up-to-date with the default branch.
-        tags = await _fetch_tags(client, state.owner, state.repo)
-
-    result = UpdateCheckResult(
-        branch=state.branch,
-        current_sha=state.current_sha,
-        current_version=state.current_version,
-        tracked_ref=tracked_ref,
-        tracked_ref_is_default=tracked_is_default,
-        latest_sha=latest_sha,
-        latest_message=latest_message,
-        latest_committed_at=latest_committed_at,
-        latest_version=latest_version,
-        behind=behind,
-        changelog=changelog,
-        available_tags=tags or [],
-        reason=None,
+    """Module-level convenience over the default UpdateChecker instance."""
+    return await _default_checker.check(
+        repo_root=repo_root, timeout=timeout, force=force, ref_override=ref_override
     )
-    _cache[cache_key] = result
-    _cache_at[cache_key] = now
-    return result
 
 
 def _reset_cache_for_tests() -> None:
     """Tests rely on a fresh probe per assertion; the TTL would otherwise mask
     the second call. Production code never touches this.
     """
-    global _cache, _cache_at
-    _cache = {}
-    _cache_at = {}
+    global _default_checker
+    _default_checker = UpdateChecker()
