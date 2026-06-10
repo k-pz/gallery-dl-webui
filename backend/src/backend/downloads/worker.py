@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 import aiosqlite
@@ -29,6 +31,40 @@ from backend.events import EventBus, downloads_event, progress_event
 from backend.targets import service as targets_service
 
 logger = logging.getLogger(__name__)
+
+# Minimum spacing between per-download progress events. Clients treat these
+# purely as "refetch the progress endpoint now" hints, and a large series can
+# complete many files per second — publishing one event per file floods the
+# websocket and makes every connected client refetch (and re-render) the full
+# chapter list per file, freezing the UI. Collapsing the stream to one event
+# per interval is lossless: the terminal `downloads` event always triggers a
+# final refetch, and the frontend keeps a slack fallback poll besides.
+PROGRESS_EVENT_MIN_INTERVAL_S = 1.0
+
+
+class _ProgressEventThrottle:
+    """Leading-edge rate limiter for one job's progress events.
+
+    Called from the gallery-dl worker thread and (separately) from the event
+    loop during postprocess; never concurrently for the same instance, so the
+    GIL-atomic float read/write needs no extra locking.
+    """
+
+    def __init__(
+        self,
+        interval_s: float = PROGRESS_EVENT_MIN_INTERVAL_S,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._interval_s = interval_s
+        self._clock = clock
+        self._last: float | None = None
+
+    def ready(self) -> bool:
+        now = self._clock()
+        if self._last is None or now - self._last >= self._interval_s:
+            self._last = now
+            return True
+        return False
 
 
 class Worker:
@@ -280,13 +316,14 @@ class Worker:
         # so job.run() still returns a status code).
         bus = self._bus
         loop = self._loop
+        throttle = _ProgressEventThrottle()
 
         def cb(rel: str) -> None:
             if self._cancel_flags.get(job_id, False):
                 raise StopExtraction()
             self._live.record(job_id, rel)
             chapters_seen.add(str(Path(rel).parent))
-            if bus is not None and loop is not None:
+            if bus is not None and loop is not None and throttle.ready():
                 bus.publish_threadsafe(loop, progress_event(job_id, relpath=rel))
 
         return cb
@@ -327,6 +364,12 @@ class Worker:
         metadata_overrides = await self._series_metadata_overrides(job, cfg)
         await service.mark_postprocess(self._db, job.id, "running")
         self._publish(downloads_event("postprocess", id=job.id, status="running"))
+        throttle = _ProgressEventThrottle()
+
+        def on_chapter_done(chapter: str, ok: bool) -> None:
+            if throttle.ready():
+                self._publish(progress_event(job.id, chapter=chapter, packed_ok=ok))
+
         try:
             result = await postprocess.run(
                 records,
@@ -336,9 +379,7 @@ class Worker:
                 naming_template=naming_template,
                 metadata_overrides=metadata_overrides,
                 max_parallel=self._max_postprocess,
-                on_chapter_done=lambda chapter, ok: self._publish(
-                    progress_event(job.id, chapter=chapter, packed_ok=ok)
-                ),
+                on_chapter_done=on_chapter_done,
             )
         except Exception as exc:
             logger.exception("postprocess for download %d failed", job.id)
