@@ -136,6 +136,17 @@ class TestValidateUnderRoot:
         assert "must be under root" in exc_info.value.detail
         assert str(root.resolve()) in exc_info.value.detail
 
+    def test_rejected_path_is_not_created(self, tmp_path: Path) -> None:
+        # Containment must be checked before mkdir: a rejected request must
+        # not leave a stray directory tree behind outside the root.
+        root = tmp_path / "media"
+        root.mkdir()
+        outside = tmp_path / "elsewhere" / "deep" / "tree"
+        with pytest.raises(HTTPException):
+            validate_under_root(str(outside), root)
+        assert not outside.exists()
+        assert not (tmp_path / "elsewhere").exists()
+
     def test_rejects_when_mkdir_fails(self, tmp_path: Path) -> None:
         root = tmp_path / "media"
         root.mkdir()

@@ -98,10 +98,7 @@ async def import_library(request: Request, db: DbDep, poller: PollerDep) -> Libr
                     f"series[{idx}] ({url}): output_dir requires postprocess_root to be set"
                 )
                 continue
-            # Two-phase: validate (no mkdir) first so a bad path doesn't leave a
-            # stray directory behind, then create + probe.
             try:
-                validate_under_root(output_dir_raw, root, field="output_dir", create=False)
                 output_dir = str(validate_under_root(output_dir_raw, root, field="output_dir"))
             except HTTPException as exc:
                 errors.append(f"series[{idx}] ({url}): {exc.detail}")

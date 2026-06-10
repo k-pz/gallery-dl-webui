@@ -55,19 +55,21 @@ def validate_under_root(
             status_code=400,
             detail=f"{field} must be an absolute path",
         )
-    if create:
-        try:
-            path.mkdir(parents=True, exist_ok=True)
-        except OSError as exc:
-            raise HTTPException(status_code=400, detail=f"cannot create {field}: {exc}") from exc
+    # Containment before any filesystem writes: a rejected request must not
+    # leave a stray directory tree behind outside the root. resolve() is
+    # non-strict, so this works for paths that don't exist yet.
     resolved = path.resolve()
     root_resolved = root.resolve()
-    if resolved != root_resolved and root_resolved not in resolved.parents:
+    if not resolved.is_relative_to(root_resolved):
         raise HTTPException(
             status_code=400,
             detail=f"{field} must be under root ({root_resolved})",
         )
     if create:
+        try:
+            resolved.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=f"cannot create {field}: {exc}") from exc
         _probe_writable(resolved, field)
     return resolved
 
