@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { fireEvent } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { JobsTabBody } from "./App";
 import { jsonResponse, mockFetch } from "./test/mocks";
 import { renderWithProviders } from "./test/render";
@@ -26,6 +27,23 @@ describe("JobsTabBody layout", () => {
     const gridAfter = container.querySelector(".jobs-grid");
     expect(gridAfter).toBe(gridBefore);
     expect(gridAfter).toHaveAttribute("data-has-selection", "true");
+  });
+
+  it("wraps the detail in the sheet structure and clears the selection on scrim click", () => {
+    // The same DOM serves desktop (plain grid column) and mobile (CSS turns
+    // .jobs-detail into a fixed bottom sheet); the scrim is the mobile
+    // tap-to-dismiss affordance.
+    arrange();
+    const onSelect = vi.fn();
+    const { container } = renderWithProviders(
+      <JobsTabBody selectedId={7} onSelect={onSelect} hasAnyActive />,
+    );
+
+    expect(container.querySelector(".jobs-detail .jobs-detail-sheet")).not.toBeNull();
+    const scrim = container.querySelector(".jobs-detail-scrim");
+    expect(scrim).not.toBeNull();
+    fireEvent.click(scrim as Element);
+    expect(onSelect).toHaveBeenCalledWith(null);
   });
 
   it("does not gate the layout on a viewport media query", () => {
