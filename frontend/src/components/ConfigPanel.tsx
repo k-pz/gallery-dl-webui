@@ -19,7 +19,7 @@ import {
   useMantineColorScheme,
 } from "@mantine/core";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getConfigOptions, putConfigMutation } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
@@ -46,8 +46,14 @@ export function ConfigPanel() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
+  // Re-seed the form whenever fresh config arrives — but never while the
+  // user has unsaved edits. The config query is invalidated by unrelated
+  // actions (another tab saving, a download submit), and re-seeding then
+  // would silently wipe in-progress input. `touchedRef` flips on the first
+  // user edit and resets once a save lands (or the seed runs).
+  const touchedRef = useRef(false);
   useEffect(() => {
-    if (data) {
+    if (data && !touchedRef.current) {
       setRoot(data.postprocess_root ?? "");
       setDefaultDir(data.postprocess_default_output_dir ?? null);
       setDefaultPeriod(data.default_watch_period ?? "");
@@ -75,6 +81,7 @@ export function ConfigPanel() {
     onSuccess: () => {
       setSubmitError(null);
       setSavedAt(Date.now());
+      touchedRef.current = false;
       invalidate.config();
     },
     onError: (err) => {
@@ -94,6 +101,14 @@ export function ConfigPanel() {
       (komgaBaseUrl.trim() || null) !== (data.komga_base_url ?? null) ||
       (komgaApiKey.trim() || null) !== (data.komga_api_key ?? null) ||
       excludedDirty);
+
+  /** Wrap a state setter so any user edit marks the form as touched. */
+  function touch<T>(setter: (value: T) => void): (value: T) => void {
+    return (value: T) => {
+      touchedRef.current = true;
+      setter(value);
+    };
+  }
 
   const save = () => {
     setSubmitError(null);
@@ -166,7 +181,7 @@ export function ConfigPanel() {
               placeholder="/mnt/nas/Media"
               description="Absolute path. The hard upper bound for every output dir. Created if missing; must be writable."
               value={root}
-              onChange={(e) => setRoot(e.currentTarget.value)}
+              onChange={(e) => touch(setRoot)(e.currentTarget.value)}
               disabled={mutation.isPending}
               styles={{ input: { fontFamily: "var(--app-mono)" } }}
             />
@@ -175,7 +190,7 @@ export function ConfigPanel() {
               placeholder="/mnt/nas/Media/manga"
               description="Used when a download is submitted without an explicit output dir. Must be under the root."
               value={defaultDir}
-              onChange={setDefaultDir}
+              onChange={touch(setDefaultDir)}
               enabled={hasRoot}
               disabled={mutation.isPending}
             />
@@ -183,7 +198,7 @@ export function ConfigPanel() {
               label="Delete raw images after packing"
               description="Remove the downloaded source directory once a chapter's CBZ is written."
               checked={deleteRaw}
-              onChange={(e) => setDeleteRaw(e.currentTarget.checked)}
+              onChange={(e) => touch(setDeleteRaw)(e.currentTarget.checked)}
               disabled={mutation.isPending}
             />
             <TextInput
@@ -196,7 +211,7 @@ export function ConfigPanel() {
                 </>
               }
               value={chapterTemplate}
-              onChange={(e) => setChapterTemplate(e.currentTarget.value)}
+              onChange={(e) => touch(setChapterTemplate)(e.currentTarget.value)}
               disabled={mutation.isPending}
               styles={{ input: { fontFamily: "var(--app-mono)" } }}
             />
@@ -204,7 +219,7 @@ export function ConfigPanel() {
               label="Default reading direction"
               description="Applied to series.json + ComicInfo.xml when a download doesn't override it. Komga only reads LTR vs RTL from CBZ metadata; vertical/webtoon are passed through series.json."
               value={readingDirection}
-              onChange={(v) => v && setReadingDirection(v)}
+              onChange={(v) => v && touch(setReadingDirection)(v)}
               data={READING_DIRECTION_OPTIONS}
               disabled={mutation.isPending}
               maw={280}
@@ -215,7 +230,7 @@ export function ConfigPanel() {
               description="Comma-separated. Directories whose name matches (anywhere in the path) are skipped by the output-dir picker and by maintenance scans. Useful for NAS trash like #recycle or @eaDir."
               placeholder="#recycle, @eaDir, .Trash"
               value={excludedDirsRaw}
-              onChange={(e) => setExcludedDirsRaw(e.currentTarget.value)}
+              onChange={(e) => touch(setExcludedDirsRaw)(e.currentTarget.value)}
               disabled={mutation.isPending}
               styles={{ input: { fontFamily: "var(--app-mono)" } }}
             />
@@ -251,7 +266,7 @@ export function ConfigPanel() {
               label="Max parallel postprocess"
               description="CBZ packing threads per job."
               value={maxPostprocess}
-              onChange={(v) => setMaxPostprocess(typeof v === "number" ? v : maxPostprocess)}
+              onChange={(v) => touch(setMaxPostprocess)(typeof v === "number" ? v : maxPostprocess)}
               min={1}
               max={16}
               disabled={mutation.isPending}
@@ -276,7 +291,7 @@ export function ConfigPanel() {
               placeholder="https://komga.example.com"
               description="Trailing slash is stripped. Must start with http:// or https://."
               value={komgaBaseUrl}
-              onChange={(e) => setKomgaBaseUrl(e.currentTarget.value)}
+              onChange={(e) => touch(setKomgaBaseUrl)(e.currentTarget.value)}
               disabled={mutation.isPending}
               styles={{ input: { fontFamily: "var(--app-mono)" } }}
             />
@@ -284,7 +299,7 @@ export function ConfigPanel() {
               label="Komga API key"
               description="Sent as the X-API-Key header. Stored in the local app database; never sent anywhere besides your Komga instance."
               value={komgaApiKey}
-              onChange={(e) => setKomgaApiKey(e.currentTarget.value)}
+              onChange={(e) => touch(setKomgaApiKey)(e.currentTarget.value)}
               disabled={mutation.isPending}
               autoComplete="off"
               styles={{ input: { fontFamily: "var(--app-mono)" } }}
