@@ -18,7 +18,8 @@ fi
 cd "$CLAUDE_PROJECT_DIR"
 
 if ! command -v mise >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/mise" ]; then
-  curl -fsSL https://mise.run | sh
+  # Pinned so sessions are reproducible; the installer honours MISE_VERSION.
+  MISE_VERSION="${MISE_VERSION:-v2026.6.2}" sh -c 'curl -fsSL https://mise.run | sh'
 fi
 
 export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"

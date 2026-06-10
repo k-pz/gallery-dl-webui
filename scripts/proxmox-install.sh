@@ -274,8 +274,12 @@ if [[ -n "$NAS_SHARE" ]]; then
     in_ct_sh "usermod -aG lxc_shares '${APP_USER}'"
 fi
 
-log "installing mise into /usr/local/bin"
-in_ct_sh "curl -fsSL https://mise.run | sh"
+# Pinned so deploys are reproducible — the installer honours MISE_VERSION.
+# Override via env to install a different release.
+MISE_VERSION="${MISE_VERSION:-v2026.6.2}"
+
+log "installing mise ${MISE_VERSION} into /usr/local/bin"
+in_ct_sh "MISE_VERSION='${MISE_VERSION}' sh -c 'curl -fsSL https://mise.run | sh'"
 in_ct_sh "install -m 0755 /root/.local/bin/mise /usr/local/bin/mise"
 
 # ---- Push source into CT --------------------------------------------------
