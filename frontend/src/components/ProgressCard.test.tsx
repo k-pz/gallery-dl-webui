@@ -1,8 +1,39 @@
 import { screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch, urlOf } from "../test/mocks";
 import { renderWithProviders } from "../test/render";
 import { ProgressCard } from "./ProgressCard";
+
+// jsdom has no layout, so every element measures 0×0 and the virtualized
+// chapter list would compute an empty window. Report fixed sizes (the
+// virtualizer reads offsetWidth/offsetHeight for the viewport and
+// getBoundingClientRect for row measurement) so it renders rows.
+const offsetWidthDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+const offsetHeightDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+
+beforeAll(() => {
+  Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, value: 400 });
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 220 });
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+    width: 400,
+    height: 220,
+    top: 0,
+    left: 0,
+    bottom: 220,
+    right: 400,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  } as DOMRect);
+});
+
+afterAll(() => {
+  vi.restoreAllMocks();
+  if (offsetWidthDesc) Object.defineProperty(HTMLElement.prototype, "offsetWidth", offsetWidthDesc);
+  if (offsetHeightDesc) {
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", offsetHeightDesc);
+  }
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -196,6 +227,46 @@ describe("ProgressCard (terminal job)", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("fetching…")).not.toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+});
+
+describe("ProgressCard chapter list virtualization", () => {
+  it("renders only a window of rows for a very large series", async () => {
+    const chapters = Array.from({ length: 1000 }, (_, i) => ({
+      name: `ch ${i}`,
+      files_total: 1,
+      files_present: 1,
+      stage: "downloaded",
+      status: "downloaded",
+      pages: 20,
+      title: null,
+      date: null,
+      error: null,
+    }));
+    mockFetch(async (input) => {
+      if (urlOf(input).includes("/progress"))
+        return jsonResponse({
+          status: "completed",
+          files_expected: 1000,
+          files_present: 1000,
+          chapters_discovered: 1000,
+          chapters_needed: 1000,
+          chapters_downloaded: 1000,
+          chapters_failed: 0,
+          chapters_skipped: 0,
+          chapters,
+        });
+      return jsonResponse({});
+    });
+
+    renderWithProviders(<ProgressCard jobId={7} status="completed" startedAt={null} />);
+
+    expect(await screen.findByText("ch 0")).toBeInTheDocument();
+    // The whole point of virtualizing: a 1000-chapter series must not put
+    // 1000 rows in the DOM, only the visible window plus overscan.
+    const rendered = screen.getAllByText(/^ch \d+$/).length;
+    expect(rendered).toBeGreaterThan(0);
+    expect(rendered).toBeLessThan(100);
   });
 });
 
