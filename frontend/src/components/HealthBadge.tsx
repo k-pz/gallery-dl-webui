@@ -8,16 +8,22 @@ import { getHealthOptions } from "../api/@tanstack/react-query.gen";
  * diagnostic rather than promotional.
  */
 export function HealthBadge() {
-  const { data, error } = useQuery(getHealthOptions());
+  // Poll so the badge can flip back to "unreachable" after a first success —
+  // TanStack keeps the last data on error, so error must take precedence.
+  const { data, isError } = useQuery({
+    ...getHealthOptions(),
+    refetchInterval: 30_000,
+    retry: 1,
+  });
 
   let state: "loading" | "ok" | "down" = "loading";
   let label = "checking";
-  if (data) {
-    state = "ok";
-    label = data.status;
-  } else if (error) {
+  if (isError) {
     state = "down";
     label = "unreachable";
+  } else if (data) {
+    state = "ok";
+    label = data.status;
   }
 
   return (
