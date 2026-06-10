@@ -434,14 +434,6 @@ def cbz_target_path(
     raise RuntimeError(f"too many CBZ collisions at {base}")
 
 
-def _chapter_matches(existing: str, incoming: str) -> bool:
-    ev = _safe_float(existing)
-    iv = _safe_float(incoming)
-    if ev is not None and iv is not None:
-        return ev == iv
-    return existing.strip() == incoming.strip()
-
-
 def _read_cbz_series_chapter(path: Path) -> tuple[str | None, str | None]:
     try:
         with zipfile.ZipFile(path) as zf:
@@ -457,35 +449,82 @@ def _read_cbz_series_chapter(path: Path) -> tuple[str | None, str | None]:
     return series, chapter
 
 
+@dataclass
+class PackedChapterIndex:
+    """Chapters already packed as CBZs in one series directory.
+
+    Built with a single directory scan (`build_packed_chapter_index`) so each
+    membership check is a set lookup. Chapter numbers from a readable
+    ComicInfo.xml are indexed both as floats (so "1.0" matches "1") and as
+    stripped strings (for non-numeric chapters); archives without usable
+    ComicInfo fall back to the `<series> - c<chapter>` stem token.
+    """
+
+    floats: set[float] = field(default_factory=set)
+    strings: set[str] = field(default_factory=set)
+    stem_tokens: set[str] = field(default_factory=set)
+
+    def contains(self, chapter: str) -> bool:
+        if not chapter:
+            return False
+        value = _safe_float(chapter)
+        if value is not None and value in self.floats:
+            return True
+        if chapter.strip() in self.strings:
+            return True
+        return _format_chapter_number(chapter) in self.stem_tokens
+
+
+def build_packed_chapter_index(output_dir: Path, manga: str) -> PackedChapterIndex:
+    """Scan `<output_dir>/<series>` once and index every packed chapter.
+
+    Matches the cbz_target_path stem pattern so re-pack variants ("(1)") and
+    title-bearing variants ("- Title") all count as already-packed. The
+    directory is read in one pass — callers checking many chapters against a
+    large series (the watched-target skip filter) must not pay a full rescan
+    per chapter, especially on a network mount.
+    """
+    index = PackedChapterIndex()
+    if not manga:
+        return index
+    series = sanitize(manga)
+    series_dir = output_dir / series
+    stem_prefix = f"{series} - c"
+    try:
+        children = list(series_dir.iterdir())
+    except FileNotFoundError, NotADirectoryError:
+        return index
+    for child in children:
+        if not child.is_file() or child.suffix.lower() != ".cbz":
+            continue
+        existing_series, existing_chapter = _read_cbz_series_chapter(child)
+        if existing_series is not None and existing_chapter is not None:
+            if sanitize(existing_series) != series:
+                continue
+            value = _safe_float(existing_chapter)
+            if value is not None:
+                index.floats.add(value)
+            index.strings.add(existing_chapter.strip())
+            continue
+        stem = child.stem
+        if stem.startswith(stem_prefix):
+            # Token up to the first space — covers the bare stem, the
+            # collision "(1)" variant, and the "- Title" variant alike.
+            token = stem[len(stem_prefix) :].split(" ", 1)[0]
+            if token:
+                index.stem_tokens.add(token)
+    return index
+
+
 def chapter_already_packed(output_dir: Path, manga: str, chapter: str) -> bool:
     """True if a CBZ for this chapter exists under output_dir.
 
-    Matches the cbz_target_path stem pattern so re-pack variants ("(1)") and
-    title-bearing variants ("- Title") all count as already-packed.
+    One-shot convenience over `build_packed_chapter_index` — callers checking
+    many chapters should build the index once and use `contains`.
     """
     if not manga or not chapter:
         return False
-    series = sanitize(manga)
-    chap = _format_chapter_number(chapter)
-    series_dir = output_dir / series
-    try:
-        for child in series_dir.iterdir():
-            if not child.is_file() or child.suffix.lower() != ".cbz":
-                continue
-            existing_series, existing_chapter = _read_cbz_series_chapter(child)
-            if existing_series is not None and existing_chapter is not None:
-                if sanitize(existing_series) == series and _chapter_matches(
-                    existing_chapter, chapter
-                ):
-                    return True
-                continue
-            stem_prefix = f"{series} - c{chap}"
-            stem = child.stem
-            if stem == stem_prefix or stem.startswith(stem_prefix + " "):
-                return True
-    except FileNotFoundError, NotADirectoryError:
-        return False
-    return False
+    return build_packed_chapter_index(output_dir, manga).contains(chapter)
 
 
 def _manga_element_value(reading_direction: str | None) -> str:
