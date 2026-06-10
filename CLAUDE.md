@@ -41,3 +41,13 @@ pinned python via mise). For one-off frontend commands, use `pnpm …` from
 - `frontend/` — Vite + React, managed with `pnpm`. Tests: `vitest`. Lint:
   `biome`. Typecheck: `tsc -b --noEmit`.
 - `mise.toml` — toolchain pins + every repo task.
+
+## Git workflow
+
+- **Commit messages** follow [Conventional Commits](https://www.conventionalcommits.org/)
+  style (e.g. `feat(ui): …`, `fix(deploy): …`, `docs: …`, `chore: …`).
+- Each commit should be **self-contained** as much as possible and cover a
+  **single responsibility** — split unrelated changes into separate commits.
+- **Pull requests** are merged to `main` via the **rebase** strategy, and
+  should be set to **auto-merge** once opened, so the history stays clean and
+  linear.
