@@ -82,9 +82,11 @@ export const theme = createTheme({
     fontWeight: "500",
     textWrap: "balance",
     sizes: {
+      // Card titles (h3) and section heads (h2) get a step more presence so
+      // the serif hierarchy reads at a glance; h4/h5 stay utilitarian.
       h1: { fontSize: rem(36), lineHeight: "1.1", fontWeight: "500" },
-      h2: { fontSize: rem(26), lineHeight: "1.2", fontWeight: "500" },
-      h3: { fontSize: rem(20), lineHeight: "1.3", fontWeight: "500" },
+      h2: { fontSize: rem(28), lineHeight: "1.2", fontWeight: "500" },
+      h3: { fontSize: rem(22), lineHeight: "1.3", fontWeight: "500" },
       h4: { fontSize: rem(17), lineHeight: "1.35", fontWeight: "600" },
       h5: { fontSize: rem(15), lineHeight: "1.4", fontWeight: "600" },
     },

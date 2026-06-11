@@ -109,7 +109,9 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
             onClick={submit}
             loading={mutation.isPending}
             size="md"
-            style={{ flexGrow: 1, minWidth: 140 }}
+            // Grows to fill its own wrapped line on phones, but capped so it
+            // doesn't balloon to half the card next to the URL on desktop.
+            style={{ flexGrow: 1, minWidth: 140, maxWidth: 260 }}
           >
             Download
           </Button>
