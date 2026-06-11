@@ -1154,6 +1154,7 @@ a {
   padding: 0;
   flex-shrink: 0;
 }
+/* biome-ignore lint/style/noDescendingSpecificity: never overlaps the phone icon-btn svg rules above — the header hamburger isn't an .icon-btn and sits outside those rows */
 .mob-menu-btn svg {
   width: 20px;
   height: 20px;
@@ -1322,6 +1323,7 @@ a {
   border-radius: 2px;
   background: var(--app-accent);
 }
+/* biome-ignore lint/style/noDescendingSpecificity: never overlaps the phone icon-btn svg rules above — drawer items aren't .icon-btn rows */
 .mob-drawer-item svg {
   color: var(--app-text-faint);
   flex-shrink: 0;
@@ -1443,6 +1445,7 @@ a {
      viewport-relative so a long manifest still can't run multi-screen. */
   .active-job-chapters .mantine-ScrollArea-root,
   .active-job-chapters .mantine-ScrollArea-viewport {
+    /* biome-ignore lint/complexity/noImportantStyles: overrides the inline height Mantine's ScrollArea sets in JS — nothing weaker can win */
     height: auto !important;
     max-height: 60vh;
   }
@@ -1577,8 +1580,11 @@ a {
   *,
   *::before,
   *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: the global kill switch must beat every component-level animation declaration */
     animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: see above */
     animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: see above */
     transition-duration: 0.01ms !important;
   }
 }
