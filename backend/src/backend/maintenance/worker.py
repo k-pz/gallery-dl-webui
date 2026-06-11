@@ -19,6 +19,7 @@ from backend.app_config.constants import (
 from backend.comic_metadata import (
     SERIES_JSON_NAME,
     SeriesMetadata,
+    clean_person_names,
     normalize_reading_direction,
     normalize_tags,
     read_series_json_metadata,
@@ -668,13 +669,17 @@ class MaintenanceWorker:
         """Push each target's series-level metadata into the matching Komga series.
 
         Field sources: status / tags / reading direction come from the target
-        row; summary, publisher, and language are read from the on-disk
-        series.json the refresh/regen jobs maintain (best-effort — a missing
-        file just means fewer fields in the PATCH). Komga's REST API has no
-        series-level publication-date field, so the date itself reaches Komga
-        through series.json + per-chapter ComicInfo at scan time; this job
-        covers everything the API does accept, locking each pushed field so
-        the next scan's import providers can't overwrite it.
+        row; summary, publisher, language, and writer/penciller are read from
+        the on-disk series.json the refresh/regen jobs maintain (best-effort —
+        a missing file just means fewer fields in the PATCH). Author values
+        are cleaned on read so the sync sends repaired names even when the
+        on-disk metadata still carries the stray-quote leftovers of str()-ed
+        author lists; Komga stores authors at book level, so the sync helper
+        fans them out per book. Komga's REST API has no series-level
+        publication-date field, so the date itself reaches Komga through
+        series.json + per-chapter ComicInfo at scan time; this job covers
+        everything the API does accept, locking each pushed field so the
+        next scan's import providers can't overwrite it.
         """
         cfg = await app_config_service.get_all(self._db)
         creds = load_credentials(cfg)
@@ -711,6 +716,8 @@ class MaintenanceWorker:
                     if raw_direction
                     else "",
                     tags=tuple(normalize_tags(list(target.tags))),
+                    writer=clean_person_names(_disk_str("writer")),
+                    penciller=clean_person_names(_disk_str("penciller")),
                 )
             )
 

@@ -3,8 +3,9 @@ import { ICON_SIZE, IconUpload } from "./Icons";
 
 /**
  * Komga sync jobs: push series status only, or sync the full series-level
- * metadata (status, summary, language, reading direction, tags) — each
- * pushed field is locked so Komga's scan-time importers can't overwrite it.
+ * metadata (status, summary, language, reading direction, tags, plus
+ * cleaned author names applied per book) — each pushed field is locked so
+ * Komga's scan-time importers can't overwrite it.
  *
  * Credentials live in app_config (Config tab → Komga sync). The buttons just
  * schedule the jobs; the backend reads `komga_base_url` + `komga_api_key`
@@ -31,8 +32,9 @@ export function KomgaSyncCard({
           <Text size="sm" c="dimmed">
             Pushes local series metadata to the matching Komga series, found by exact name match.
             Status-only pushes just the publication status (Ongoing / Ended / Hiatus / Abandoned);
-            the full sync also covers summary, language, reading direction, and tags. Uses the API
-            key + base URL configured in the Config tab.
+            the full sync also covers summary, language, reading direction, tags, and cleaned-up
+            author names (applied per book). Uses the API key + base URL configured in the Config
+            tab.
           </Text>
         </Stack>
         <Group wrap="wrap">

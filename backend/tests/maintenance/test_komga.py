@@ -553,3 +553,140 @@ async def test_sync_invokes_on_cancel_with_partial_result(creds: KomgaCredential
     )
     assert result.updated == 1
     assert seen_partial and seen_partial[0]["updated"] == 1
+
+
+async def test_sync_sends_book_authors_for_matched_series(creds: KomgaCredentials) -> None:
+    """A series with writer/penciller fans the cleaned names out per book."""
+    import json
+
+    book_patches: list[tuple[str, dict]] = []
+    series_patches: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v1/series":
+            return httpx.Response(200, json={"content": [{"id": "s1", "name": "Berserk"}]})
+        if request.method == "GET" and request.url.path == "/api/v1/series/s1/books":
+            return httpx.Response(
+                200,
+                json={"content": [{"id": "b1"}, {"id": "b2"}], "last": True},
+            )
+        if request.method == "PATCH" and request.url.path == "/api/v1/series/s1/metadata":
+            series_patches.append(json.loads(request.content))
+            return httpx.Response(204)
+        if request.method == "PATCH" and request.url.path.startswith("/api/v1/books/"):
+            book_patches.append((request.url.path, json.loads(request.content)))
+            return httpx.Response(204)
+        raise AssertionError(f"unexpected {request.method} {request.url}")
+
+    result = await sync_series_metadata(
+        creds,
+        [
+            SeriesForMetadataSync(
+                name="Berserk",
+                status="Ended",
+                writer="Author One, Author Two",
+                penciller="Artist",
+            )
+        ],
+        client_factory=_make_factory(handler),
+    )
+    assert result.updated == 1
+    assert result.books_updated == 2
+    assert result.books_failed == 0
+    assert series_patches == [{"status": "ENDED", "statusLock": True}]
+    expected_authors = [
+        {"name": "Author One", "role": "writer"},
+        {"name": "Author Two", "role": "writer"},
+        {"name": "Artist", "role": "penciller"},
+    ]
+    # `authorsLock: True` pins the clean values so a scan of a not-yet
+    # regenerated archive can't re-import the stray-quote names over them.
+    assert book_patches == [
+        ("/api/v1/books/b1/metadata", {"authors": expected_authors, "authorsLock": True}),
+        ("/api/v1/books/b2/metadata", {"authors": expected_authors, "authorsLock": True}),
+    ]
+
+
+async def test_sync_sends_authors_even_without_series_fields(creds: KomgaCredentials) -> None:
+    """The series-PATCH and author legs are independent — authors alone still sync."""
+    book_patches: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v1/series":
+            return httpx.Response(200, json={"content": [{"id": "s1", "name": "Berserk"}]})
+        if request.method == "GET" and request.url.path == "/api/v1/series/s1/books":
+            return httpx.Response(200, json={"content": [{"id": "b1"}], "last": True})
+        if request.method == "PATCH" and request.url.path.startswith("/api/v1/books/"):
+            book_patches.append(request.url.path)
+            return httpx.Response(204)
+        raise AssertionError(f"unexpected {request.method} {request.url}")
+
+    result = await sync_series_metadata(
+        creds,
+        [SeriesForMetadataSync(name="Berserk", writer="Author")],
+        client_factory=_make_factory(handler),
+    )
+    assert result.updated == 0
+    assert result.skipped_no_fields == 0
+    assert result.books_updated == 1
+    assert book_patches == ["/api/v1/books/b1/metadata"]
+
+
+async def test_sync_counts_failed_book_patches(creds: KomgaCredentials) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v1/series":
+            return httpx.Response(200, json={"content": [{"id": "s1", "name": "S"}]})
+        if request.method == "GET" and request.url.path == "/api/v1/series/s1/books":
+            return httpx.Response(200, json={"content": [{"id": "b1"}, {"id": "b2"}]})
+        if request.url.path == "/api/v1/books/b1/metadata":
+            return httpx.Response(500, json={"error": "boom"})
+        return httpx.Response(204)
+
+    result = await sync_series_metadata(
+        creds,
+        [SeriesForMetadataSync(name="S", status="Ongoing", writer="A")],
+        client_factory=_make_factory(handler),
+    )
+    assert result.updated == 1
+    assert result.books_updated == 1
+    assert result.books_failed == 1
+    assert result.as_dict()["books_failed"] == 1
+
+
+async def test_sync_counts_failed_book_listing(creds: KomgaCredentials) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v1/series":
+            return httpx.Response(200, json={"content": [{"id": "s1", "name": "S"}]})
+        if request.method == "GET" and request.url.path == "/api/v1/series/s1/books":
+            return httpx.Response(500, json={"error": "boom"})
+        return httpx.Response(204)
+
+    result = await sync_series_metadata(
+        creds,
+        [SeriesForMetadataSync(name="S", status="Ongoing", writer="A")],
+        client_factory=_make_factory(handler),
+    )
+    assert result.updated == 1
+    assert result.failed == 1
+    assert result.books_updated == 0
+
+
+async def test_sync_pages_through_book_listing(creds: KomgaCredentials) -> None:
+    """Book listings larger than one page are walked via Komga's `last` flag."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v1/series":
+            return httpx.Response(200, json={"content": [{"id": "s1", "name": "S"}]})
+        if request.method == "GET" and request.url.path == "/api/v1/series/s1/books":
+            page = int(request.url.params.get("page", "0"))
+            if page == 0:
+                return httpx.Response(200, json={"content": [{"id": "b1"}], "last": False})
+            return httpx.Response(200, json={"content": [{"id": "b2"}], "last": True})
+        return httpx.Response(204)
+
+    result = await sync_series_metadata(
+        creds,
+        [SeriesForMetadataSync(name="S", status="Ongoing", writer="A")],
+        client_factory=_make_factory(handler),
+    )
+    assert result.books_updated == 2

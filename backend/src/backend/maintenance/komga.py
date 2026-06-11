@@ -1,7 +1,9 @@
 """Komga REST API client used by the Komga maintenance kinds.
 
 Two jobs run through here: `push_komga_series_status` (status only) and
-`sync_komga_metadata` (every series-level field Komga's REST API accepts).
+`sync_komga_metadata` (every series-level field Komga's REST API accepts,
+plus author names — Komga has no series-level authors, they aggregate from
+book metadata, so the sync fans the cleaned names out per book).
 Kept deliberately narrow: we only need to (a) authenticate against a Komga
 instance with an API key, (b) search series by name, and (c) PATCH the series
 metadata. Everything else is out of scope.
@@ -296,6 +298,11 @@ class SeriesForMetadataSync:
     language: str = ""
     reading_direction: str = ""
     tags: tuple[str, ...] = ()
+    # Cleaned author names (", "-joined when there are several). These have
+    # no series-level Komga field; non-empty values trigger the per-book
+    # author PATCH leg of the sync.
+    writer: str = ""
+    penciller: str = ""
 
 
 @dataclass
@@ -306,6 +313,10 @@ class KomgaSyncResult:
     skipped_multi_match: int = 0
     failed: int = 0
     total: int = 0
+    # Book-level author push: how many book metadata PATCHes landed/failed
+    # across all matched series.
+    books_updated: int = 0
+    books_failed: int = 0
     unmatched: list[str] = field(default_factory=list)
     ambiguous: list[str] = field(default_factory=list)
 
@@ -317,6 +328,8 @@ class KomgaSyncResult:
             "skipped_multi_match": self.skipped_multi_match,
             "failed": self.failed,
             "total": self.total,
+            "books_updated": self.books_updated,
+            "books_failed": self.books_failed,
             "unmatched": list(self.unmatched),
             "ambiguous": list(self.ambiguous),
         }
@@ -354,6 +367,95 @@ def metadata_patch_payload(series: SeriesForMetadataSync) -> dict[str, Any]:
     return payload
 
 
+def _author_entries(writer: str, penciller: str) -> list[dict[str, str]] | None:
+    """Build the Komga book-metadata `authors` payload from joined name strings.
+
+    Multi-person values arrive ", "-joined (see comic_metadata._author_name);
+    split them back into one `{name, role}` entry per person. Returns None
+    when both strings are blank so callers can skip the author leg outright.
+    """
+    entries = [
+        {"name": name.strip(), "role": role}
+        for role, joined in (("writer", writer), ("penciller", penciller))
+        for name in joined.split(",")
+        if name.strip()
+    ]
+    return entries or None
+
+
+_BOOKS_PAGE_SIZE = 200
+# Same defensive ceiling rationale as the series search: 50 pages x 200 books
+# covers any realistic series many times over.
+_BOOKS_MAX_PAGES = 50
+
+
+async def _list_book_ids(http: httpx.AsyncClient, series_id: str) -> tuple[list[str], str | None]:
+    """Collect every book id of a Komga series, paging until exhausted.
+
+    Returns (ids, None) or ([], error_line), mirroring `_find_exact_matches`.
+    """
+    ids: list[str] = []
+    for page in range(_BOOKS_MAX_PAGES):
+        try:
+            resp = await http.get(
+                f"/api/v1/series/{series_id}/books",
+                params={"size": _BOOKS_PAGE_SIZE, "page": page},
+            )
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            return [], f"book listing failed: {exc}"
+        try:
+            payload = resp.json()
+        except ValueError as exc:
+            return [], f"book listing returned non-JSON: {exc}"
+        content = payload.get("content") if isinstance(payload, dict) else None
+        if not isinstance(content, list):
+            content = []
+        ids.extend(b["id"] for b in content if isinstance(b, dict) and isinstance(b.get("id"), str))
+        is_last = payload.get("last") if isinstance(payload, dict) else None
+        if is_last is not False:
+            break
+    return ids, None
+
+
+async def _push_series_book_authors(
+    http: httpx.AsyncClient,
+    series_id: str,
+    authors: list[dict[str, str]],
+    series: SeriesForMetadataSync,
+    result: KomgaSyncResult,
+    emit: ProgressLine,
+) -> None:
+    """PATCH the cleaned author entries onto every book of one Komga series.
+
+    `authorsLock: true` pins the values so a library scan of an archive whose
+    ComicInfo.xml still carries the stray-quote names (i.e. packed before the
+    list-author fix and not yet regenerated) can't re-import the dirty values
+    over the clean push. Per-book failures are tallied, not fatal.
+    """
+    book_ids, listing_error = await _list_book_ids(http, series_id)
+    if listing_error is not None:
+        result.failed += 1
+        emit(f"{listing_error} for {series.name!r}")
+        return
+    pushed = 0
+    for book_id in book_ids:
+        try:
+            resp = await http.patch(
+                f"/api/v1/books/{book_id}/metadata",
+                json={"authors": authors, "authorsLock": True},
+            )
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            result.books_failed += 1
+            emit(f"book author update failed for {series.name!r} ({book_id}): {exc}")
+            continue
+        pushed += 1
+    result.books_updated += pushed
+    if pushed:
+        emit(f"authors → {pushed} book(s): {series.name}")
+
+
 async def sync_series_metadata(
     creds: KomgaCredentials,
     series_list: list[SeriesForMetadataSync],
@@ -371,6 +473,11 @@ async def sync_series_metadata(
     `should_cancel` polled before each per-series round-trip. A series with
     no pushable fields (no status, nothing on disk) is counted and skipped
     without touching Komga.
+
+    Two legs per matched series: the series-metadata PATCH (status, summary,
+    …) and the per-book author PATCH for non-empty writer/penciller. They
+    are independent — a series with only authors still syncs them, and a
+    failed series PATCH doesn't abort the author leg.
     """
     result = KomgaSyncResult(total=len(series_list))
     if on_total is not None:
@@ -400,7 +507,8 @@ async def sync_series_metadata(
                 return result
 
             payload = metadata_patch_payload(series)
-            if not payload:
+            authors = _author_entries(series.writer, series.penciller)
+            if not payload and authors is None:
                 result.skipped_no_fields += 1
                 emit(f"skip (no local metadata): {series.name}")
                 continue
@@ -428,19 +536,22 @@ async def sync_series_metadata(
                 emit(f"Komga match missing id for {series.name!r}")
                 continue
 
-            try:
-                patch_resp = await http.patch(
-                    f"/api/v1/series/{series_id}/metadata",
-                    json=payload,
-                )
-                patch_resp.raise_for_status()
-            except httpx.HTTPError as exc:
-                result.failed += 1
-                emit(f"update failed for {series.name!r}: {exc}")
-                continue
+            if payload:
+                try:
+                    patch_resp = await http.patch(
+                        f"/api/v1/series/{series_id}/metadata",
+                        json=payload,
+                    )
+                    patch_resp.raise_for_status()
+                except httpx.HTTPError as exc:
+                    result.failed += 1
+                    emit(f"update failed for {series.name!r}: {exc}")
+                else:
+                    fields = ", ".join(k for k in payload if not k.endswith("Lock"))
+                    result.updated += 1
+                    emit(f"updated: {series.name} → {fields}")
 
-            fields = ", ".join(k for k in payload if not k.endswith("Lock"))
-            result.updated += 1
-            emit(f"updated: {series.name} → {fields}")
+            if authors is not None:
+                await _push_series_book_authors(http, series_id, authors, series, result, emit)
 
     return result
