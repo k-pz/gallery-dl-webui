@@ -300,6 +300,10 @@ class Worker:
             await targets_service.set_series_status(self._db, job.target_id, meta.series_status)
         if job.target_id is not None and meta.series_tags:
             await targets_service.set_series_tags(self._db, job.target_id, meta.series_tags)
+        if job.target_id is not None and meta.earliest_chapter_date:
+            await targets_service.set_series_published_at(
+                self._db, job.target_id, meta.earliest_chapter_date
+            )
         needed = await asyncio.to_thread(_filter_needed_chapters, meta.chapter_dates, skip_chapter)
         return needed, len(meta.chapter_dates)
 
@@ -446,13 +450,17 @@ class Worker:
         Per-target settings win; otherwise we fall back to the config default
         (or the package-level default if config is missing the key). Status
         has no default — empty means series.json omits the field, which is
-        what Komga reads as "unknown".
+        what Komga reads as "unknown". The stored first-publication date is
+        threaded through so an incremental download (whose records only cover
+        the new chapters) doesn't restamp series.json with the latest
+        chapter's year.
         """
         tags: list[str] = []
         reading_direction = cfg.get("default_reading_direction")
         if not isinstance(reading_direction, str) or reading_direction not in READING_DIRECTIONS:
             reading_direction = DEFAULT_READING_DIRECTION
         series_status = ""
+        published_at = ""
         if job.target_id is not None:
             target = await targets_service.get(self._db, job.target_id)
             if target is not None:
@@ -461,10 +469,13 @@ class Worker:
                     reading_direction = target.reading_direction
                 if target.series_status:
                     series_status = target.series_status
+                if target.series_published_at:
+                    published_at = target.series_published_at
         return SeriesMetadata(
             tags=normalize_tags(tags),
             reading_direction=normalize_reading_direction(reading_direction),
             status=series_status,
+            published_at=published_at,
         )
 
 

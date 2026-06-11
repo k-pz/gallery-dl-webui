@@ -30,6 +30,9 @@ class Target(BaseModel):
     tags: list[str] = []
     reading_direction: str | None = None
     series_status: str | None = None
+    # First-publication date of the series (ISO date string), auto-discovered
+    # as the earliest chapter date the upstream extractor exposes.
+    series_published_at: str | None = None
     # Joined summary fields (None/0 when not from the summary SELECT):
     last_download_id: int | None = None
     last_status: str | None = None

@@ -642,3 +642,90 @@ async def test_worker_isolates_postprocess_failure_from_download_status(
         assert row.postprocess_error is not None
     finally:
         await worker.stop()
+
+
+async def test_worker_persists_series_published_at_from_metadata_pass(
+    settings: Settings, db: aiosqlite.Connection
+) -> None:
+    """The sim pass discovers the full chapter list; the earliest chapter date
+    lands on the target row as the series' first-publication date."""
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c250/001.jpg"]
+    config.chapter_dates_for["https://example/x"] = {
+        ("S", "250"): "2024-06-01",
+        ("S", "1"): "2010-02-15",
+    }
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await targets_service.upsert(db, "https://example/x", "fake", None)
+        d = await downloads_service.insert_pending(
+            db, "https://example/x", "fake", target_id=target.id
+        )
+        worker.notify()
+
+        async def done() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.status == "completed"
+
+        await wait_for(done)
+        refreshed = await targets_service.get(db, target.id)
+        assert refreshed is not None
+        assert refreshed.series_published_at == "2010-02-15"
+    finally:
+        await worker.stop()
+
+
+async def test_incremental_download_keeps_series_publish_year_in_series_json(
+    settings: Settings, db: aiosqlite.Connection, tmp_path: Path
+) -> None:
+    """An incremental download whose records only carry the newest chapter must
+    not restamp series.json with that chapter's year — the stored
+    first-publication date wins."""
+    import json
+
+    root = tmp_path / "media"
+    default = root / "manga"
+    default.mkdir(parents=True)
+    await app_config_service.set_many(
+        db,
+        {
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": str(default),
+            "delete_raw_after_pack": True,
+        },
+    )
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c250/001.jpg", "fake/S/c250/002.jpg"]
+    # Upstream knows the full history back to 2010…
+    config.chapter_dates_for["https://example/x"] = {
+        ("S", "250"): "2024-06-01",
+        ("S", "1"): "2010-02-15",
+    }
+    # …but this download only fetches the fresh 2024 chapter.
+    records = _make_records_for_chapter(settings.downloads_dir, "S", "250")
+    config.records_for["https://example/x"] = [
+        FileRecord(**{**rec.__dict__, "date": "2024-06-01"}) for rec in records
+    ]
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await targets_service.upsert(db, "https://example/x", "fake", None)
+        d = await downloads_service.insert_pending(
+            db, "https://example/x", "fake", target_id=target.id
+        )
+        worker.notify()
+
+        async def packed() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.postprocess_status == "completed"
+
+        await wait_for(packed)
+
+        payload = json.loads((default / "S" / "series.json").read_text())
+        assert payload["metadata"]["publication_date"] == "2010-02-15"
+        assert payload["metadata"]["year"] == 2010
+    finally:
+        await worker.stop()
