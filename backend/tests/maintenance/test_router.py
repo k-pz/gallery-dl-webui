@@ -942,3 +942,170 @@ def test_unwatch_ended_series_noop_when_nothing_matches(client: TestClient) -> N
     done = _wait_for_completion(client, created.json()["id"])
     assert done["status"] == "completed", done
     assert done["result"]["unwatched"] == 0
+
+
+def test_refresh_series_metadata_end_to_end(
+    client: TestClient, tmp_path: Path, gallery_config
+) -> None:
+    """The refresh job rediscovers upstream metadata (including the series'
+    first-publication date), rewrites series.json — and leaves every CBZ
+    byte-for-byte untouched."""
+    import json
+
+    root = tmp_path / "media"
+    output_dir = root / "Manga"
+    series_dir = output_dir / "Series"
+    cbz = series_dir / "Series - c001.cbz"
+    _write_cbz(cbz, "Series", "1")
+    cbz_bytes_before = cbz.read_bytes()
+
+    cfg_resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "default_watch_period": "1d",
+            "chapter_naming_template": "{{ series }} - c{{ chapter_number }}",
+        },
+    )
+    assert cfg_resp.status_code == 200, cfg_resp.json()
+    gallery_config.manifest_for["https://example/x"] = []
+    gallery_config.series_name_for["https://example/x"] = "Series"
+    sub = client.post(
+        "/api/downloads", json={"url": "https://example/x", "output_dir": str(output_dir)}
+    )
+    assert sub.status_code == 200, sub.json()
+    for _ in range(40):
+        targets = client.get("/api/targets").json()
+        if targets and targets[0]["name"] == "Series":
+            break
+        time.sleep(0.05)
+    target_id = client.get("/api/targets").json()[0]["id"]
+
+    # Upstream now exposes status, tags, and the full chapter history; the
+    # earliest chapter date is the series' first-publication date.
+    gallery_config.series_status_for["https://example/x"] = "Ongoing"
+    gallery_config.series_tags_for["https://example/x"] = ["Action"]
+    gallery_config.chapter_dates_for["https://example/x"] = {
+        ("Series", "1"): "2011-04-02",
+        ("Series", "2"): "2024-06-01",
+    }
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "refresh_series_metadata"})
+    assert created.status_code == 200, created.json()
+    done = _wait_for_completion(client, created.json()["id"])
+    assert done["status"] == "completed", done
+    assert done["result"]["series_json_written"] == 1
+
+    payload = json.loads((series_dir / "series.json").read_text())
+    md = payload["metadata"]
+    assert md["publication_date"] == "2011-04-02"
+    assert md["year"] == 2011
+    assert md["status"] == "Continuing"
+    assert md["tags"] == ["Action"]
+
+    # The rediscovered date is persisted on the target row…
+    target = client.get(f"/api/targets/{target_id}").json()
+    assert target["series_published_at"] == "2011-04-02"
+    # …and the CBZ was never rewritten.
+    assert cbz.read_bytes() == cbz_bytes_before
+
+
+def test_sync_komga_metadata_without_config_is_rejected(client: TestClient) -> None:
+    resp = client.post("/api/maintenance/jobs", json={"kind": "sync_komga_metadata"})
+    assert resp.status_code == 400
+    assert "not configured" in resp.json()["detail"]
+
+
+def test_sync_komga_metadata_end_to_end(
+    client: TestClient, tmp_path: Path, gallery_config, monkeypatch
+) -> None:
+    """Schedule the metadata sync and watch it PATCH a fake Komga with the
+    target row's fields plus what's in the on-disk series.json — every pushed
+    field locked."""
+    import json
+
+    import httpx
+
+    root = tmp_path / "media"
+    output_dir = root / "Manga"
+    series_dir = output_dir / "Series"
+    series_dir.mkdir(parents=True)
+    (series_dir / "series.json").write_text(
+        json.dumps(
+            {
+                "version": "1.0.2",
+                "metadata": {
+                    "name": "Series",
+                    "description_text": "An epic tale.",
+                    "language": "en",
+                    "publisher": "Hakusensha",
+                },
+            }
+        )
+    )
+
+    cfg_resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": None,
+            "delete_raw_after_pack": True,
+            "default_watch_period": "1d",
+            "komga_base_url": "http://komga.local",
+            "komga_api_key": "secret",
+        },
+    )
+    assert cfg_resp.status_code == 200, cfg_resp.json()
+    gallery_config.manifest_for["https://example/x"] = []
+    gallery_config.series_name_for["https://example/x"] = "Series"
+    sub = client.post(
+        "/api/downloads", json={"url": "https://example/x", "output_dir": str(output_dir)}
+    )
+    assert sub.status_code == 200
+    for _ in range(40):
+        targets = client.get("/api/targets").json()
+        if targets and targets[0]["name"] == "Series":
+            break
+        time.sleep(0.05)
+    target_id = client.get("/api/targets").json()[0]["id"]
+    client.patch(
+        f"/api/targets/{target_id}",
+        json={"series_status": "Hiatus", "tags": ["Seinen"], "reading_direction": "rtl"},
+    )
+
+    patches: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v1/series":
+            return httpx.Response(200, json={"content": [{"id": "k-id", "name": "Series"}]})
+        if request.method == "PATCH":
+            patches.append(json.loads(request.content))
+            return httpx.Response(204)
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    original_client = httpx.AsyncClient
+
+    def patched_client(*args, **kwargs):
+        kwargs["transport"] = transport
+        return original_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", patched_client)
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "sync_komga_metadata"})
+    assert created.status_code == 200, created.json()
+    done = _wait_for_completion(client, created.json()["id"])
+    assert done["status"] == "completed", done
+    assert done["result"]["updated"] == 1
+
+    assert len(patches) == 1
+    body = patches[0]
+    assert body["status"] == "HIATUS"
+    assert body["summary"] == "An epic tale."
+    assert body["publisher"] == "Hakusensha"
+    assert body["language"] == "en"
+    assert body["readingDirection"] == "RIGHT_TO_LEFT"
+    assert body["tags"] == ["Seinen"]
+    assert all(body[k] is True for k in body if k.endswith("Lock"))

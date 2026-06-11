@@ -17,9 +17,11 @@ from backend.app_config.constants import (
     READING_DIRECTIONS,
 )
 from backend.comic_metadata import (
+    SERIES_JSON_NAME,
     SeriesMetadata,
     normalize_reading_direction,
     normalize_tags,
+    read_series_json_metadata,
     sanitize,
 )
 from backend.downloads import service as downloads_service
@@ -27,9 +29,12 @@ from backend.events import EventBus, maintenance_event, maintenance_progress_eve
 from backend.maintenance import library_ops, service
 from backend.maintenance.komga import (
     KomgaPushResult,
+    KomgaSyncResult,
+    SeriesForMetadataSync,
     TargetForPush,
     load_credentials,
     push_series_statuses,
+    sync_series_metadata,
 )
 from backend.maintenance.library_ops import MaintenanceCancelled
 from backend.maintenance.live_progress import MaintenanceLiveProgress
@@ -337,8 +342,10 @@ class MaintenanceWorker:
     _RUNNERS: ClassVar[dict[str, str]] = {
         "rename_chapters": "_run_rename",
         "regenerate_series_metadata": "_run_regenerate_metadata",
+        "refresh_series_metadata": "_run_refresh_series_metadata",
         "rebuild_library": "_run_rebuild_library",
         "push_komga_series_status": "_run_push_komga_status",
+        "sync_komga_metadata": "_run_sync_komga_metadata",
         "update_lxc": "_run_update_lxc",
         "unwatch_ended_series": "_run_unwatch_ended_series",
     }
@@ -408,6 +415,48 @@ class MaintenanceWorker:
         )
         return asdict(result)
 
+    async def _run_refresh_series_metadata(self, job_id: int) -> dict[str, int]:
+        """Series-level metadata refresh: rediscover from upstream, rewrite
+        series.json per series — without rewriting any CBZ.
+
+        The lighter sibling of `regenerate_series_metadata`: the rediscovery
+        pass updates each target's series_status / tags (fill-only) and
+        first-publication date (min-merge), and the on-disk pass re-derives
+        series.json from the existing ComicInfo.xml files plus those
+        overrides. Per-chapter ComicInfo stays untouched, so a large library
+        on a network mount refreshes in seconds rather than a full re-zip.
+        """
+        cfg = await app_config_service.get_all(self._db)
+        root_str = cfg.get("postprocess_root")
+        if not isinstance(root_str, str) or not root_str:
+            raise ValueError("postprocess_root is not configured")
+        default_direction = cfg.get("default_reading_direction")
+        if not isinstance(default_direction, str) or default_direction not in READING_DIRECTIONS:
+            default_direction = DEFAULT_READING_DIRECTION
+        sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
+
+        # The rediscovered chapter dates only matter to ComicInfo rewrites
+        # (regen's job); here the publication date lands on the target row
+        # and reaches series.json via the overrides built below.
+        await self._rediscover_series_metadata(job_id, sink)
+
+        overrides_by_series = await self._build_series_overrides(default_direction)
+
+        def lookup(series_name: str) -> SeriesMetadata | None:
+            return overrides_by_series.get(sanitize(series_name).lower())
+
+        exclude_dirs = _exclude_dirs(cfg)
+        output_roots = await _designated_output_dirs(self._db, cfg)
+        result = await asyncio.to_thread(
+            library_ops.refresh_series_json,
+            output_roots,
+            lookup,
+            sink,
+            self._should_cancel,
+            exclude_dirs,
+        )
+        return asdict(result)
+
     async def _rediscover_series_metadata(
         self, job_id: int, sink: _JobProgressSink
     ) -> dict[str, dict[str, str]]:
@@ -444,6 +493,12 @@ class MaintenanceWorker:
                 await targets_service.set_series_status(self._db, target.id, meta.series_status)
             if meta.series_tags:
                 await targets_service.set_series_tags(self._db, target.id, meta.series_tags)
+            if meta.earliest_chapter_date:
+                # Min-merge (see set_series_published_at): fills or moves the
+                # first-publication date earlier, never later.
+                await targets_service.set_series_published_at(
+                    self._db, target.id, meta.earliest_chapter_date
+                )
             if meta.chapter_dates:
                 # Index by sanitised series name so the regen lookup can
                 # match against the ComicInfo.xml `Series` field — same
@@ -609,6 +664,71 @@ class MaintenanceWorker:
         )
         return result.as_dict()
 
+    async def _run_sync_komga_metadata(self, job_id: int) -> dict[str, Any]:
+        """Push each target's series-level metadata into the matching Komga series.
+
+        Field sources: status / tags / reading direction come from the target
+        row; summary, publisher, and language are read from the on-disk
+        series.json the refresh/regen jobs maintain (best-effort — a missing
+        file just means fewer fields in the PATCH). Komga's REST API has no
+        series-level publication-date field, so the date itself reaches Komga
+        through series.json + per-chapter ComicInfo at scan time; this job
+        covers everything the API does accept, locking each pushed field so
+        the next scan's import providers can't overwrite it.
+        """
+        cfg = await app_config_service.get_all(self._db)
+        creds = load_credentials(cfg)
+        default_raw = cfg.get("postprocess_default_output_dir")
+        default_dir = default_raw if isinstance(default_raw, str) and default_raw else None
+
+        targets = await targets_service.list_all(self._db)
+        candidates: list[SeriesForMetadataSync] = []
+        for target in targets:
+            if not target.name:
+                continue
+            disk_meta: dict[str, Any] = {}
+            output_dir = target.output_dir or default_dir
+            if output_dir:
+                series_json = Path(output_dir) / sanitize(target.name) / SERIES_JSON_NAME
+                disk_meta = (await asyncio.to_thread(read_series_json_metadata, series_json)) or {}
+
+            def _disk_str(key: str, meta: dict[str, Any] = disk_meta) -> str:
+                value = meta.get(key)
+                return value if isinstance(value, str) else ""
+
+            # Only push a reading direction somebody actually chose (per-target
+            # or persisted into series.json) — an empty value keeps the field
+            # out of the PATCH instead of locking the app default onto Komga.
+            raw_direction = target.reading_direction or _disk_str("reading_direction")
+            candidates.append(
+                SeriesForMetadataSync(
+                    name=target.name,
+                    status=target.series_status or "",
+                    summary=_disk_str("description_text"),
+                    publisher=_disk_str("publisher"),
+                    language=_disk_str("language"),
+                    reading_direction=normalize_reading_direction(raw_direction)
+                    if raw_direction
+                    else "",
+                    tags=tuple(normalize_tags(list(target.tags))),
+                )
+            )
+
+        sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
+
+        async def _on_cancel(partial: KomgaSyncResult) -> None:
+            raise MaintenanceCancelled(partial.as_dict())
+
+        result = await sync_series_metadata(
+            creds,
+            candidates,
+            on_total=sink.total,
+            on_step=sink.step,
+            should_cancel=self._should_cancel,
+            on_cancel=_on_cancel,
+        )
+        return result.as_dict()
+
     async def _run_unwatch_ended_series(self, job_id: int) -> dict[str, int]:
         """Flip every watched target whose series_status is "Ended" to unwatched.
 
@@ -707,5 +827,6 @@ class MaintenanceWorker:
                     target.reading_direction or default_direction
                 ),
                 status=target.series_status or "",
+                published_at=target.series_published_at or "",
             )
         return result

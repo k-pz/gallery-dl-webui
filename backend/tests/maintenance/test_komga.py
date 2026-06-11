@@ -12,9 +12,12 @@ import pytest
 
 from backend.maintenance.komga import (
     KomgaCredentials,
+    SeriesForMetadataSync,
     TargetForPush,
     load_credentials,
+    metadata_patch_payload,
     push_series_statuses,
+    sync_series_metadata,
 )
 
 
@@ -345,5 +348,208 @@ async def test_push_invokes_on_cancel_with_partial_result(creds: KomgaCredential
     )
     # Only one PATCH happened before cancel, and on_cancel was invoked with
     # the partial result.
+    assert result.updated == 1
+    assert seen_partial and seen_partial[0]["updated"] == 1
+
+
+# ---------------------------------------------------------------------------
+# sync_series_metadata
+# ---------------------------------------------------------------------------
+
+
+def test_metadata_patch_payload_includes_only_known_fields_with_locks() -> None:
+    payload = metadata_patch_payload(
+        SeriesForMetadataSync(
+            name="Berserk",
+            status="Ongoing",
+            summary="Dark fantasy.",
+            publisher="Hakusensha",
+            language="en",
+            reading_direction="rtl",
+            tags=("Action", "Seinen"),
+        )
+    )
+    assert payload == {
+        "status": "ONGOING",
+        "statusLock": True,
+        "summary": "Dark fantasy.",
+        "summaryLock": True,
+        "publisher": "Hakusensha",
+        "publisherLock": True,
+        "language": "en",
+        "languageLock": True,
+        "readingDirection": "RIGHT_TO_LEFT",
+        "readingDirectionLock": True,
+        "tags": ["Action", "Seinen"],
+        "tagsLock": True,
+    }
+
+
+def test_metadata_patch_payload_drops_unknown_status_and_direction() -> None:
+    payload = metadata_patch_payload(
+        SeriesForMetadataSync(name="X", status="Mystery", reading_direction="diagonal")
+    )
+    assert payload == {}
+
+
+@pytest.mark.parametrize(
+    ("local", "komga"),
+    [
+        ("ltr", "LEFT_TO_RIGHT"),
+        ("rtl", "RIGHT_TO_LEFT"),
+        ("vertical", "VERTICAL"),
+        ("webtoon", "WEBTOON"),
+    ],
+)
+def test_metadata_patch_payload_maps_all_reading_directions(local: str, komga: str) -> None:
+    payload = metadata_patch_payload(SeriesForMetadataSync(name="X", reading_direction=local))
+    assert payload["readingDirection"] == komga
+    assert payload["readingDirectionLock"] is True
+
+
+async def test_sync_patches_full_metadata(creds: KomgaCredentials) -> None:
+    patched: list[tuple[str, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v1/series":
+            return httpx.Response(200, json={"content": [{"id": "abc123", "name": "Berserk"}]})
+        if request.method == "PATCH" and request.url.path == "/api/v1/series/abc123/metadata":
+            import json
+
+            patched.append((request.url.path, json.loads(request.content)))
+            return httpx.Response(204)
+        raise AssertionError(f"unexpected {request.method} {request.url}")
+
+    result = await sync_series_metadata(
+        creds,
+        [
+            SeriesForMetadataSync(
+                name="Berserk",
+                status="Hiatus",
+                summary="Dark fantasy.",
+                language="en",
+                reading_direction="rtl",
+                tags=("Seinen",),
+            )
+        ],
+        client_factory=_make_factory(handler),
+    )
+    assert result.updated == 1
+    assert result.total == 1
+    assert len(patched) == 1
+    body = patched[0][1]
+    assert body["status"] == "HIATUS"
+    assert body["summary"] == "Dark fantasy."
+    assert body["language"] == "en"
+    assert body["readingDirection"] == "RIGHT_TO_LEFT"
+    assert body["tags"] == ["Seinen"]
+    # Every pushed field is locked so Komga's scan-time importers can't
+    # overwrite it.
+    assert all(body[k] is True for k in body if k.endswith("Lock"))
+
+
+async def test_sync_skips_series_with_nothing_to_push(creds: KomgaCredentials) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("should not call Komga for a field-less series")
+
+    result = await sync_series_metadata(
+        creds,
+        [SeriesForMetadataSync(name="Empty")],
+        client_factory=_make_factory(handler),
+    )
+    assert result.skipped_no_fields == 1
+    assert result.updated == 0
+
+
+async def test_sync_pushes_partial_fields_when_status_unknown(creds: KomgaCredentials) -> None:
+    """An unmappable status doesn't block the rest of the metadata."""
+    sent: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json={"content": [{"id": "x", "name": "Series"}]})
+        import json
+
+        sent.append(json.loads(request.content))
+        return httpx.Response(204)
+
+    result = await sync_series_metadata(
+        creds,
+        [SeriesForMetadataSync(name="Series", status="Mystery", summary="Plot.")],
+        client_factory=_make_factory(handler),
+    )
+    assert result.updated == 1
+    assert sent == [{"summary": "Plot.", "summaryLock": True}]
+
+
+async def test_sync_records_unmatched_and_ambiguous(creds: KomgaCredentials) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        name = request.url.params["search"]
+        if name == "Ghost":
+            return httpx.Response(200, json={"content": []})
+        return httpx.Response(
+            200,
+            json={"content": [{"id": "1", "name": name}, {"id": "2", "name": name}]},
+        )
+
+    result = await sync_series_metadata(
+        creds,
+        [
+            SeriesForMetadataSync(name="Ghost", status="Ongoing"),
+            SeriesForMetadataSync(name="Twins", status="Ongoing"),
+        ],
+        client_factory=_make_factory(handler),
+    )
+    assert result.skipped_no_match == 1
+    assert result.unmatched == ["Ghost"]
+    assert result.skipped_multi_match == 1
+    assert result.ambiguous == ["Twins"]
+    assert result.as_dict()["unmatched"] == ["Ghost"]
+
+
+async def test_sync_counts_failed_patch(creds: KomgaCredentials) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json={"content": [{"id": "x", "name": "Series"}]})
+        return httpx.Response(400, json={"error": "bad"})
+
+    result = await sync_series_metadata(
+        creds,
+        [SeriesForMetadataSync(name="Series", status="Ongoing")],
+        client_factory=_make_factory(handler),
+    )
+    assert result.failed == 1
+    assert result.updated == 0
+
+
+async def test_sync_invokes_on_cancel_with_partial_result(creds: KomgaCredentials) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            name = request.url.params["search"]
+            return httpx.Response(200, json={"content": [{"id": "x", "name": name}]})
+        return httpx.Response(204)
+
+    seen_partial: list[dict] = []
+
+    async def on_cancel(partial) -> None:
+        seen_partial.append(partial.as_dict())
+
+    flag = {"cancel": False}
+
+    def on_step(line: str) -> None:
+        if line.startswith("updated: A"):
+            flag["cancel"] = True
+
+    result = await sync_series_metadata(
+        creds,
+        [
+            SeriesForMetadataSync(name="A", status="Ongoing"),
+            SeriesForMetadataSync(name="B", status="Ongoing"),
+        ],
+        on_step=on_step,
+        should_cancel=lambda: flag["cancel"],
+        on_cancel=on_cancel,
+        client_factory=_make_factory(handler),
+    )
     assert result.updated == 1
     assert seen_partial and seen_partial[0]["updated"] == 1

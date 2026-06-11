@@ -26,11 +26,16 @@ router = APIRouter(tags=["maintenance"])
 SUPPORTED_KINDS = {
     "rename_chapters",
     "regenerate_series_metadata",
+    "refresh_series_metadata",
     "rebuild_library",
     "push_komga_series_status",
+    "sync_komga_metadata",
     "update_lxc",
     "unwatch_ended_series",
 }
+
+# Kinds that talk to Komga and therefore need credentials in app_config.
+KOMGA_KINDS = {"push_komga_series_status", "sync_komga_metadata"}
 
 
 @router.get("/maintenance/jobs", operation_id="listMaintenanceJobs")
@@ -47,7 +52,7 @@ async def schedule_maintenance_job(
 ) -> MaintenanceJob:
     if body.kind not in SUPPORTED_KINDS:
         raise BadRequestError(f"unsupported maintenance kind: {body.kind}")
-    if body.kind == "push_komga_series_status":
+    if body.kind in KOMGA_KINDS:
         # Fail fast before persisting a pending row that the worker would
         # immediately mark failed for the same reason. Credentials live in
         # app_config (Config tab → Komga sync); the worker re-reads them when

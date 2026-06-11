@@ -263,6 +263,97 @@ def _rewrite_regen_cbz(
     part.replace(cbz)
 
 
+@dataclass
+class RefreshSeriesJsonResult:
+    series: int
+    series_json_written: int
+    skipped: int
+    failed: int
+
+
+def refresh_series_json(
+    output_roots: Sequence[Path],
+    overrides_for: SeriesOverrideLookup | None = None,
+    progress: ProgressSink | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+    exclude_dirs: list[str] | None = None,
+) -> RefreshSeriesJsonResult:
+    """Rewrite series.json for every series under `output_roots` — and nothing
+    else. The CBZs are read (their ComicInfo.xml feeds the derived series
+    metadata) but never rewritten.
+
+    The lightweight sibling of `regenerate_series_metadata` for when only the
+    series-level fields need to catch up — publication date, status, tags,
+    description — without paying a full per-archive rewrite of a large
+    library on a network mount.
+    """
+    cbz_paths = _iter_filtered_cbzs(output_roots, exclude_dirs)
+    if progress is not None:
+        progress.total(len(cbz_paths))
+    series_json_written = 0
+    skipped = 0
+    failed = 0
+    series_to_entries: dict[Path, list[tuple[Path, ChapterRecord, SeriesMetadata | None]]] = {}
+
+    def _cancelled_partial() -> dict[str, int]:
+        return {
+            "series": len(series_to_entries),
+            "series_json_written": series_json_written,
+            "skipped": skipped,
+            "failed": failed,
+        }
+
+    for cbz in cbz_paths:
+        if should_cancel is not None and should_cancel():
+            raise MaintenanceCancelled(_cancelled_partial())
+        try:
+            outcome = _read_regen_chapter(cbz, overrides_for, None)
+        except Exception as exc:
+            failed += 1
+            logger.exception("series.json refresh read failed for %s", cbz)
+            if progress is not None:
+                progress.step(f"failed: {_relativize(cbz, output_roots)}: {exc!r}")
+            continue
+        if isinstance(outcome, str):
+            skipped += 1
+            if progress is not None:
+                label = "no ComicInfo" if outcome == _REGEN_SKIP_NONE else "bad ComicInfo"
+                progress.step(f"skip ({label}): {_relativize(cbz, output_roots)}")
+            continue
+        ch, overrides = outcome
+        series_to_entries.setdefault(cbz.parent, []).append((cbz, ch, overrides))
+        if progress is not None:
+            progress.step(f"read: {_relativize(cbz, output_roots)}")
+
+    for series_dir, entries in series_to_entries.items():
+        if should_cancel is not None and should_cancel():
+            raise MaintenanceCancelled(_cancelled_partial())
+        chapters = [ch for _, ch, _ in entries]
+        # Same invariant as regen: one directory holds one series, so the
+        # first entry's overrides represent it.
+        series_overrides = entries[0][2]
+        try:
+            meta = derive_series_metadata(chapters, series_overrides)
+            write_series_json(series_dir, meta, total_issues=len(chapters))
+            series_json_written += 1
+            if progress is not None:
+                progress.step(f"series.json: {_relativize(series_dir, output_roots)}")
+        except Exception as exc:
+            failed += 1
+            logger.exception("failed to write series.json under %s", series_dir)
+            if progress is not None:
+                progress.step(
+                    f"failed series.json: {_relativize(series_dir, output_roots)}: {exc!r}"
+                )
+
+    return RefreshSeriesJsonResult(
+        series=len(series_to_entries),
+        series_json_written=series_json_written,
+        skipped=skipped,
+        failed=failed,
+    )
+
+
 def regenerate_series_metadata(
     output_roots: Sequence[Path],
     overrides_for: SeriesOverrideLookup | None = None,
