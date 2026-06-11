@@ -1,3 +1,4 @@
+import json
 import time
 import zipfile
 from pathlib import Path
@@ -717,6 +718,94 @@ def test_push_komga_status_end_to_end(
     assert patches == [("/api/v1/series/k-series-id/metadata", "HIATUS")]
     # Confirm the configured API key reached the request as `X-API-Key`.
     assert seen_auth and all(h == "secret" for h in seen_auth)
+
+
+def test_sync_komga_metadata_pushes_cleaned_authors_from_series_json(
+    client: TestClient, tmp_path: Path, gallery_config, monkeypatch
+) -> None:
+    """The worker reads writer/penciller from the target's series.json, repairs
+    stray-quote leftovers, and the sync fans them out per Komga book."""
+    import httpx
+
+    out_dir = tmp_path / "media" / "out"
+    cfg_resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(tmp_path / "media"),
+            "postprocess_default_output_dir": str(out_dir),
+            "delete_raw_after_pack": True,
+            "default_watch_period": "1d",
+            "komga_base_url": "http://komga.local",
+            "komga_api_key": "secret",
+        },
+    )
+    assert cfg_resp.status_code == 200, cfg_resp.json()
+    gallery_config.series_name_for["https://example/x"] = "Series"
+    gallery_config.manifest_for["https://example/x"] = []
+    sub = client.post("/api/downloads", json={"url": "https://example/x"})
+    assert sub.status_code == 200
+    for _ in range(40):
+        targets = client.get("/api/targets").json()
+        if targets and targets[0]["name"] == "Series":
+            break
+        time.sleep(0.05)
+    target_id = client.get("/api/targets").json()[0]["id"]
+    client.patch(f"/api/targets/{target_id}", json={"series_status": "Hiatus"})
+
+    # A series.json carrying the stray-quote leftovers of a str()-ed author
+    # list, as written before list-valued authors were handled.
+    series_dir = out_dir / "Series"
+    series_dir.mkdir(parents=True)
+    (series_dir / "series.json").write_text(
+        json.dumps(
+            {
+                "version": "1.0.2",
+                "metadata": {
+                    "writer": "Author One', 'Author Two",
+                    "penciller": "Author One', 'Author Two",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    book_patches: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path == "/api/v1/series":
+            return httpx.Response(200, json={"content": [{"id": "k-id", "name": "Series"}]})
+        if request.method == "GET" and request.url.path == "/api/v1/series/k-id/books":
+            return httpx.Response(200, json={"content": [{"id": "b1"}], "last": True})
+        if request.method == "PATCH" and request.url.path == "/api/v1/series/k-id/metadata":
+            return httpx.Response(204)
+        if request.method == "PATCH" and request.url.path == "/api/v1/books/b1/metadata":
+            book_patches.append(json.loads(request.content))
+            return httpx.Response(204)
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    original_client = httpx.AsyncClient
+
+    def patched_client(*args, **kwargs):
+        kwargs["transport"] = transport
+        return original_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", patched_client)
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "sync_komga_metadata"})
+    assert created.status_code == 200, created.json()
+
+    done = _wait_for_completion(client, created.json()["id"])
+    assert done["status"] == "completed", done
+    assert done["result"]["updated"] == 1
+    assert done["result"]["books_updated"] == 1
+    expected = [
+        {"name": "Author One", "role": "writer"},
+        {"name": "Author Two", "role": "writer"},
+        {"name": "Author One", "role": "penciller"},
+        {"name": "Author Two", "role": "penciller"},
+    ]
+    assert book_patches == [{"authors": expected, "authorsLock": True}]
 
 
 def test_update_lxc_writes_trigger_when_path_unit_enabled(
