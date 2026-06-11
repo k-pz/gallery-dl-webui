@@ -15,6 +15,7 @@ import { RecentList } from "./components/RecentList";
 import { RunningJobsPanel } from "./components/RunningJobsPanel";
 import { SubmitForm } from "./components/SubmitForm";
 import { TargetsList } from "./components/TargetsList";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { useAutoSelectJob } from "./hooks/useAutoSelectJob";
 import { initialJobIdFromUrl, useSyncJobParam } from "./hooks/useRouteJob";
 import { useRouteTab } from "./hooks/useRouteTab";
@@ -88,6 +89,7 @@ export default function App() {
             </a>
             <div className="app-shell-header-meta">
               <HealthBadge />
+              <ThemeToggle />
               <MobileMenuButton open={navOpen} onClick={() => setNavOpen((o) => !o)} />
             </div>
           </div>
