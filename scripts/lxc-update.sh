@@ -15,6 +15,10 @@
 #
 # Overridable env vars (defaults match proxmox-install.sh):
 #   REPO_URL, REPO_REF, APP_USER, APP_DIR, DATA_DIR, SERVICE
+#
+# SRC_DIR: skip the git clone and install from an already-staged source tree
+# inside the CT. Used by proxmox-update.sh to deploy a LOCAL_SRC checkout it
+# pushed from the host; the caller owns that directory's lifetime.
 
 set -euo pipefail
 
@@ -45,8 +49,10 @@ SERVICE="${SERVICE:-gallery-dl-webui.service}"
 # alongside .update-request. The file is one line containing a branch /
 # tag / SHA. We consume + remove it so a one-shot preview run doesn't
 # silently stick around for the next update; the webapp re-creates it on
-# the next scheduled update if the preference is still set.
-if [[ -z "${REPO_REF:-}" ]] && [[ -f "$DATA_DIR/.update-ref" ]]; then
+# the next scheduled update if the preference is still set. A pre-staged
+# SRC_DIR run never clones, so it must leave the sidecar for the next
+# clone-mode update rather than burning the one-shot preview.
+if [[ -z "${SRC_DIR:-}" && -z "${REPO_REF:-}" ]] && [[ -f "$DATA_DIR/.update-ref" ]]; then
     REPO_REF="$(head -n1 "$DATA_DIR/.update-ref" | tr -d '[:space:]')"
     rm -f "$DATA_DIR/.update-ref"
 fi
@@ -86,15 +92,20 @@ command -v git >/dev/null \
 
 # ---- Fetch source ---------------------------------------------------------
 
-SRC_DIR="$(mktemp -d -t gallery-dl-webui.XXXXXX)"
-cleanup() { rm -rf "$SRC_DIR"; }
-trap cleanup EXIT
+if [[ -n "${SRC_DIR:-}" ]]; then
+    [[ -d "$SRC_DIR" ]] || die "SRC_DIR=$SRC_DIR is not a directory"
+    log "using pre-staged source: $SRC_DIR"
+else
+    SRC_DIR="$(mktemp -d -t gallery-dl-webui.XXXXXX)"
+    cleanup() { rm -rf "$SRC_DIR"; }
+    trap cleanup EXIT
 
-log "cloning $REPO_URL ($REPO_REF) to $SRC_DIR"
-git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" "$SRC_DIR"
+    log "cloning $REPO_URL ($REPO_REF) to $SRC_DIR"
+    git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" "$SRC_DIR"
+fi
 
-NEW_REV="$(git -C "$SRC_DIR" rev-parse --short HEAD)"
-NEW_SUBJECT="$(git -C "$SRC_DIR" log -1 --pretty=%s)"
+NEW_REV="$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+NEW_SUBJECT="$(git -C "$SRC_DIR" log -1 --pretty=%s 2>/dev/null || echo "(local source)")"
 
 # ---- Wipe + repopulate APP_DIR --------------------------------------------
 #
