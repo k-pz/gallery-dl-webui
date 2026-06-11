@@ -253,6 +253,47 @@ describe("MaintenancePanel", () => {
     });
   });
 
+  it("schedules a refresh-series-metadata job from the button", async () => {
+    const nextId = { value: 1 };
+    const jobs: Job[] = [];
+    const postedKinds: string[] = [];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {};
+    mockFetch(jobsHandler({ jobs, nextId, progress, postedKinds }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: /refresh series metadata/i }));
+    await waitFor(() => {
+      expect(postedKinds).toContain("refresh_series_metadata");
+    });
+  });
+
+  it("schedules the Komga jobs from the sync card", async () => {
+    const nextId = { value: 1 };
+    const jobs: Job[] = [];
+    const postedKinds: string[] = [];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {};
+    mockFetch(jobsHandler({ jobs, nextId, progress, postedKinds }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: /sync metadata to komga/i }));
+    await waitFor(() => {
+      expect(postedKinds).toContain("sync_komga_metadata");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /push status only/i }));
+    await waitFor(() => {
+      expect(postedKinds).toContain("push_komga_series_status");
+    });
+  });
+
   it("schedules an unwatch-ended-series job from the button", async () => {
     const nextId = { value: 1 };
     const jobs: Job[] = [];

@@ -3,8 +3,10 @@ export const TERMINAL_STATUSES: ReadonlySet<string> = new Set(["completed", "fai
 export const KIND_LABEL: Record<string, string> = {
   rename_chapters: "Rename chapters",
   regenerate_series_metadata: "Regenerate series metadata",
+  refresh_series_metadata: "Refresh series metadata",
   rebuild_library: "Rebuild library",
   push_komga_series_status: "Push series status to Komga",
+  sync_komga_metadata: "Sync series metadata to Komga",
   update_lxc: "Update LXC from upstream",
   unwatch_ended_series: "Unwatch ended series",
 };
