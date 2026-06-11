@@ -13,8 +13,9 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createDownloadMutation, getConfigOptions } from "../api/@tanstack/react-query.gen";
+import { useServerSeededState } from "../hooks/useServerSeededState";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
 import { READING_DIRECTION_OPTIONS } from "../lib/readingDirection";
@@ -22,27 +23,16 @@ import { DirectoryPicker } from "./DirectoryPicker";
 
 export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } = {}) {
   const [url, setUrl] = useState("");
-  const [outputDir, setOutputDir] = useState<string | null>(null);
   const [watched, setWatched] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
-  const [readingDirection, setReadingDirection] = useState<string>("ltr");
-  const [readingDirectionTouched, setReadingDirectionTouched] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const invalidate = useDataInvalidators();
   const { data: config } = useQuery(getConfigOptions());
 
-  const [touched, setTouched] = useState(false);
-  useEffect(() => {
-    if (!touched && config) {
-      setOutputDir(config.postprocess_default_output_dir ?? null);
-    }
-  }, [config, touched]);
-
-  useEffect(() => {
-    if (!readingDirectionTouched && config?.default_reading_direction) {
-      setReadingDirection(config.default_reading_direction);
-    }
-  }, [config, readingDirectionTouched]);
+  // Both pre-fill from the configured defaults (which may arrive after first
+  // render) but must not clobber a user's explicit pick on a config refetch.
+  const outputDir = useServerSeededState(config?.postprocess_default_output_dir ?? null);
+  const readingDirection = useServerSeededState(config?.default_reading_direction ?? "ltr");
 
   const mutation = useMutation({
     ...createDownloadMutation(),
@@ -50,9 +40,9 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
       setUrl("");
       setWatched(false);
       setTags([]);
-      setReadingDirectionTouched(false);
+      readingDirection.markClean();
       setSubmitError(null);
-      setTouched(false);
+      outputDir.markClean();
       onCreated?.(data.id);
       notifications.show({
         title: "Job queued",
@@ -83,10 +73,10 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
     mutation.mutate({
       body: {
         url: trimmed,
-        output_dir: outputDir || null,
+        output_dir: outputDir.value || null,
         watched,
         tags: tags.length > 0 ? tags : null,
-        reading_direction: readingDirectionTouched ? readingDirection : null,
+        reading_direction: readingDirection.dirty ? readingDirection.value : null,
       },
     });
   };
@@ -144,11 +134,8 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
               ? `Must be under root: ${config?.postprocess_root}. Use + to create a new folder.`
               : "Postprocessing disabled until a root is configured."
           }
-          value={outputDir}
-          onChange={(v) => {
-            setTouched(true);
-            setOutputDir(v);
-          }}
+          value={outputDir.value}
+          onChange={outputDir.setValue}
           enabled={hasRoot}
           disabled={mutation.isPending}
           extraOption={config?.postprocess_default_output_dir ?? null}
@@ -166,11 +153,10 @@ export function SubmitForm({ onCreated }: { onCreated?: (id: number) => void } =
           <Select
             label="Reading direction"
             description="Right-to-left tells the reader to page backwards (written into ComicInfo.xml as Manga=YesAndRightToLeft)."
-            value={readingDirection}
+            value={readingDirection.value}
             onChange={(v) => {
               if (!v) return;
-              setReadingDirectionTouched(true);
-              setReadingDirection(v);
+              readingDirection.setValue(v);
             }}
             data={READING_DIRECTION_OPTIONS}
             disabled={mutation.isPending}

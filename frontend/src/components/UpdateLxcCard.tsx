@@ -13,7 +13,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   checkForUpdatesOptions,
   checkForUpdatesQueryKey,
@@ -23,6 +23,7 @@ import {
   setUpdatePreviewRefMutation,
 } from "../api/@tanstack/react-query.gen";
 import type { ChangelogEntryOut, MaintenanceJob, UpdateCheckOut } from "../api/types.gen";
+import { useServerSeededState } from "../hooks/useServerSeededState";
 import { extractErrorMessage } from "../lib/apiError";
 import { IconAlertTriangle, IconArrowUp, IconInfo } from "./Icons";
 import { Pill } from "./Pill";
@@ -443,30 +444,24 @@ function PreviewRefControl({
 }) {
   const qc = useQueryClient();
   const savedRef = useQuery(getUpdatePreviewRefOptions());
+
+  // Local input state is decoupled from the persisted value so the user can
+  // type freely without each keystroke firing a request (see the hook docs).
+  const draft = useServerSeededState(savedRef.data?.ref ?? "");
+
   const setMutation = useMutation({
     ...setUpdatePreviewRefMutation(),
     onSuccess: () => {
       // Hand the input back to the seeding effect only once the save landed;
       // doing it synchronously in save() re-seeded from the *stale* saved
       // ref until the invalidated refetch arrived, flickering the input.
-      setHasTyped(false);
+      draft.markClean();
       qc.invalidateQueries({ queryKey: getUpdatePreviewRefQueryKey() });
       qc.invalidateQueries({ queryKey: checkForUpdatesQueryKey() });
     },
   });
 
-  // Local input state is decoupled from the persisted value so the user can
-  // type freely without each keystroke firing a request. We seed from the
-  // saved ref on first arrival and on refresh, but don't fight the user once
-  // they start typing (otherwise a refetch mid-type would clobber the input).
-  const [draft, setDraft] = useState<string>("");
-  const [hasTyped, setHasTyped] = useState(false);
-  useEffect(() => {
-    if (hasTyped) return;
-    setDraft(savedRef.data?.ref ?? "");
-  }, [savedRef.data, hasTyped]);
-
-  const trimmed = draft.trim();
+  const trimmed = draft.value.trim();
   const persistedRef = savedRef.data?.ref ?? null;
   const isDirty = trimmed !== (persistedRef ?? "");
   const fallback = defaultBranch ?? "main";
@@ -477,7 +472,7 @@ function PreviewRefControl({
   };
 
   const reset = () => {
-    setDraft("");
+    draft.overwrite("");
     setMutation.mutate({ body: { ref: null } });
   };
 
@@ -500,11 +495,8 @@ function PreviewRefControl({
               : `Tracking the default branch (${fallback}). Type a branch / tag / SHA to preview.`
           }
           placeholder={fallback}
-          value={draft}
-          onChange={(e) => {
-            setHasTyped(true);
-            setDraft(e.currentTarget.value);
-          }}
+          value={draft.value}
+          onChange={(e) => draft.setValue(e.currentTarget.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && isDirty) {
               e.preventDefault();
@@ -521,8 +513,7 @@ function PreviewRefControl({
           value={tagOptions.some((o) => o.value === trimmed) ? trimmed : null}
           onChange={(value) => {
             if (value === null) return;
-            setHasTyped(true);
-            setDraft(value);
+            draft.setValue(value);
           }}
           searchable
           clearable={false}

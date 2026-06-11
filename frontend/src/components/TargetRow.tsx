@@ -11,13 +11,14 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   deleteTargetMutation,
   pollTargetMutation,
   updateTargetMutation,
 } from "../api/@tanstack/react-query.gen";
 import type { Target } from "../api/types.gen";
+import { useServerSeededState } from "../hooks/useServerSeededState";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
 import { READING_DIRECTION_OPTIONS } from "../lib/readingDirection";
@@ -53,19 +54,14 @@ export function TargetRow({
   onToggle: () => void;
 }) {
   const invalidate = useDataInvalidators();
-  const [period, setPeriod] = useState(target.watch_period ?? "");
-  const [periodDirty, setPeriodDirty] = useState(false);
+  const period = useServerSeededState(target.watch_period ?? "");
   const [periodError, setPeriodError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-
-  useEffect(() => {
-    if (!periodDirty) setPeriod(target.watch_period ?? "");
-  }, [target.watch_period, periodDirty]);
 
   const update = useMutation({
     ...updateTargetMutation(),
     onSuccess: () => {
-      setPeriodDirty(false);
+      period.markClean();
       setPeriodError(null);
       invalidate.targets();
     },
@@ -112,10 +108,10 @@ export function TargetRow({
   );
 
   const submitPeriod = () => {
-    if (!periodDirty) return;
+    if (!period.dirty) return;
     update.mutate({
       path: { target_id: target.id },
-      body: { watch_period: period },
+      body: { watch_period: period.value },
     });
   };
 
@@ -293,12 +289,9 @@ export function TargetRow({
             <TextInput
               label="Poll every"
               placeholder={defaultPeriod}
-              value={period}
+              value={period.value}
               disabled={!target.watched || update.isPending}
-              onChange={(e) => {
-                setPeriod(e.currentTarget.value);
-                setPeriodDirty(true);
-              }}
+              onChange={(e) => period.setValue(e.currentTarget.value)}
               onBlur={submitPeriod}
               onKeyDown={(e) => {
                 if (e.key === "Enter") submitPeriod();
