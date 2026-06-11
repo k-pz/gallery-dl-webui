@@ -15,6 +15,7 @@ from backend.comic_metadata import (
     chapter_with_minor,
     coerce_record_from_kwdict,
     date_iso,
+    earliest_date,
     normalize_series_status,
     normalize_tags,
 )
@@ -51,12 +52,17 @@ class MetadataResult:
     until the chapter has been visited; mangadex-style API extractors fill it
     from the series-level chapter list. `len(chapter_dates)` is the discovered
     chapter count.
+
+    `earliest_chapter_date` is the minimum of `chapter_dates` values — the
+    series' first-publication date as far as the source knows it. `None` when
+    no chapter exposed a usable date.
     """
 
     series_name: str | None = None
     series_status: str | None = None
     series_tags: list[str] | None = None
     chapter_dates: dict[tuple[str, str], str] = field(default_factory=dict)
+    earliest_chapter_date: str | None = None
 
 
 def _inherit_shared_state(child: Any, parent: Any, *attrs: str) -> bool:
@@ -296,11 +302,13 @@ class Gallery:
         """
         job = _MetadataSimulationJob(url)
         job.run()
+        chapter_dates = dict(job._dates_box[0])
         return MetadataResult(
             series_name=job._series_box[0],
             series_status=job._status_box[0],
             series_tags=job._tags_box[0],
-            chapter_dates=dict(job._dates_box[0]),
+            chapter_dates=chapter_dates,
+            earliest_chapter_date=earliest_date(chapter_dates.values()),
         )
 
     def run_download(

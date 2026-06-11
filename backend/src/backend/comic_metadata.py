@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import re
 import xml.etree.ElementTree as ET
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import lru_cache
@@ -87,6 +87,11 @@ class SeriesMetadata:
     artist: str = ""
     publisher: str = ""
     language: str = ""
+    # First-publication date of the series (ISO `YYYY-MM-DD`, possibly just
+    # `YYYY` for sources that only expose a year). `year` is the same datum
+    # reduced to the Mylar series.json wire format; when both are unset they
+    # get derived from the earliest chapter date in `derive_series_metadata`.
+    published_at: str = ""
     year: int | None = None
     status: str = ""
     tags: list[str] = field(default_factory=list)
@@ -245,6 +250,24 @@ def date_iso(value: Any) -> str:
     if isinstance(value, datetime):
         return value.strftime("%Y-%m-%d")
     return _str(value)
+
+
+def earliest_date(values: Iterable[str]) -> str | None:
+    """Pick the earliest date-like string out of `values`.
+
+    Only values starting with a four-digit year qualify; everything else is
+    ignored. ISO `YYYY-MM-DD` strings (what `date_iso` produces) order
+    correctly under plain string comparison, and a bare `YYYY` sorts before
+    `YYYY-…` of the same year — close enough for a first-publication date.
+    Returns None when nothing qualifies.
+    """
+    earliest: str | None = None
+    for value in values:
+        if len(value) < 4 or not value[:4].isdigit():
+            continue
+        if earliest is None or value < earliest:
+            earliest = value
+    return earliest
 
 
 def chapter_with_minor(kwdict: dict[str, Any]) -> str:
@@ -501,6 +524,9 @@ def build_series_json_bytes(meta: SeriesMetadata, total_issues: int | None = Non
         "status": MYLAR_STATUS_BY_LOCAL.get(meta.status),
         # Extension fields — non-standard, kept for round-tripping our own
         # state through the regen job and for downstream Komga config.
+        # `publication_date` is the full first-publication date backing the
+        # Mylar-level `year` above.
+        "publication_date": meta.published_at or None,
         "language": meta.language or None,
         "writer": meta.author or None,
         "penciller": meta.artist or meta.author or None,
@@ -524,6 +550,21 @@ def write_series_json(series_dir: Path, meta: SeriesMetadata, total_issues: int 
     return target
 
 
+def read_series_json_metadata(path: Path) -> dict[str, Any] | None:
+    """Best-effort read of an on-disk series.json's `metadata` dict.
+
+    Returns None for a missing/unreadable file or an unexpected shape — the
+    Komga metadata sync treats that as "nothing on disk" and falls back to
+    the target row's fields.
+    """
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except OSError, ValueError:
+        return None
+    metadata = payload.get("metadata") if isinstance(payload, dict) else None
+    return metadata if isinstance(metadata, dict) else None
+
+
 def derive_series_metadata(
     chapters: list[ChapterRecord],
     overrides: SeriesMetadata | None = None,
@@ -532,7 +573,12 @@ def derive_series_metadata(
 
     Overrides win for `tags`, `reading_direction`, and any explicitly-set
     string fields; everything else falls back to the first non-empty value
-    seen across the chapters. Author/artist values get bracket-stripped here
+    seen across the chapters. The exception is `published_at`/`year`: the
+    series publication date is the date of the *earliest* chapter, not the
+    first one encountered — chapter lists arrive in arbitrary (often
+    newest-first) order, and an incremental download only carries the new
+    chapters, so "first seen" would stamp an ongoing series with the year
+    of its latest chapter. Author/artist values get bracket-stripped here
     so the series.json + ComicInfo see the same clean name regardless of
     whether the FileRecord went through coerce_record_from_kwdict.
     """
@@ -548,10 +594,9 @@ def derive_series_metadata(
             base.artist = strip_enclosing_brackets(ch.artist)
         if not base.language and ch.lang:
             base.language = ch.lang
-        if base.year is None and ch.date and len(ch.date) >= 4 and ch.date[:4].isdigit():
-            base.year = int(ch.date[:4])
         if not base.status and ch.status:
             base.status = ch.status
+    base.published_at = earliest_date(ch.date for ch in chapters) or ""
     if overrides is not None:
         if overrides.name:
             base.name = overrides.name
@@ -565,12 +610,19 @@ def derive_series_metadata(
             base.publisher = overrides.publisher
         if overrides.language:
             base.language = overrides.language
-        if overrides.year is not None:
-            base.year = overrides.year
+        if overrides.published_at:
+            # The stored first-publication date (discovered from the full
+            # upstream chapter list) beats whatever this batch of chapters
+            # implies — the batch may be a single fresh chapter.
+            base.published_at = overrides.published_at
         if overrides.status:
             base.status = overrides.status
         base.tags = normalize_tags(overrides.tags)
         base.reading_direction = normalize_reading_direction(overrides.reading_direction)
     else:
         base.reading_direction = normalize_reading_direction(base.reading_direction)
+    if overrides is not None and overrides.year is not None:
+        base.year = overrides.year
+    elif base.published_at:
+        base.year = int(base.published_at[:4])
     return base

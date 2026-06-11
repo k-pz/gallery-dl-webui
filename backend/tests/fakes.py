@@ -6,7 +6,7 @@ from pathlib import Path, PurePosixPath
 
 from gallery_dl.exception import StopExtraction
 
-from backend.comic_metadata import FileRecord
+from backend.comic_metadata import FileRecord, earliest_date
 from backend.config import Settings
 from backend.downloads.gallery import MetadataResult, SkipChapterFn
 
@@ -91,6 +91,7 @@ class FakeGallery:
             series_status=self._config.series_status_for.get(url),
             series_tags=self._config.series_tags_for.get(url),
             chapter_dates=dict(dates),
+            earliest_chapter_date=earliest_date(dates.values()),
         )
 
     def run_download(
