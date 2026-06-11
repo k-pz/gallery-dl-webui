@@ -14,6 +14,7 @@ from backend.comic_metadata import (
     SeriesMetadata,
     build_comicinfo_xml,
     build_series_json_bytes,
+    clean_person_names,
     coerce_record_from_kwdict,
     derive_series_metadata,
     earliest_date,
@@ -462,12 +463,62 @@ def test_strip_enclosing_brackets(raw: str, want: str) -> None:
     assert strip_enclosing_brackets(raw) == want
 
 
+@pytest.mark.parametrize(
+    "raw,want",
+    [
+        # The weebcentral stray-quote leftovers: a str()-ed author list whose
+        # outer brackets + outermost quote pair were already stripped.
+        ("Author One', 'Author Two", "Author One, Author Two"),
+        ("A', 'B', 'C", "A, B, C"),
+        # Full stringified list (never partially unwrapped).
+        ("['Author One', 'Author Two']", "Author One, Author Two"),
+        # Mixed repr quoting: a name with an apostrophe gets double-quoted.
+        ("\"K'o\", 'B'", "K'o, B"),
+        # Already-clean values pass through untouched.
+        ("Author One, Author Two", "Author One, Author Two"),
+        ("O'Brien, D'Arcy", "O'Brien, D'Arcy"),
+        ("[Some Studio]", "Some Studio"),
+        ("plain", "plain"),
+        ("", ""),
+    ],
+)
+def test_clean_person_names(raw: str, want: str) -> None:
+    assert clean_person_names(raw) == want
+
+
 def test_coerce_record_strips_brackets_from_author() -> None:
     rec = coerce_record_from_kwdict(
         {"manga": "S", "chapter": "1", "author": "[Some Studio]"},
         Path("/x/a.jpg"),
     )
     assert rec.author == "Some Studio"
+
+
+def test_coerce_record_joins_author_list() -> None:
+    # weebcentral exposes `author` as a list of names scraped off the series
+    # page; the record must join them instead of str()-ing the list.
+    rec = coerce_record_from_kwdict(
+        {"manga": "S", "chapter": "1", "author": ["Author One", "Author Two"]},
+        Path("/x/a.jpg"),
+    )
+    assert rec.author == "Author One, Author Two"
+
+
+def test_coerce_record_handles_author_list_of_dicts() -> None:
+    rec = coerce_record_from_kwdict(
+        {"manga": "S", "chapter": "1", "author": [{"name": "[A]"}, {"name": "B"}]},
+        Path("/x/a.jpg"),
+    )
+    assert rec.author == "A, B"
+
+
+def test_coerce_record_repairs_stringified_author_list() -> None:
+    # A value that already went through the old str()-the-list path.
+    rec = coerce_record_from_kwdict(
+        {"manga": "S", "chapter": "1", "author": "Author One', 'Author Two"},
+        Path("/x/a.jpg"),
+    )
+    assert rec.author == "Author One, Author Two"
 
 
 def test_coerce_record_captures_description_and_artist() -> None:

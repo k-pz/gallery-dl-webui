@@ -229,14 +229,49 @@ def strip_enclosing_brackets(value: str) -> str:
             return cleaned
 
 
+# The quote-comma-quote seam a stringified Python list leaves behind:
+# `str(["A", "B"])` → `['A', 'B']`, and once the enclosing brackets + the
+# outermost quote pair are stripped, `A', 'B` remains. weebcentral serves
+# `author` as a list scraped off the series page, so multi-author series
+# processed before `_author_name` learned about lists carry exactly this
+# pattern in their stored metadata.
+_STRINGIFIED_LIST_SEAM = re.compile(r"""['"]\s*,\s*['"]""")
+
+
+def clean_person_names(value: str) -> str:
+    """Normalise an author/artist string, repairing stringified-list leftovers.
+
+    On top of `strip_enclosing_brackets`, this splits on the `', '` seam of a
+    str()-ed list of names, strips the stray quotes off each piece, and
+    re-joins with a plain ", ". Already-clean values pass through unchanged
+    (a bare name never has a quote on both sides of a comma).
+    """
+    cleaned = strip_enclosing_brackets(value)
+    parts = _STRINGIFIED_LIST_SEAM.split(cleaned)
+    if len(parts) == 1:
+        return cleaned
+    names = []
+    for part in parts:
+        name = strip_enclosing_brackets(part.strip().strip("'\""))
+        if name:
+            names.append(name)
+    return ", ".join(names)
+
+
 def _author_name(value: Any) -> str:
-    # gallery-dl extractors variously expose `author` as a string or a dict
-    # with a `name` key (and sometimes other keys).
+    # gallery-dl extractors variously expose `author`/`artist` as a string, a
+    # dict with a `name` key, or a list of either (weebcentral scrapes its
+    # author list straight off the series page). Lists join with ", " after
+    # per-item cleanup — str()-ing them is what used to leave stray quotes
+    # in the stored metadata.
+    if isinstance(value, list | tuple):
+        names = [name for name in (_author_name(item) for item in value) if name]
+        return ", ".join(names)
     if isinstance(value, dict):
         raw = _str(value.get("name", ""))
     else:
         raw = _str(value)
-    return strip_enclosing_brackets(raw)
+    return clean_person_names(raw)
 
 
 def date_iso(value: Any) -> str:
@@ -439,11 +474,11 @@ def build_comicinfo_xml(
         _add("Volume", ch.volume)
     if ch.description:
         _add("Summary", ch.description)
-    # Strip enclosing brackets/quotes here so values constructed directly via
-    # FileRecord (e.g. extractor records that bypass coerce_record_from_kwdict,
-    # or maintenance regen) still get a clean author on the way out.
-    writer = strip_enclosing_brackets(ch.author) if ch.author else ""
-    penciller = strip_enclosing_brackets(ch.artist) if ch.artist else writer
+    # Clean author values here so records constructed directly via FileRecord
+    # (e.g. extractor records that bypass coerce_record_from_kwdict, or
+    # maintenance regen) still get a bare, quote-free name on the way out.
+    writer = clean_person_names(ch.author) if ch.author else ""
+    penciller = clean_person_names(ch.artist) if ch.artist else writer
     if writer:
         _add("Writer", writer)
     if penciller:
@@ -589,9 +624,9 @@ def derive_series_metadata(
         if not base.description and ch.description:
             base.description = ch.description
         if not base.author and ch.author:
-            base.author = strip_enclosing_brackets(ch.author)
+            base.author = clean_person_names(ch.author)
         if not base.artist and ch.artist:
-            base.artist = strip_enclosing_brackets(ch.artist)
+            base.artist = clean_person_names(ch.artist)
         if not base.language and ch.lang:
             base.language = ch.lang
         if not base.status and ch.status:
