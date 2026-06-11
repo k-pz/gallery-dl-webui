@@ -191,7 +191,8 @@ function MaintResultCell({ text, empty, jobId }: { text: string; empty: boolean;
         }
         data-expanded={expanded ? "true" : undefined}
       >
-        <Text size="xs" c="dimmed" ff="monospace">
+        {/* Color comes from .maint-result-toggle (accent) — no c prop. */}
+        <Text size="xs" ff="monospace">
           {expanded ? "collapse" : "expand"}
         </Text>
         <IconChevronDown size={14} className="maint-result-toggle-chev" />
