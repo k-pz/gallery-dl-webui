@@ -117,6 +117,7 @@ async def upsert(
         tags=list(tags) if tags is not None else [],
         reading_direction=reading_direction,
         series_status=None,
+        series_published_at=None,
     )
 
 
@@ -228,6 +229,26 @@ async def set_series_tags(db: aiosqlite.Connection, id_: int, tags: list[str]) -
     await db.execute(
         "UPDATE targets SET tags = ? WHERE id = ? AND (tags IS NULL OR tags = '' OR tags = '[]')",
         (_encode_tags(tags), id_),
+    )
+    await db.commit()
+    return await get(db, id_)
+
+
+async def set_series_published_at(db: aiosqlite.Connection, id_: int, date: str) -> Target | None:
+    """Persist the auto-discovered first-publication date (no-op when empty).
+
+    Min-merge rather than fill-only: a fresh discovery fills a blank column or
+    moves an existing value *earlier* (an older chapter surfaced), but never
+    later — a partial upstream enumeration that misses the early chapters must
+    not push a good date forward.
+    """
+    if not date:
+        return await get(db, id_)
+    await db.execute(
+        "UPDATE targets SET series_published_at = ? WHERE id = ? "
+        "AND (series_published_at IS NULL OR series_published_at = '' "
+        "OR series_published_at > ?)",
+        (date, id_, date),
     )
     await db.commit()
     return await get(db, id_)
