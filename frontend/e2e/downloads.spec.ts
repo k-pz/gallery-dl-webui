@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 // These URLs are seeded inside backend/tests/e2e_server.py.
 const OK_URL = "https://e2e.test/ok";
 const SLOW_URL = "https://e2e.test/slow";
+const VERY_SLOW_URL = "https://e2e.test/very-slow";
 const UNSUPPORTED_URL = "https://e2e.test/unsupported";
 
 test.describe("downloads UI", () => {
@@ -55,10 +56,14 @@ test.describe("downloads UI", () => {
   });
 
   test("cancels a slow download from the active job card", async ({ page }) => {
-    await page.getByLabel(/gallery url/i).fill(SLOW_URL);
+    // VERY_SLOW_URL (~11s of download) keeps the job cancellable while the
+    // test navigates to it: with SLOW_URL's ~2s window the job sometimes
+    // completed before the cancel landed (the backend then 409s) and the
+    // "Cancelled" pill never appeared.
+    await page.getByLabel(/gallery url/i).fill(VERY_SLOW_URL);
     await page.getByRole("button", { name: /^download$/i }).click();
 
-    await openJobByUrl(page, SLOW_URL);
+    await openJobByUrl(page, VERY_SLOW_URL);
 
     // The active card's Cancel button (textual, not the row icon) is only
     // visible while the job is non-terminal.
@@ -67,14 +72,16 @@ test.describe("downloads UI", () => {
     await cancelBtn.click();
 
     // Once cancelled, the active card swaps Cancel for Requeue and the
-    // solid pill that replaces the stepper reads "Cancelled".
+    // solid pill that replaces the stepper reads "Cancelled". The swap is
+    // optimistic but the pill tracks the server status, which can take a
+    // while to settle on a loaded CI runner — give it the same window.
     await expect(activeJobButton(page, /^requeue$/i)).toBeVisible({ timeout: 15_000 });
     await expect(
       page
         .locator(".pill")
         .getByText(/^cancelled$/i)
         .first(),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("requeues a completed download back to running", async ({ page }) => {
