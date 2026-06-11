@@ -10,7 +10,14 @@ import {
 import { extractErrorMessage } from "../lib/apiError";
 import { usePagination } from "../lib/pagination";
 import { EmptyState } from "./EmptyState";
-import { IconAlertTriangle, IconClock, IconEyeOff, IconFileText, IconRefresh } from "./Icons";
+import {
+  ICON_SIZE,
+  IconAlertTriangle,
+  IconClock,
+  IconEyeOff,
+  IconFileText,
+  IconRefresh,
+} from "./Icons";
 import { ListPagination } from "./ListPagination";
 import { MaintenanceJobsTable } from "./MaintenanceJobsTable";
 import { MaintenanceLog } from "./MaintenanceLog";
@@ -68,7 +75,7 @@ export function MaintenancePanel() {
           <Group wrap="wrap">
             <Button
               variant="light"
-              leftSection={<IconRefresh size={14} />}
+              leftSection={<IconRefresh size={ICON_SIZE.sm} />}
               onClick={() => schedule.mutate({ body: { kind: "rename_chapters" } })}
               loading={schedulingKind === "rename_chapters"}
             >
@@ -76,7 +83,7 @@ export function MaintenancePanel() {
             </Button>
             <Button
               variant="light"
-              leftSection={<IconFileText size={14} />}
+              leftSection={<IconFileText size={ICON_SIZE.sm} />}
               onClick={() => schedule.mutate({ body: { kind: "regenerate_series_metadata" } })}
               loading={schedulingKind === "regenerate_series_metadata"}
             >
@@ -84,7 +91,7 @@ export function MaintenancePanel() {
             </Button>
             <Button
               variant="light"
-              leftSection={<IconEyeOff size={14} />}
+              leftSection={<IconEyeOff size={ICON_SIZE.sm} />}
               onClick={() => schedule.mutate({ body: { kind: "unwatch_ended_series" } })}
               loading={schedulingKind === "unwatch_ended_series"}
             >
@@ -125,19 +132,19 @@ export function MaintenancePanel() {
           </Stack>
           {jobs.isError && (
             <Box className="app-alert">
-              <IconAlertTriangle size={16} className="alert-icon" />
+              <IconAlertTriangle size={ICON_SIZE.md} className="alert-icon" />
               <Text size="sm">{extractErrorMessage(jobs.error)}</Text>
             </Box>
           )}
           {cancel.isError && (
             <Box className="app-alert">
-              <IconAlertTriangle size={16} className="alert-icon" />
+              <IconAlertTriangle size={ICON_SIZE.md} className="alert-icon" />
               <Text size="sm">{extractErrorMessage(cancel.error)}</Text>
             </Box>
           )}
           {jobList.length === 0 && !jobs.isLoading && (
             <EmptyState
-              icon={<IconClock size={20} />}
+              icon={<IconClock size={ICON_SIZE.xl} />}
               title="No maintenance jobs yet"
               body="Jobs you schedule above — and what they did — show up here."
             />

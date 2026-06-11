@@ -1,16 +1,24 @@
 import type { ReactNode } from "react";
 import { useRef } from "react";
 import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
-import { IconActivity, IconFileText, IconLibrary, IconSliders, IconWrench, IconX } from "./Icons";
+import {
+  ICON_SIZE,
+  IconActivity,
+  IconFileText,
+  IconLibrary,
+  IconSliders,
+  IconWrench,
+  IconX,
+} from "./Icons";
 
 type NavKey = "library" | "jobs" | "config" | "maintenance" | "logs";
 
 const NAV_ITEMS: { key: NavKey; label: string; icon: ReactNode }[] = [
-  { key: "library", label: "Library", icon: <IconLibrary size={20} /> },
-  { key: "jobs", label: "Jobs", icon: <IconActivity size={20} /> },
-  { key: "config", label: "Config", icon: <IconSliders size={20} /> },
-  { key: "maintenance", label: "Maintenance", icon: <IconWrench size={20} /> },
-  { key: "logs", label: "Logs", icon: <IconFileText size={20} /> },
+  { key: "library", label: "Library", icon: <IconLibrary size={ICON_SIZE.xl} /> },
+  { key: "jobs", label: "Jobs", icon: <IconActivity size={ICON_SIZE.xl} /> },
+  { key: "config", label: "Config", icon: <IconSliders size={ICON_SIZE.xl} /> },
+  { key: "maintenance", label: "Maintenance", icon: <IconWrench size={ICON_SIZE.xl} /> },
+  { key: "logs", label: "Logs", icon: <IconFileText size={ICON_SIZE.xl} /> },
 ];
 
 /**
@@ -66,7 +74,7 @@ export function MobileNavDrawer({
             tabIndex={open ? 0 : -1}
             ref={closeBtnRef}
           >
-            <IconX size={18} />
+            <IconX size={ICON_SIZE.lg} />
           </button>
         </div>
         <nav className="mob-drawer-nav" aria-label="Primary">

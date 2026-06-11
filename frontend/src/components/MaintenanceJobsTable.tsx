@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { MaintenanceJob } from "../api/types.gen";
 import { KIND_LABEL, maintStatusLabel, TERMINAL_STATUSES } from "../lib/maintenance";
 import { statusTone } from "../lib/status";
-import { IconChevronDown, IconX } from "./Icons";
+import { ICON_SIZE, IconChevronDown, IconX } from "./Icons";
 import { Pill } from "./Pill";
 
 /** The maintenance job history table: one selectable row per job, with an
@@ -103,7 +103,11 @@ export function MaintenanceJobsTable({
                           onCancel(job.id);
                         }}
                       >
-                        {isCancelling ? <Loader size={16} color="red" /> : <IconX size={16} />}
+                        {isCancelling ? (
+                          <Loader size={16} color="red" />
+                        ) : (
+                          <IconX size={ICON_SIZE.md} />
+                        )}
                       </button>
                     </Tooltip>
                   )}
@@ -195,7 +199,7 @@ function MaintResultCell({ text, empty, jobId }: { text: string; empty: boolean;
         <Text size="xs" ff="monospace">
           {expanded ? "collapse" : "expand"}
         </Text>
-        <IconChevronDown size={14} className="maint-result-toggle-chev" />
+        <IconChevronDown size={ICON_SIZE.sm} className="maint-result-toggle-chev" />
       </UnstyledButton>
     </Stack>
   );

@@ -1,6 +1,6 @@
 import { Button, Card, Group, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useMemo, useState } from "react";
-import { IconAlertTriangle } from "./Icons";
+import { ICON_SIZE, IconAlertTriangle } from "./Icons";
 
 // The literal the user must type to arm the rebuild. Kept short, lowercase
 // only — anything longer becomes annoying to type for a deliberately
@@ -44,14 +44,17 @@ export function RebuildLibraryCard({
               rebuilding — and downloads to stay incomplete — for several hours.
             </Text>
           </Stack>
-          <IconAlertTriangle size={20} style={{ color: "var(--tone-error)", flexShrink: 0 }} />
+          <IconAlertTriangle
+            size={ICON_SIZE.xl}
+            style={{ color: "var(--tone-error)", flexShrink: 0 }}
+          />
         </Group>
         {!armed ? (
           <Group>
             <Button
               variant="outline"
               color="red"
-              leftSection={<IconAlertTriangle size={14} />}
+              leftSection={<IconAlertTriangle size={ICON_SIZE.sm} />}
               onClick={() => setArmed(true)}
               loading={scheduling}
             >
@@ -82,7 +85,7 @@ export function RebuildLibraryCard({
               />
               <Button
                 color="red"
-                leftSection={<IconAlertTriangle size={14} />}
+                leftSection={<IconAlertTriangle size={ICON_SIZE.sm} />}
                 disabled={!matches}
                 loading={scheduling}
                 onClick={() => {

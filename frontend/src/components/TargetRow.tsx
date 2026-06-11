@@ -28,7 +28,14 @@ import { isActive, jobStatusLabel, statusTone } from "../lib/status";
 import { formatRel } from "../lib/time";
 import { useNotifyingMutation } from "../lib/useNotifyingMutation";
 import { CopyIconButton } from "./CopyIconButton";
-import { IconArrowUpRight, IconChevronDown, IconEye, IconPlay, IconTrash } from "./Icons";
+import {
+  ICON_SIZE,
+  IconArrowUpRight,
+  IconChevronDown,
+  IconEye,
+  IconPlay,
+  IconTrash,
+} from "./Icons";
 import { InlineConfirm } from "./InlineConfirm";
 import { Pill } from "./Pill";
 
@@ -150,7 +157,7 @@ export function TargetRow({
               {isActive(status) && <Pill tone={tone}>{jobStatusLabel(status)}</Pill>}
               {target.watched && (
                 <Group gap={4} wrap="nowrap" style={{ color: "var(--app-accent)" }}>
-                  <IconEye size={11} />
+                  <IconEye size={ICON_SIZE.xs} />
                   <Text size="xs" component="span" style={{ color: "inherit" }}>
                     watched
                   </Text>
@@ -200,7 +207,7 @@ export function TargetRow({
               style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "0 6px" }}
               onClick={() => onOpenJob(lastDownloadId)}
             >
-              job #{lastDownloadId} <IconArrowUpRight size={11} />
+              job #{lastDownloadId} <IconArrowUpRight size={ICON_SIZE.xs} />
             </Anchor>
           )}
           <Tooltip label="Poll now" withArrow>
@@ -213,7 +220,7 @@ export function TargetRow({
               aria-label={`Poll target ${target.id}`}
               onClick={() => poll.mutate({ path: { target_id: target.id } })}
             >
-              <IconPlay size={14} />
+              <IconPlay size={ICON_SIZE.sm} />
             </button>
           </Tooltip>
           <Tooltip label="Remove series" withArrow>
@@ -229,7 +236,7 @@ export function TargetRow({
                 if (!expanded) onToggle();
               }}
             >
-              <IconTrash size={14} />
+              <IconTrash size={ICON_SIZE.sm} />
             </button>
           </Tooltip>
           <button
@@ -240,7 +247,7 @@ export function TargetRow({
             aria-label={expanded ? `Collapse ${displayName}` : `Expand ${displayName}`}
             onClick={onToggle}
           >
-            <IconChevronDown size={14} className="lib-row-chev" />
+            <IconChevronDown size={ICON_SIZE.sm} className="lib-row-chev" />
           </button>
         </Group>
       </div>

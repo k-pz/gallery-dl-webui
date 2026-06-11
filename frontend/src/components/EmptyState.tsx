@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { IconArrowUp } from "./Icons";
+import { ICON_SIZE, IconArrowUp } from "./Icons";
 
 /**
  * Glyph + title + body + secondary action. `arrow` adds a directional cue
@@ -23,7 +23,7 @@ export function EmptyState({
     <div className="app-empty">
       {arrow && (
         <div className="app-empty-arrow" aria-hidden="true">
-          <IconArrowUp size={18} />
+          <IconArrowUp size={ICON_SIZE.lg} />
         </div>
       )}
       <span className="app-empty-glyph" aria-hidden="true">

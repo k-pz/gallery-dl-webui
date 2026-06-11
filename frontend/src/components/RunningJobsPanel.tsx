@@ -15,7 +15,7 @@ import {
   jobStep,
   statusTone,
 } from "../lib/status";
-import { IconX } from "./Icons";
+import { ICON_SIZE, IconX } from "./Icons";
 import { InlineConfirm } from "./InlineConfirm";
 import { Pill } from "./Pill";
 
@@ -72,7 +72,7 @@ export function RunningJobsPanel({
               size="xs"
               variant="light"
               color="red"
-              leftSection={<IconX size={14} />}
+              leftSection={<IconX size={ICON_SIZE.sm} />}
               loading={cancelAll.isPending}
               onClick={() => setConfirmingCancelAll(true)}
             >

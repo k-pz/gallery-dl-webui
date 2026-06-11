@@ -1,5 +1,5 @@
 import { Tooltip, useMantineColorScheme } from "@mantine/core";
-import { IconMonitor, IconMoon, IconSun } from "./Icons";
+import { ICON_SIZE, IconMonitor, IconMoon, IconSun } from "./Icons";
 
 type Scheme = "auto" | "light" | "dark";
 
@@ -25,11 +25,11 @@ export function ThemeToggle() {
         onClick={() => setColorScheme(NEXT[scheme])}
       >
         {scheme === "light" ? (
-          <IconSun size={16} />
+          <IconSun size={ICON_SIZE.md} />
         ) : scheme === "dark" ? (
-          <IconMoon size={16} />
+          <IconMoon size={ICON_SIZE.md} />
         ) : (
-          <IconMonitor size={16} />
+          <IconMonitor size={ICON_SIZE.md} />
         )}
       </button>
     </Tooltip>

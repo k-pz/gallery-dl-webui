@@ -21,7 +21,7 @@ import { REFETCH_ACTIVE_MS } from "../lib/polling";
 import { isCancellable, isTerminal, jobStep } from "../lib/status";
 import { formatAbs } from "../lib/time";
 import { CopyIconButton } from "./CopyIconButton";
-import { IconAlertTriangle, IconX } from "./Icons";
+import { ICON_SIZE, IconAlertTriangle, IconX } from "./Icons";
 import { JobDetailField } from "./JobDetailField";
 import { JobStepper } from "./JobStepper";
 import { ProgressCard } from "./ProgressCard";
@@ -68,7 +68,7 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
     return (
       <Card>
         <Box className="app-alert">
-          <IconAlertTriangle size={16} className="alert-icon" />
+          <IconAlertTriangle size={ICON_SIZE.md} className="alert-icon" />
           <Text size="sm">{extractErrorMessage(error)}</Text>
         </Box>
       </Card>
@@ -152,7 +152,7 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
                   aria-label="Close job details"
                   onClick={onClose}
                 >
-                  <IconX size={14} />
+                  <IconX size={ICON_SIZE.sm} />
                 </button>
               </Tooltip>
             )}
@@ -215,7 +215,7 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
         </Group>
         {job.error && (
           <Box className="app-alert">
-            <IconAlertTriangle size={16} className="alert-icon" />
+            <IconAlertTriangle size={ICON_SIZE.md} className="alert-icon" />
             <Box style={{ flex: 1, minWidth: 0 }}>
               <Text size="sm" fw={600}>
                 Job error
@@ -227,7 +227,7 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
         )}
         {actionError && (
           <Box className="app-alert">
-            <IconAlertTriangle size={16} className="alert-icon" />
+            <IconAlertTriangle size={ICON_SIZE.md} className="alert-icon" />
             <Text size="sm">{actionError}</Text>
           </Box>
         )}

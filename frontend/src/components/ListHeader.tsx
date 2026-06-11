@@ -32,7 +32,8 @@ export function ListHeader({
       <Group gap="xs" align="center">
         <Title order={titleOrder}>{title}</Title>
         {totalCount > 0 && (
-          <Text size="sm" c="dimmed">
+          // Monospace like every other count/meta strip in the lists.
+          <Text size="sm" c="dimmed" ff="monospace">
             {filtersActive
               ? `${visibleCount} of ${totalCount}`
               : (formatTotal?.(totalCount) ?? `${totalCount}`)}
