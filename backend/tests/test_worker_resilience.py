@@ -5,14 +5,12 @@ status persistence) used to propagate out of the loop coroutine, silently
 killing the worker task and stalling the queue forever.
 """
 
-import asyncio
 from pathlib import Path
 
 import aiosqlite
 import pytest
 
 from backend.config import Settings
-from backend.database import open_database
 from backend.downloads import service as downloads_service
 from backend.downloads.live_progress import LiveProgress
 from backend.downloads.worker import Worker
@@ -20,6 +18,7 @@ from backend.maintenance import service as maintenance_service
 from backend.maintenance import worker as maintenance_worker_module
 from backend.maintenance.live_progress import MaintenanceLiveProgress
 from backend.maintenance.worker import MaintenanceWorker
+from tests._helpers import wait_for
 from tests.fakes import FakeGallery, FakeGalleryConfig
 
 
@@ -28,24 +27,6 @@ def settings(tmp_path: Path) -> Settings:
     s = Settings(data_dir=tmp_path / "data")
     s.downloads_dir.mkdir(parents=True, exist_ok=True)
     return s
-
-
-@pytest.fixture
-async def db(settings: Settings):
-    conn = await open_database(settings.data_dir / "jobs.db")
-    try:
-        yield conn
-    finally:
-        await conn.close()
-
-
-async def _wait_for(predicate, timeout: float = 2.0) -> None:
-    deadline = asyncio.get_running_loop().time() + timeout
-    while asyncio.get_running_loop().time() < deadline:
-        if await predicate():
-            return
-        await asyncio.sleep(0.01)
-    raise AssertionError("timed out waiting for condition")
 
 
 async def test_downloads_worker_survives_postprocess_bookkeeping_failure(
@@ -74,7 +55,7 @@ async def test_downloads_worker_survives_postprocess_bookkeeping_failure(
             row = await downloads_service.get(db, first.id)
             return row is not None and row.status == "completed"
 
-        await _wait_for(first_done)
+        await wait_for(first_done)
 
         # The loop must still be alive and able to process the next job.
         second = await downloads_service.insert_pending(db, "https://example/y", "fake")
@@ -84,7 +65,7 @@ async def test_downloads_worker_survives_postprocess_bookkeeping_failure(
             row = await downloads_service.get(db, second.id)
             return row is not None and row.status == "completed"
 
-        await _wait_for(second_done)
+        await wait_for(second_done)
     finally:
         await worker.stop()
 
@@ -116,7 +97,7 @@ async def test_maintenance_worker_survives_mark_completed_failure(
             # the worker has moved past it (current id cleared).
             return worker._current_id is None and failures["remaining"] == 0
 
-        await _wait_for(first_settled)
+        await wait_for(first_settled)
 
         second = await maintenance_service.create_pending(db, "unwatch_ended_series")
         worker.notify()
@@ -125,7 +106,7 @@ async def test_maintenance_worker_survives_mark_completed_failure(
             row = await maintenance_service.get_job(db, second.id)
             return row is not None and row.status == "completed"
 
-        await _wait_for(second_done)
+        await wait_for(second_done)
         assert first.id != second.id
     finally:
         await worker.stop()

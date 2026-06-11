@@ -1,19 +1,6 @@
-from pathlib import Path
-
 import aiosqlite
-import pytest
 
-from backend.database import open_database
 from backend.downloads import service
-
-
-@pytest.fixture
-async def db(tmp_path: Path):
-    conn = await open_database(tmp_path / "jobs.db")
-    try:
-        yield conn
-    finally:
-        await conn.close()
 
 
 async def test_insert_pending_starts_in_pending_state(db: aiosqlite.Connection) -> None:

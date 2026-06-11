@@ -1,19 +1,7 @@
-from pathlib import Path
-
 import aiosqlite
-import pytest
 
-from backend.database import now_iso, open_database
+from backend.database import now_iso
 from backend.maintenance import service
-
-
-@pytest.fixture
-async def db(tmp_path: Path):
-    conn = await open_database(tmp_path / "jobs.db")
-    try:
-        yield conn
-    finally:
-        await conn.close()
 
 
 async def _insert(db: aiosqlite.Connection, status: str, error: str | None = None) -> int:

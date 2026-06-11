@@ -1,19 +1,6 @@
-from pathlib import Path
-
 import aiosqlite
-import pytest
 
 from backend.app_config import service
-from backend.database import open_database
-
-
-@pytest.fixture
-async def db(tmp_path: Path):
-    conn = await open_database(tmp_path / "jobs.db")
-    try:
-        yield conn
-    finally:
-        await conn.close()
 
 
 async def test_app_config_round_trip(db: aiosqlite.Connection) -> None:

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import zipfile
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +13,16 @@ from backend.comic_metadata import (
     FileRecord,
     build_comicinfo_xml,
 )
+
+
+async def wait_for(predicate: Callable[[], Awaitable[bool]], timeout: float = 2.0) -> None:
+    """Poll an async predicate until it returns true or the timeout expires."""
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        if await predicate():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("timed out waiting for condition")
 
 
 def make_record(
