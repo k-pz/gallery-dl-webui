@@ -1,12 +1,22 @@
-import { Box, Card, Group, Stack, Text } from "@mantine/core";
+import { Box, Button, Card, Group, Stack, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { listDownloadsOptions } from "../api/@tanstack/react-query.gen";
 import type { Download } from "../api/types.gen";
 import { useEta } from "../hooks/useEta";
+import { useCancelAllDownloads } from "../lib/downloadActions";
 import { downloadEtaDimension, formatEta } from "../lib/eta";
 import { REFETCH_LIST_MS } from "../lib/polling";
-import { isRunning, isScheduled, isTerminal, jobStep, statusTone } from "../lib/status";
+import {
+  isCancellable,
+  isRunning,
+  isScheduled,
+  isTerminal,
+  jobStep,
+  statusTone,
+} from "../lib/status";
+import { IconX } from "./Icons";
+import { InlineConfirm } from "./InlineConfirm";
 import { Pill } from "./Pill";
 
 function progressLabel(item: Download): string {
@@ -34,12 +44,15 @@ export function RunningJobsPanel({
     ...listDownloadsOptions(),
     refetchInterval: REFETCH_LIST_MS,
   });
+  const [confirmingCancelAll, setConfirmingCancelAll] = useState(false);
+  const cancelAll = useCancelAllDownloads();
 
-  const { running, scheduledCount } = useMemo(() => {
+  const { running, scheduledCount, cancellableIds } = useMemo(() => {
     const list = data ?? [];
     const r = list.filter((d) => isRunning(d.status)).sort((a, b) => a.id - b.id);
     const s = list.filter((d) => isScheduled(d.status)).length;
-    return { running: r, scheduledCount: s };
+    const c = list.filter((d) => isCancellable(d.status)).map((d) => d.id);
+    return { running: r, scheduledCount: s, cancellableIds: c };
   }, [data]);
 
   if (running.length === 0 && scheduledCount === 0) return null;
@@ -54,7 +67,38 @@ export function RunningJobsPanel({
               {running.length} running · {scheduledCount} scheduled
             </Text>
           </Stack>
+          {cancellableIds.length > 1 && !confirmingCancelAll && (
+            <Button
+              size="xs"
+              variant="light"
+              color="red"
+              leftSection={<IconX size={14} />}
+              loading={cancelAll.isPending}
+              onClick={() => setConfirmingCancelAll(true)}
+            >
+              Cancel all
+            </Button>
+          )}
         </Group>
+        {confirmingCancelAll && (
+          <InlineConfirm
+            confirmLabel="Cancel all"
+            cancelLabel="Keep running"
+            message={
+              <>
+                Cancel all <strong>{cancellableIds.length}</strong> active and scheduled jobs?
+                Completed chapters stay on disk; requeue any job later to resume.
+              </>
+            }
+            loading={cancelAll.isPending}
+            onCancel={() => setConfirmingCancelAll(false)}
+            onConfirm={() =>
+              cancelAll.mutate(cancellableIds, {
+                onSettled: () => setConfirmingCancelAll(false),
+              })
+            }
+          />
+        )}
         {running.length === 0 ? (
           <Text size="sm" c="dimmed">
             Nothing running. {scheduledCount} job{scheduledCount === 1 ? "" : "s"} queued.
