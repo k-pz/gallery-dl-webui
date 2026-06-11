@@ -8,7 +8,7 @@ function isTab(v: unknown): v is Tab {
   return typeof v === "string" && (TABS as readonly string[]).includes(v);
 }
 
-function pathnameToTab(pathname: string): Tab {
+export function pathnameToTab(pathname: string): Tab {
   const seg = pathname.replace(/^\/+/, "").split("/")[0] ?? "";
   return isTab(seg) ? seg : DEFAULT_TAB;
 }

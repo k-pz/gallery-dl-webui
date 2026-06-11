@@ -16,6 +16,7 @@ import { RunningJobsPanel } from "./components/RunningJobsPanel";
 import { SubmitForm } from "./components/SubmitForm";
 import { TargetsList } from "./components/TargetsList";
 import { useAutoSelectJob } from "./hooks/useAutoSelectJob";
+import { initialJobIdFromUrl, useSyncJobParam } from "./hooks/useRouteJob";
 import { useRouteTab } from "./hooks/useRouteTab";
 import { useEventStream } from "./lib/eventStream";
 import { REFETCH_LIST_MS } from "./lib/polling";
@@ -40,7 +41,11 @@ export default function App() {
     };
   }, [downloads]);
 
-  const { selectedId, selectJob } = useAutoSelectJob(downloads);
+  // `?job=` deep link: read once on load (a manual pick from the URL), then
+  // mirror manual selections back into the URL so reload/share keeps them.
+  const [initialJobId] = useState(initialJobIdFromUrl);
+  const { selectedId, isManualSelection, selectJob } = useAutoSelectJob(downloads, initialJobId);
+  useSyncJobParam(tab, isManualSelection ? selectedId : null);
 
   const openJob = (id: number) => {
     selectJob(id);

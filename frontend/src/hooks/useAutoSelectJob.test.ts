@@ -4,9 +4,9 @@ import { useAutoSelectJob } from "./useAutoSelectJob";
 
 type Job = { id: number; status: string };
 
-function run(initial: Job[] | undefined) {
+function run(initial: Job[] | undefined, initialId: number | null = null) {
   return renderHook(
-    ({ downloads }: { downloads: Job[] | undefined }) => useAutoSelectJob(downloads),
+    ({ downloads }: { downloads: Job[] | undefined }) => useAutoSelectJob(downloads, initialId),
     {
       initialProps: { downloads: initial },
     },
@@ -89,5 +89,39 @@ describe("useAutoSelectJob", () => {
     expect(result.current.selectedId).toBeNull();
     rerender({ downloads: [] });
     expect(result.current.selectedId).toBeNull();
+  });
+
+  it("treats an initial deep-linked id as a manual pick", () => {
+    const { result, rerender } = run(
+      [
+        { id: 2, status: "running" },
+        { id: 5, status: "completed" },
+      ],
+      5,
+    );
+    // No auto-open over the restored selection…
+    expect(result.current.selectedId).toBe(5);
+    expect(result.current.isManualSelection).toBe(true);
+
+    // …and no auto-advance away from it, even though it is terminal.
+    rerender({
+      downloads: [
+        { id: 2, status: "running" },
+        { id: 5, status: "completed" },
+      ],
+    });
+    expect(result.current.selectedId).toBe(5);
+  });
+
+  it("flags auto-opened selections as not manual", () => {
+    const { result } = run([{ id: 2, status: "running" }]);
+    expect(result.current.selectedId).toBe(2);
+    expect(result.current.isManualSelection).toBe(false);
+
+    act(() => result.current.selectJob(2));
+    expect(result.current.isManualSelection).toBe(true);
+
+    act(() => result.current.selectJob(null));
+    expect(result.current.isManualSelection).toBe(false);
   });
 });
