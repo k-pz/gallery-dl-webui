@@ -9,12 +9,14 @@ import pytest
 from backend.comic_metadata import (
     SERIES_JSON_NAME,
     SERIES_STATUSES,
+    ChapterRecord,
     FileRecord,
     SeriesMetadata,
     build_comicinfo_xml,
     build_series_json_bytes,
     coerce_record_from_kwdict,
     derive_series_metadata,
+    earliest_date,
     normalize_reading_direction,
     normalize_series_status,
     normalize_tags,
@@ -578,6 +580,72 @@ def test_derive_series_metadata_prefers_overrides() -> None:
     assert meta.name == "S"
     assert meta.language == "en"
     assert meta.year == 2024
+
+
+def _dated_chapter(chapter: str, date: str) -> ChapterRecord:
+    return ChapterRecord(
+        manga="S",
+        chapter=chapter,
+        title="",
+        volume="",
+        lang="",
+        author="",
+        date=date,
+        dir=Path("/x"),
+    )
+
+
+def test_earliest_date_picks_minimum_and_ignores_undated() -> None:
+    assert earliest_date(["", "unknown", "2020-05-01", "2019-12-31"]) == "2019-12-31"
+    assert earliest_date(["n/a", ""]) is None
+    assert earliest_date([]) is None
+
+
+def test_derive_series_metadata_uses_earliest_chapter_date() -> None:
+    """The series publish date is the earliest chapter's, regardless of order.
+
+    Chapter lists commonly arrive newest-first, and an incremental download
+    only carries fresh chapters — "first date seen" would stamp a 2010 series
+    with 2024.
+    """
+    chapters = [
+        _dated_chapter("250", "2024-06-01"),
+        _dated_chapter("1", "2010-02-15"),
+        _dated_chapter("2", "2010-03-01"),
+    ]
+    meta = derive_series_metadata(chapters)
+    assert meta.published_at == "2010-02-15"
+    assert meta.year == 2010
+
+
+def test_derive_series_metadata_override_published_at_wins() -> None:
+    """The stored first-publication date beats what this batch of chapters
+    implies — the batch may be a single fresh chapter."""
+    chapters = [_dated_chapter("250", "2024-06-01")]
+    meta = derive_series_metadata(chapters, SeriesMetadata(published_at="2010-02-15"))
+    assert meta.published_at == "2010-02-15"
+    assert meta.year == 2010
+
+
+def test_derive_series_metadata_explicit_year_override_beats_published_at() -> None:
+    chapters = [_dated_chapter("1", "2024-06-01")]
+    meta = derive_series_metadata(chapters, SeriesMetadata(year=1999))
+    assert meta.year == 1999
+
+
+def test_build_series_json_includes_publication_date() -> None:
+    meta = SeriesMetadata(name="S", published_at="2010-02-15", year=2010)
+    md = json.loads(build_series_json_bytes(meta, total_issues=None))["metadata"]
+    assert md["publication_date"] == "2010-02-15"
+    assert md["year"] == 2010
+
+
+def test_build_series_json_omits_blank_publication_date() -> None:
+    md = json.loads(build_series_json_bytes(SeriesMetadata(name="S"), total_issues=None))[
+        "metadata"
+    ]
+    assert "publication_date" not in md
+    assert "year" not in md
 
 
 async def test_run_emits_series_json_with_overrides(tmp_path: Path) -> None:
