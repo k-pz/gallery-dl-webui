@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { createOutputDirMutation, listOutputDirsOptions } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
-import { IconPlus, IconX } from "./Icons";
+import { ICON_SIZE, IconPlus, IconX } from "./Icons";
 
 export interface DirectoryPickerProps {
   label: string;
@@ -106,7 +106,9 @@ export function DirectoryPicker({
         <Button
           variant="default"
           size="sm"
-          leftSection={showCreate ? <IconX size={14} /> : <IconPlus size={14} />}
+          leftSection={
+            showCreate ? <IconX size={ICON_SIZE.sm} /> : <IconPlus size={ICON_SIZE.sm} />
+          }
           disabled={disabled || !enabled}
           onClick={() => setShowCreate((s) => !s)}
           aria-expanded={showCreate}

@@ -7,6 +7,25 @@
  */
 import type { CSSProperties, SVGProps } from "react";
 
+/**
+ * The app's icon size scale. Pick from here instead of writing literals so
+ * glyphs in the same role stay the same size across components:
+ *   xs   — inline with 11–12px caption text (watched eye, open-job arrow)
+ *   sm   — row action buttons, toolbar buttons
+ *   md   — alerts, form adornments, header buttons (default)
+ *   lg   — drawer/sheet chrome
+ *   xl   — nav items, section glyphs
+ *   hero — empty-state glyphs
+ */
+export const ICON_SIZE = {
+  xs: 11,
+  sm: 14,
+  md: 16,
+  lg: 18,
+  xl: 20,
+  hero: 22,
+} as const;
+
 type IconProps = Omit<SVGProps<SVGSVGElement>, "size"> & {
   size?: number;
   className?: string;
@@ -14,7 +33,7 @@ type IconProps = Omit<SVGProps<SVGSVGElement>, "size"> & {
 };
 
 function Svg({
-  size = 16,
+  size = ICON_SIZE.md,
   className,
   style,
   children,

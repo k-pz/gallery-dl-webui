@@ -28,7 +28,7 @@ import {
 } from "@mantine/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLogTail } from "../hooks/useLogTail";
-import { IconRefresh, IconSearch, IconTrash } from "./Icons";
+import { ICON_SIZE, IconRefresh, IconSearch, IconTrash } from "./Icons";
 
 const DEFAULT_LINES = 500;
 const MIN_LINES = 1;
@@ -190,7 +190,7 @@ export function LogsPanel() {
             value={filter}
             onChange={(e) => setFilter(e.currentTarget.value)}
             placeholder="substring match…"
-            leftSection={<IconSearch size={14} />}
+            leftSection={<IconSearch size={ICON_SIZE.sm} />}
             className="logs-filter-search"
           />
         </Group>
@@ -217,13 +217,18 @@ export function LogsPanel() {
           <Button
             variant="default"
             size="xs"
-            leftSection={<IconRefresh size={14} />}
+            leftSection={<IconRefresh size={ICON_SIZE.sm} />}
             onClick={reconnect}
             title="Reconnect"
           >
             Reconnect
           </Button>
-          <Button variant="default" size="xs" leftSection={<IconTrash size={14} />} onClick={clear}>
+          <Button
+            variant="default"
+            size="xs"
+            leftSection={<IconTrash size={ICON_SIZE.sm} />}
+            onClick={clear}
+          >
             Clear
           </Button>
         </Group>

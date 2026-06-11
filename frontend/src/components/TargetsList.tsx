@@ -15,7 +15,7 @@ import { FINISHED_SERIES_STATUSES } from "../lib/seriesStatus";
 import { isActive } from "../lib/status";
 import { useNotifyingMutation } from "../lib/useNotifyingMutation";
 import { EmptyState } from "./EmptyState";
-import { IconLibrary, IconRefresh } from "./Icons";
+import { ICON_SIZE, IconLibrary, IconRefresh } from "./Icons";
 import { ListHeader } from "./ListHeader";
 import { ListPagination } from "./ListPagination";
 import { ListToolbar } from "./ListToolbar";
@@ -156,7 +156,7 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
                   <Button
                     size="xs"
                     variant="light"
-                    leftSection={<IconRefresh size={14} />}
+                    leftSection={<IconRefresh size={ICON_SIZE.sm} />}
                     loading={refreshWatched.isPending}
                     // aria-disabled (not native disabled) keeps the button
                     // hoverable so the tooltip can explain *why* it's inert;
@@ -240,7 +240,7 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
         )}
         {totalCount === 0 && (
           <EmptyState
-            icon={<IconLibrary size={22} />}
+            icon={<IconLibrary size={ICON_SIZE.hero} />}
             title="Your library is empty"
             body="Submit a gallery URL above to start tracking a series. Re-poll watched series on a schedule to keep them current."
             arrow

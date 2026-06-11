@@ -1,6 +1,6 @@
 import { Tooltip } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
-import { IconCheck, IconCopy } from "./Icons";
+import { ICON_SIZE, IconCheck, IconCopy } from "./Icons";
 
 /**
  * Copy text to the clipboard, working outside secure contexts too — the app
@@ -67,7 +67,7 @@ export function CopyIconButton({ value, label }: { value: string; label: string 
         aria-label={copied ? "Copied" : label}
         onClick={onClick}
       >
-        {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+        {copied ? <IconCheck size={ICON_SIZE.sm} /> : <IconCopy size={ICON_SIZE.sm} />}
       </button>
     </Tooltip>
   );

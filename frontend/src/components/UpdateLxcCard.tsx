@@ -25,7 +25,7 @@ import {
 import type { ChangelogEntryOut, MaintenanceJob, UpdateCheckOut } from "../api/types.gen";
 import { useServerSeededState } from "../hooks/useServerSeededState";
 import { extractErrorMessage } from "../lib/apiError";
-import { IconAlertTriangle, IconArrowUp, IconInfo } from "./Icons";
+import { ICON_SIZE, IconAlertTriangle, IconArrowUp, IconInfo } from "./Icons";
 import { Pill } from "./Pill";
 
 /**
@@ -143,7 +143,7 @@ export function UpdateLxcCard({
         />
         {scheduleError ? (
           <Box className="app-alert">
-            <IconAlertTriangle size={16} className="alert-icon" />
+            <IconAlertTriangle size={ICON_SIZE.md} className="alert-icon" />
             <Stack gap={2}>
               <Text size="sm" fw={500}>
                 Couldn't schedule the update
@@ -156,7 +156,7 @@ export function UpdateLxcCard({
         ) : null}
         {trackedJob?.status === "failed" ? (
           <Box className="app-alert">
-            <IconAlertTriangle size={16} className="alert-icon" />
+            <IconAlertTriangle size={ICON_SIZE.md} className="alert-icon" />
             <Stack gap={2} style={{ flex: 1 }}>
               <Text size="sm" fw={500}>
                 Update failed
@@ -171,7 +171,7 @@ export function UpdateLxcCard({
           </Box>
         ) : showStatus ? (
           <Box className="app-alert" data-tone="info">
-            <IconInfo size={16} className="alert-icon" />
+            <IconInfo size={ICON_SIZE.md} className="alert-icon" />
             <Stack gap={2}>
               <Text size="sm" fw={500}>
                 Update queued
@@ -188,7 +188,7 @@ export function UpdateLxcCard({
           <Group wrap="wrap">
             <Button
               variant="light"
-              leftSection={<IconArrowUp size={14} />}
+              leftSection={<IconArrowUp size={ICON_SIZE.sm} />}
               onClick={() => setArmed(true)}
               loading={scheduling}
               style={{ flexGrow: 1, minWidth: 140 }}
@@ -203,7 +203,7 @@ export function UpdateLxcCard({
             </Text>
             <Button
               color="blue"
-              leftSection={<IconArrowUp size={14} />}
+              leftSection={<IconArrowUp size={ICON_SIZE.sm} />}
               onClick={confirm}
               loading={scheduling}
               style={{ flexGrow: 1, minWidth: 160 }}
@@ -268,7 +268,7 @@ function UpdateAvailabilityBanner({
     const isPreview = !check.tracked_ref_is_default;
     return (
       <Box className="app-alert" data-tone="info">
-        <IconInfo size={16} className="alert-icon" />
+        <IconInfo size={ICON_SIZE.md} className="alert-icon" />
         <Stack gap={6} style={{ flex: 1 }}>
           <Group gap="xs" wrap="wrap">
             <Text size="sm" fw={500}>

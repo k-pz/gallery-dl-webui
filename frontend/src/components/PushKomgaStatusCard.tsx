@@ -1,5 +1,5 @@
 import { Button, Card, Group, Stack, Text, Title } from "@mantine/core";
-import { IconUpload } from "./Icons";
+import { ICON_SIZE, IconUpload } from "./Icons";
 
 /**
  * Push the local `series_status` of every target into the matching Komga series.
@@ -31,7 +31,7 @@ export function PushKomgaStatusCard({
         <Group>
           <Button
             variant="light"
-            leftSection={<IconUpload size={14} />}
+            leftSection={<IconUpload size={ICON_SIZE.sm} />}
             onClick={onSchedule}
             loading={scheduling}
           >

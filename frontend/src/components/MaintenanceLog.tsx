@@ -16,7 +16,7 @@ import { extractErrorMessage } from "../lib/apiError";
 import { formatEta } from "../lib/eta";
 import { maintStatusLabel, TERMINAL_STATUSES } from "../lib/maintenance";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
-import { IconChevronDown } from "./Icons";
+import { ICON_SIZE, IconChevronDown } from "./Icons";
 
 const STATUS_COLOR: Record<string, string> = {
   pending: "gray",
@@ -115,7 +115,7 @@ export function MaintenanceLog({
             <Text size="xs" c="dimmed" ff="monospace">
               {expanded ? "collapse" : "expand"}
             </Text>
-            <IconChevronDown size={14} className="maint-log-toggle-chev" />
+            <IconChevronDown size={ICON_SIZE.sm} className="maint-log-toggle-chev" />
           </UnstyledButton>
         </Group>
       </Group>

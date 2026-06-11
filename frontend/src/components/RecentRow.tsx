@@ -1,7 +1,7 @@
 import { Box, Group, Stack, Text, Tooltip } from "@mantine/core";
 import type { Download } from "../api/types.gen";
 import { CANCELLING_LABEL, isCancellable, isTerminal, jobStep, statusTone } from "../lib/status";
-import { IconRotateCcw, IconX } from "./Icons";
+import { ICON_SIZE, IconRotateCcw, IconX } from "./Icons";
 import { Pill } from "./Pill";
 
 function chapterCountLabel(item: Download): string {
@@ -84,7 +84,7 @@ export function RecentRow({
               disabled={inflight || showCancelling}
               onClick={onCancel}
             >
-              <IconX size={14} />
+              <IconX size={ICON_SIZE.sm} />
             </button>
           </Tooltip>
         )}
@@ -99,7 +99,7 @@ export function RecentRow({
               disabled={inflight && isRequeuePending}
               onClick={onRequeue}
             >
-              <IconRotateCcw size={14} />
+              <IconRotateCcw size={ICON_SIZE.sm} />
             </button>
           </Tooltip>
         )}

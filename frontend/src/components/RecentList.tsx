@@ -10,7 +10,7 @@ import { usePagination } from "../lib/pagination";
 import { REFETCH_LIST_MS } from "../lib/polling";
 import { isActive } from "../lib/status";
 import { EmptyState } from "./EmptyState";
-import { IconActivity } from "./Icons";
+import { ICON_SIZE, IconActivity } from "./Icons";
 import { ListHeader } from "./ListHeader";
 import { ListPagination } from "./ListPagination";
 import { ListToolbar } from "./ListToolbar";
@@ -187,7 +187,7 @@ export function RecentList({
         )}
         {totalCount === 0 && !hideEmpty && (
           <EmptyState
-            icon={<IconActivity size={22} />}
+            icon={<IconActivity size={ICON_SIZE.hero} />}
             title="No jobs yet"
             body="When you submit a URL the queue lands here. Watched series schedule jobs automatically."
           />
