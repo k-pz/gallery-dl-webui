@@ -1,3 +1,57 @@
+## v1.6.0 (2026-06-11)
+
+### Feat
+
+- **ui**: unify filter-empty notices under a compact EmptyState
+- **ui**: evolve the editorial theme — kickers, hierarchy, density
+- **jobs**: bulk-cancel every active job from the running panel
+- **ui**: copy-to-clipboard for job URLs and error messages
+- **ui**: quick color-scheme toggle in the header
+- **jobs**: deep-link the selected job via ?job=
+
+### Fix
+
+- **ui**: mobile legibility polish — row meta, maint toggle, short sheets
+- **ui**: collapse pagination to prev/current/next on phones
+- **a11y**: bring status pill and count badge text up to AA contrast
+- **a11y**: remove nested-control rows in the jobs and library lists
+- **a11y**: trap focus in the jobs bottom sheet via a shared modal hook
+- **ui**: clearer requeue, folder-creation, and poll-period affordances
+- **ui**: keep unsaved poll-period edits across config refetches
+- **deploy**: align update scripts' excludes and wipe guards
+- **release**: lock backend deps inside the tagged bump commit
+- **ci**: run coverage through mise tasks and bound job runtimes
+- **backend**: close cancel race, harden event buffer, dedupe helpers
+- **ui**: batch of small interaction and dead-code fixes
+- **ui**: route non-period target update errors to a toast
+- **ui**: stop config refetches from clobbering unsaved form edits
+- **ui**: scope maintenance scheduling spinners to the submitted kind
+- **ui**: surface query errors instead of infinite loading skeletons
+- **ui**: let the health badge report unreachable after a first success
+- **ui**: make the update-check Refresh button actually bypass the cache
+- **ui**: extract useLogTail and repair the log tail's error handling
+- **backend**: keep NAS-bound filesystem I/O off the event loop
+- **maintenance**: refuse rebuild_library while downloads are active
+- **backend**: cancel in-flight jobs on shutdown and harden the stop sequence
+- **backend**: make multi-statement writes atomic on the shared connection
+- **backend**: enable SQLite foreign-key enforcement
+- **backend**: check output-dir containment before creating directories
+- **ci**: pass the docker-release dispatch tag via env, not interpolation
+- **deploy**: validate the webapp-supplied update ref before cloning as root
+- **backend**: keep worker loops alive through bookkeeping failures
+- **backend**: contain SPA fallback file serving to the dist dir
+
+### Refactor
+
+- **ui**: centralise the icon size scale as ICON_SIZE tokens
+- **deploy**: drive host-side updates through the in-CT updater
+- **ui**: extract the jobs table from MaintenancePanel
+- **ui**: share a useServerSeededState hook across seed-once forms
+- **ui**: extract useAutoSelectJob and cover its rules with tests
+- **ui**: share cancel/requeue mutations via useCancelDownload hooks
+- **maintenance**: encapsulate the update-check cache in UpdateChecker
+- **backend**: split postprocess into comic_metadata + library_ops
+
 ## v1.5.0 (2026-06-10)
 
 ### Feat
