@@ -1,4 +1,3 @@
-import asyncio
 from pathlib import Path
 
 import aiosqlite
@@ -7,12 +6,12 @@ import pytest
 from backend.app_config import service as app_config_service
 from backend.comic_metadata import FileRecord
 from backend.config import Settings
-from backend.database import open_database
 from backend.downloads import service as downloads_service
 from backend.downloads.gallery import MetadataResult
 from backend.downloads.live_progress import LiveProgress
 from backend.downloads.worker import Worker
 from backend.targets import service as targets_service
+from tests._helpers import wait_for
 from tests.fakes import FakeGallery, FakeGalleryConfig
 
 
@@ -21,24 +20,6 @@ def settings(tmp_path: Path) -> Settings:
     s = Settings(data_dir=tmp_path / "data")
     s.downloads_dir.mkdir(parents=True, exist_ok=True)
     return s
-
-
-@pytest.fixture
-async def db(settings: Settings):
-    conn = await open_database(settings.data_dir / "jobs.db")
-    try:
-        yield conn
-    finally:
-        await conn.close()
-
-
-async def _wait_for(predicate, timeout: float = 2.0) -> None:
-    deadline = asyncio.get_event_loop().time() + timeout
-    while asyncio.get_event_loop().time() < deadline:
-        if await predicate():
-            return
-        await asyncio.sleep(0.01)
-    raise AssertionError("timed out waiting for condition")
 
 
 async def test_worker_runs_pending_job_to_completion(
@@ -60,7 +41,7 @@ async def test_worker_runs_pending_job_to_completion(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.status in ("completed", "failed")
 
-        await _wait_for(done)
+        await wait_for(done)
 
         row = await downloads_service.get(db, d.id)
         assert row is not None
@@ -110,7 +91,7 @@ async def test_worker_cancels_running_job_mid_download(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.status in {"cancelled", "completed", "failed"}
 
-        await _wait_for(done)
+        await wait_for(done)
 
         row = await downloads_service.get(db, d.id)
         assert row is not None
@@ -158,7 +139,7 @@ async def test_worker_cancel_after_extract_skips_download(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.status in {"cancelled", "completed", "failed"}
 
-        await _wait_for(done)
+        await wait_for(done)
 
         row = await downloads_service.get(db, d.id)
         assert row is not None
@@ -188,7 +169,7 @@ async def test_worker_marks_failed_when_extract_raises(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.status == "failed"
 
-        await _wait_for(done)
+        await wait_for(done)
 
         row = await downloads_service.get(db, d.id)
         assert row is not None
@@ -218,7 +199,7 @@ async def test_worker_captures_series_name_from_metadata(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.status == "completed"
 
-        await _wait_for(done)
+        await wait_for(done)
         refreshed = await targets_service.get(db, target.id)
         assert refreshed is not None
         assert refreshed.name == "Captured Series"
@@ -258,7 +239,7 @@ async def test_worker_captures_series_name_from_records_when_metadata_lacks_it(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.status == "completed"
 
-        await _wait_for(done)
+        await wait_for(done)
         refreshed = await targets_service.get(db, target.id)
         assert refreshed is not None
         assert refreshed.name == "From Records"
@@ -283,7 +264,7 @@ async def test_worker_clears_live_progress_when_done(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.status == "completed"
 
-        await _wait_for(done)
+        await wait_for(done)
         assert live.snapshot(d.id) is None
     finally:
         await worker.stop()
@@ -314,7 +295,7 @@ async def test_worker_persists_per_chapter_outcomes(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.status == "completed"
 
-        await _wait_for(done)
+        await wait_for(done)
 
         row = await downloads_service.get(db, d.id)
         assert row is not None
@@ -384,7 +365,7 @@ async def test_worker_runs_postprocess_when_default_dir_set(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.postprocess_status == "completed"
 
-        await _wait_for(packed)
+        await wait_for(packed)
 
         row = await downloads_service.get(db, d.id)
         assert row is not None
@@ -430,7 +411,7 @@ async def test_worker_prefers_per_job_output_dir_over_default(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.postprocess_status == "completed"
 
-        await _wait_for(packed)
+        await wait_for(packed)
 
         assert (override / "S" / "S - c001.cbz").is_file()
         assert not (default / "S" / "S - c001.cbz").exists()
@@ -470,7 +451,7 @@ async def test_worker_creates_missing_per_job_output_dir(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.postprocess_status == "completed"
 
-        await _wait_for(packed)
+        await wait_for(packed)
         assert (new_dir / "S" / "S - c001.cbz").is_file()
     finally:
         await worker.stop()
@@ -496,7 +477,7 @@ async def test_worker_skips_postprocess_when_output_dir_not_set(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.postprocess_status == "skipped"
 
-        await _wait_for(done)
+        await wait_for(done)
         row = await downloads_service.get(db, d.id)
         assert row is not None
         assert row.status == "completed"
@@ -551,7 +532,7 @@ async def test_worker_skips_already_packed_chapter_for_watched_target(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.postprocess_status in ("completed", "failed")
 
-        await _wait_for(packed)
+        await wait_for(packed)
 
         row = await downloads_service.get(db, d.id)
         assert row is not None
@@ -610,7 +591,7 @@ async def test_worker_does_not_skip_for_unwatched_target(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.postprocess_status in ("completed", "failed")
 
-        await _wait_for(packed)
+        await wait_for(packed)
 
         manifest = await downloads_service.get_manifest(db, d.id)
         # Full chapter list preserved (one chapter row, since c1 wasn't filtered).
@@ -651,7 +632,7 @@ async def test_worker_isolates_postprocess_failure_from_download_status(
             row = await downloads_service.get(db, d.id)
             return row is not None and row.postprocess_status in ("completed", "failed")
 
-        await _wait_for(settled)
+        await wait_for(settled)
         row = await downloads_service.get(db, d.id)
         assert row is not None
         # Download itself succeeded.

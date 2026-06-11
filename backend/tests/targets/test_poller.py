@@ -1,22 +1,10 @@
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import aiosqlite
-import pytest
 
-from backend.database import open_database
 from backend.targets import service as targets_service
 from backend.targets.poller import _parse_iso, is_due
 from backend.targets.schemas import Target
-
-
-@pytest.fixture
-async def db(tmp_path: Path):
-    conn = await open_database(tmp_path / "jobs.db")
-    try:
-        yield conn
-    finally:
-        await conn.close()
 
 
 def _t(**kwargs) -> Target:
