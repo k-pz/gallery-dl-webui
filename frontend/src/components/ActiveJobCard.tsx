@@ -20,6 +20,7 @@ import { useOptimisticCancel } from "../lib/optimisticCancel";
 import { REFETCH_ACTIVE_MS } from "../lib/polling";
 import { isCancellable, isTerminal, jobStep } from "../lib/status";
 import { formatAbs } from "../lib/time";
+import { CopyIconButton } from "./CopyIconButton";
 import { IconAlertTriangle, IconX } from "./Icons";
 import { JobDetailField } from "./JobDetailField";
 import { JobStepper } from "./JobStepper";
@@ -166,11 +167,14 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
               <Title order={3} style={{ wordBreak: "break-word" }}>
                 {displayName}
               </Title>
-              {showUrlSubtitle && (
-                <Anchor href={job.url} target="_blank" rel="noreferrer" className="app-url">
-                  {job.url}
-                </Anchor>
-              )}
+              <Group gap={4} wrap="nowrap" align="center">
+                {showUrlSubtitle && (
+                  <Anchor href={job.url} target="_blank" rel="noreferrer" className="app-url">
+                    {job.url}
+                  </Anchor>
+                )}
+                <CopyIconButton value={job.url} label="Copy URL" />
+              </Group>
             </Stack>
             <Group className="active-job-head-actions" gap="xs">
               {(canCancel || showCancelling) && (
@@ -212,12 +216,13 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
         {job.error && (
           <Box className="app-alert">
             <IconAlertTriangle size={16} className="alert-icon" />
-            <Box>
+            <Box style={{ flex: 1, minWidth: 0 }}>
               <Text size="sm" fw={600}>
                 Job error
               </Text>
               <Text size="sm">{job.error}</Text>
             </Box>
+            <CopyIconButton value={job.error} label="Copy error message" />
           </Box>
         )}
         {actionError && (

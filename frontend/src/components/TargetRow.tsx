@@ -26,6 +26,7 @@ import { SERIES_STATUS_OPTIONS, seriesStatusTone } from "../lib/seriesStatus";
 import { isActive, jobStatusLabel, statusTone } from "../lib/status";
 import { formatRel } from "../lib/time";
 import { useNotifyingMutation } from "../lib/useNotifyingMutation";
+import { CopyIconButton } from "./CopyIconButton";
 import { IconArrowUpRight, IconChevronDown, IconEye, IconPlay, IconTrash } from "./Icons";
 import { InlineConfirm } from "./InlineConfirm";
 import { Pill } from "./Pill";
@@ -353,15 +354,12 @@ export function TargetRow({
               clearable
             />
           </Box>
-          <Anchor
-            href={target.url}
-            target="_blank"
-            rel="noreferrer"
-            className="app-url"
-            style={{ display: "inline-block", marginTop: 12 }}
-          >
-            {target.url}
-          </Anchor>
+          <Group gap={4} wrap="nowrap" align="center" mt={12}>
+            <Anchor href={target.url} target="_blank" rel="noreferrer" className="app-url">
+              {target.url}
+            </Anchor>
+            <CopyIconButton value={target.url} label="Copy URL" />
+          </Group>
         </div>
       )}
     </article>

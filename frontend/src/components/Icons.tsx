@@ -183,6 +183,12 @@ export const IconFileText = (p: IconProps) => (
     <line x1="10" x2="8" y1="9" y2="9" />
   </Svg>
 );
+export const IconCopy = (p: IconProps) => (
+  <Svg {...p}>
+    <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+  </Svg>
+);
 export const IconSun = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="12" cy="12" r="4" />
