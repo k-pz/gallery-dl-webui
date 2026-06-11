@@ -15,12 +15,17 @@ const USER_CLOSED = -1;
 
 export function useAutoSelectJob(
   downloads: ReadonlyArray<{ id: number; status: string }> | undefined,
+  /** Selection restored from the URL — treated like a manual pick. */
+  initialId: number | null = null,
 ): {
   selectedId: number | null;
+  /** True when the selection came from the user (pick or deep link), not the auto-open. */
+  isManualSelection: boolean;
   /** Manual selection (or close, with null) — exempt from auto-advance. */
   selectJob: (id: number | null) => void;
 } {
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(initialId);
+  const [isManualSelection, setIsManualSelection] = useState(initialId !== null);
   const lastAutoSelectedRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -31,6 +36,7 @@ export function useAutoSelectJob(
     if (selectedId === null) {
       if (lastAutoSelectedRef.current === null) {
         lastAutoSelectedRef.current = current;
+        setIsManualSelection(false);
         setSelectedId(current);
       }
       return;
@@ -51,8 +57,9 @@ export function useAutoSelectJob(
     // and a manual pick must not be advanced away from — even if it's the
     // same id the auto-select last chose.
     lastAutoSelectedRef.current = id === null ? USER_CLOSED : null;
+    setIsManualSelection(id !== null);
     setSelectedId(id);
   };
 
-  return { selectedId, selectJob };
+  return { selectedId, isManualSelection, selectJob };
 }
