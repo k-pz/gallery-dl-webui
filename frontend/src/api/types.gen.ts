@@ -546,6 +546,10 @@ export type Target = {
      */
     series_status?: string | null;
     /**
+     * Series Published At
+     */
+    series_published_at?: string | null;
+    /**
      * Last Download Id
      */
     last_download_id?: number | null;

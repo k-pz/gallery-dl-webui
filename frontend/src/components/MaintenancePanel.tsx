@@ -18,10 +18,10 @@ import {
   IconFileText,
   IconRefresh,
 } from "./Icons";
+import { KomgaSyncCard } from "./KomgaSyncCard";
 import { ListPagination } from "./ListPagination";
 import { MaintenanceJobsTable } from "./MaintenanceJobsTable";
 import { MaintenanceLog } from "./MaintenanceLog";
-import { PushKomgaStatusCard } from "./PushKomgaStatusCard";
 import { RebuildLibraryCard } from "./RebuildLibraryCard";
 import { UpdateLxcCard } from "./UpdateLxcCard";
 
@@ -55,7 +55,7 @@ export function MaintenancePanel() {
   }, [jobList, userPicked]);
 
   const scheduleError = schedule.isError ? extractErrorMessage(schedule.error) : null;
-  // One shared mutation backs six unrelated buttons; gate each button's
+  // One shared mutation backs eight unrelated buttons; gate each button's
   // spinner on the kind it actually submits so clicking one doesn't put
   // the whole tab into a loading state.
   const schedulingKind = schedule.isPending ? schedule.variables?.body?.kind : undefined;
@@ -84,6 +84,14 @@ export function MaintenancePanel() {
             <Button
               variant="light"
               leftSection={<IconFileText size={ICON_SIZE.sm} />}
+              onClick={() => schedule.mutate({ body: { kind: "refresh_series_metadata" } })}
+              loading={schedulingKind === "refresh_series_metadata"}
+            >
+              Refresh series metadata
+            </Button>
+            <Button
+              variant="light"
+              leftSection={<IconFileText size={ICON_SIZE.sm} />}
               onClick={() => schedule.mutate({ body: { kind: "regenerate_series_metadata" } })}
               loading={schedulingKind === "regenerate_series_metadata"}
             >
@@ -106,9 +114,11 @@ export function MaintenancePanel() {
         </Stack>
       </Card>
 
-      <PushKomgaStatusCard
-        scheduling={schedulingKind === "push_komga_series_status"}
-        onSchedule={() => schedule.mutate({ body: { kind: "push_komga_series_status" } })}
+      <KomgaSyncCard
+        schedulingStatus={schedulingKind === "push_komga_series_status"}
+        onScheduleStatus={() => schedule.mutate({ body: { kind: "push_komga_series_status" } })}
+        schedulingMetadata={schedulingKind === "sync_komga_metadata"}
+        onScheduleMetadata={() => schedule.mutate({ body: { kind: "sync_komga_metadata" } })}
       />
 
       <UpdateLxcCard
