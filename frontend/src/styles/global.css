@@ -428,6 +428,13 @@ a {
    `.app-status-pill` selectors are kept for backward compat. */
 .pill,
 .app-status-pill {
+  /* Tone ink is the raw --tone-* mixed 72% toward the scheme's text color:
+     dark enough on the light scheme, light enough on the dark scheme, to
+     keep the 11px label at AA contrast on the tinted background — the raw
+     tones alone sit around 3:1 in light mode. The dot stays at the raw
+     tone (via --pill-dot) so the hue still reads saturated. */
+  --pill-ink: var(--app-text-muted);
+  --pill-dot: currentColor;
   display: inline-flex;
   align-items: center;
   gap: 0.42rem;
@@ -439,7 +446,7 @@ a {
   text-transform: uppercase;
   font-weight: 500;
   background: var(--app-surface-muted);
-  color: var(--app-text-muted);
+  color: var(--pill-ink);
   white-space: nowrap;
   line-height: 1.3;
 }
@@ -449,8 +456,8 @@ a {
   width: 0.42rem;
   height: 0.42rem;
   border-radius: 999px;
-  background: currentColor;
-  opacity: 0.75;
+  background: var(--pill-dot);
+  opacity: 0.85;
 }
 .pill.no-dot::before,
 .app-status-pill.no-dot::before {
@@ -458,31 +465,39 @@ a {
 }
 .pill[data-tone="active"],
 .app-status-pill[data-tone="active"] {
-  color: var(--tone-active);
+  --pill-ink: color-mix(in srgb, var(--tone-active) 72%, var(--app-text));
+  --pill-dot: var(--tone-active);
   background: color-mix(in srgb, var(--tone-active) 12%, var(--app-surface-muted));
 }
 .pill[data-tone="done"],
 .app-status-pill[data-tone="done"] {
-  color: var(--tone-done);
+  --pill-ink: color-mix(in srgb, var(--tone-done) 72%, var(--app-text));
+  --pill-dot: var(--tone-done);
   background: color-mix(in srgb, var(--tone-done) 12%, var(--app-surface-muted));
 }
 .pill[data-tone="warn"],
 .app-status-pill[data-tone="warn"] {
-  color: var(--tone-warn);
-  background: color-mix(in srgb, var(--tone-warn) 14%, var(--app-surface-muted));
+  --pill-ink: color-mix(in srgb, var(--tone-warn) 72%, var(--app-text));
+  --pill-dot: var(--tone-warn);
+  background: color-mix(in srgb, var(--tone-warn) 18%, var(--app-surface-muted));
 }
 .pill[data-tone="error"],
 .app-status-pill[data-tone="error"] {
-  color: var(--tone-error);
+  --pill-ink: color-mix(in srgb, var(--tone-error) 72%, var(--app-text));
+  --pill-dot: var(--tone-error);
   background: color-mix(in srgb, var(--tone-error) 12%, var(--app-surface-muted));
 }
 .pill[data-tone="info"] {
-  color: var(--tone-info);
+  --pill-ink: color-mix(in srgb, var(--tone-info) 72%, var(--app-text));
+  --pill-dot: var(--tone-info);
   background: color-mix(in srgb, var(--tone-info) 12%, var(--app-surface-muted));
 }
+/* --app-text-faint here fell below AA on the muted background; the regular
+   muted text color is the floor for pill labels. */
 .pill[data-tone="muted"],
 .app-status-pill[data-tone="muted"] {
-  color: var(--app-text-faint);
+  --pill-ink: var(--app-text-muted);
+  --pill-dot: var(--app-text-faint);
 }
 .pill.solid {
   font-weight: 600;
@@ -509,7 +524,8 @@ a {
   letter-spacing: 0.04em;
   line-height: 1.4;
   background: color-mix(in srgb, var(--tone-active) 14%, var(--app-surface-muted));
-  color: var(--tone-active);
+  /* Same AA treatment as .pill tone ink — the raw tone alone is borderline. */
+  color: color-mix(in srgb, var(--tone-active) 72%, var(--app-text));
   font-weight: 500;
 }
 [data-mantine-color-scheme="dark"] .count-badge {
