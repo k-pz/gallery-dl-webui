@@ -686,6 +686,12 @@ a {
 .icon-btn[data-tone="accent"]:hover {
   background: var(--app-accent-soft);
 }
+.icon-btn[data-tone="success"] {
+  color: var(--tone-done);
+}
+.icon-btn[data-tone="success"]:hover {
+  background: color-mix(in srgb, var(--tone-done) 12%, var(--app-surface));
+}
 .icon-btn[data-size="sm"] {
   width: 26px;
   height: 26px;
