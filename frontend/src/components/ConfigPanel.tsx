@@ -248,7 +248,7 @@ export function ConfigPanel() {
               placeholder="1d"
               description="Format: 30m, 2h, 1d, 1w (combinable, e.g. 1d12h)."
               value={defaultPeriod}
-              onChange={(e) => setDefaultPeriod(e.currentTarget.value)}
+              onChange={(e) => touch(setDefaultPeriod)(e.currentTarget.value)}
               disabled={mutation.isPending}
               maw={260}
               styles={{ input: { fontFamily: "var(--app-mono)" } }}
