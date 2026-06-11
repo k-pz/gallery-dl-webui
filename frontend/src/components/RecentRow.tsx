@@ -41,26 +41,25 @@ export function RecentRow({
   const tone = statusTone(displayStatus);
 
   return (
-    <Box
-      className="app-row"
-      data-selected={selected ? "true" : undefined}
-      role="button"
-      tabIndex={0}
-      onClick={() => onSelect(item.id)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect(item.id);
-        }
-      }}
-    >
+    <Box className="app-row" data-selected={selected ? "true" : undefined}>
       <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
         <div className="app-row-line">
           <Pill tone={tone}>{step.label}</Pill>
           <Text size="xs" c="dimmed" ff="monospace">
             #{item.id}
           </Text>
-          <Text className="app-row-name" size="sm" fw={selected ? 600 : 500} title={displayName}>
+          {/* The name is the row's real control: its ::after stretches over
+              the whole row (see .app-row-select), so clicking anywhere except
+              the action buttons opens the details. */}
+          <Text
+            component="button"
+            type="button"
+            className="app-row-name app-row-select"
+            size="sm"
+            fw={selected ? 600 : 500}
+            title={displayName}
+            onClick={() => onSelect(item.id)}
+          >
             {displayName}
           </Text>
           <Text size="xs" c="dimmed" ff="monospace">
@@ -73,7 +72,7 @@ export function RecentRow({
           </Text>
         )}
       </Stack>
-      <Group gap={2} wrap="nowrap" onClick={(e) => e.stopPropagation()}>
+      <Group className="app-row-actions" gap={2} wrap="nowrap">
         {(canCancel || showCancelling) && (
           <Tooltip label={showCancelling ? "Cancelling…" : "Cancel"} withArrow>
             <button

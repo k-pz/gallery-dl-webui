@@ -319,6 +319,7 @@ a {
    own width via @container — the master-detail left column squeezes rows to
    ~300px, where the single-line variant truncates the name to "I...". */
 .app-row {
+  position: relative;
   display: flex;
   gap: var(--mantine-spacing-sm);
   align-items: flex-start;
@@ -362,6 +363,38 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The row's "open details" control is the name rendered as a real <button>
+   whose ::after pseudo-element stretches over the whole row — full-row click
+   target without wrapping the inline action buttons in a parent button
+   (invalid HTML, and a screen-reader trap). Sibling actions stack above the
+   overlay via .app-row-actions. */
+.app-row-select {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.app-row-select::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--mantine-radius-md);
+}
+.app-row-select:focus-visible {
+  outline: none;
+}
+.app-row-select:focus-visible::after {
+  box-shadow: var(--app-ring);
+}
+.app-row-actions {
+  position: relative;
+  z-index: 1;
 }
 
 /* Narrow-row layout: when the row container is < ~480px wide (master/detail
@@ -855,11 +888,6 @@ a {
 }
 .lib-row-head:hover {
   background: var(--app-surface-muted);
-}
-.lib-row-head:focus-visible {
-  outline: none;
-  background: var(--app-surface-muted);
-  box-shadow: var(--app-ring);
 }
 .lib-row[data-expanded="true"] .lib-row-head {
   background: var(--app-surface-muted);

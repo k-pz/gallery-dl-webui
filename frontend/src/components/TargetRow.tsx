@@ -132,29 +132,15 @@ export function TargetRow({
   const downloadCount = target.download_count ?? 0;
   const lastDownloadId = target.last_download_id ?? null;
 
-  // Click anywhere on the row head except the action buttons to toggle.
-  const handleHeadKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      onToggle();
-    }
-  };
-
   return (
     <article className="lib-row" data-expanded={expanded ? "true" : undefined}>
-      {/* The whole row is a click target; we keep it as a div because the
-          inline action buttons (poll / delete / chevron) on the right side
-          would be invalid HTML if nested inside a parent <button>. The
-          keyboard handler below covers the same interaction for tab users. */}
-      {/* biome-ignore lint/a11y/useSemanticElements: composite click target with embedded buttons */}
-      <div
-        className="lib-row-head"
-        role="button"
-        tabIndex={0}
-        aria-expanded={expanded}
-        onClick={onToggle}
-        onKeyDown={handleHeadKey}
-      >
+      {/* The head's click handler is a pointer-only convenience (bigger
+          target); the canonical, keyboard- and screen-reader-reachable
+          toggle is the chevron button on the right. Keeping the div free of
+          role/tabindex avoids nesting the action buttons inside a control. */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only convenience — the chevron button is the accessible toggle */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: see above */}
+      <div className="lib-row-head" onClick={onToggle}>
         <div className="lib-row-main">
           <div className="lib-row-top">
             <div className="lib-row-pills">
@@ -250,7 +236,8 @@ export function TargetRow({
             type="button"
             className="icon-btn"
             data-size="sm"
-            aria-label={expanded ? "Collapse" : "Expand"}
+            aria-expanded={expanded}
+            aria-label={expanded ? `Collapse ${displayName}` : `Expand ${displayName}`}
             onClick={onToggle}
           >
             <IconChevronDown size={14} className="lib-row-chev" />
