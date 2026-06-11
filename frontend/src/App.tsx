@@ -1,6 +1,7 @@
 import { Box, Container, Stack, Tabs } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { listDownloadsOptions } from "./api/@tanstack/react-query.gen";
 import { ActiveJobCard } from "./components/ActiveJobCard";
 import { AppVersion } from "./components/AppVersion";
@@ -17,6 +18,7 @@ import { SubmitForm } from "./components/SubmitForm";
 import { TargetsList } from "./components/TargetsList";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { useAutoSelectJob } from "./hooks/useAutoSelectJob";
+import { useModalFocusTrap } from "./hooks/useModalFocusTrap";
 import { initialJobIdFromUrl, useSyncJobParam } from "./hooks/useRouteJob";
 import { useRouteTab } from "./hooks/useRouteTab";
 import { useEventStream } from "./lib/eventStream";
@@ -160,11 +162,17 @@ export default function App() {
  * detail pane. Below --bp-split the grid collapses to a single column and CSS
  * restyles the detail wrapper into a fixed bottom sheet over the lists (see
  * .jobs-detail in global.css) — without it the card would render below both
- * lists, off-screen. The scrim and the card's close button both clear the
- * selection. Because the root element never changes type, resizing the
+ * lists, off-screen. The scrim, the Escape key, and the card's close button
+ * all clear the selection; while the sheet is up, focus is trapped inside it
+ * (see useModalFocusTrap). Because the root element never changes type, resizing the
  * window — or selecting/closing a job — never remounts the list or detail,
  * so their local state (search, sort, scroll position) survives.
  */
+// Mirrors `@custom-media --bp-split (max-width: 880px)` in global.css — the
+// width below which the detail pane becomes a modal bottom sheet. Keep in
+// sync (both are device px, so font scaling can't drift them apart).
+const SPLIT_QUERY = "(max-width: 880px)";
+
 export function JobsTabBody({
   selectedId,
   onSelect,
@@ -175,6 +183,17 @@ export function JobsTabBody({
   hasAnyActive: boolean;
 }) {
   const hasSelection = selectedId !== null;
+  // The detail pane is only modal as a bottom sheet; in the two-column
+  // desktop layout it's an ordinary side panel, where trapping focus (or
+  // claiming aria-modal) would be wrong.
+  const isSheet = useMediaQuery(SPLIT_QUERY, false, { getInitialValueInEffect: false }) ?? false;
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  useModalFocusTrap({
+    active: hasSelection && isSheet,
+    rootRef: sheetRef,
+    onClose: () => onSelect(null),
+    lockScroll: true,
+  });
   return (
     <div className="jobs-grid" data-has-selection={hasSelection ? "true" : undefined}>
       <Stack gap="md">
@@ -193,7 +212,16 @@ export function JobsTabBody({
             aria-label="Close job details"
             onClick={() => onSelect(null)}
           />
-          <div className="jobs-detail-sheet">
+          {/* role=dialog also holds for the desktop side panel (a non-modal
+              dialog); aria-modal is only claimed when the sheet really does
+              cover the page. */}
+          <div
+            className="jobs-detail-sheet"
+            ref={sheetRef}
+            role="dialog"
+            aria-modal={isSheet ? "true" : undefined}
+            aria-label="Job details"
+          >
             <ActiveJobCard jobId={selectedId} onClose={() => onSelect(null)} />
           </div>
         </div>
