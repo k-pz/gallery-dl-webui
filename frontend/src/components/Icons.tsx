@@ -97,6 +97,12 @@ export const IconRefresh = (p: IconProps) => (
     <path d="M3 21v-5h5" />
   </Svg>
 );
+export const IconRotateCcw = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+  </Svg>
+);
 export const IconPlay = (p: IconProps) => (
   <Svg {...p}>
     <polygon points="6 3 20 12 6 21 6 3" />

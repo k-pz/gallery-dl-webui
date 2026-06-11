@@ -1,7 +1,7 @@
 import { Box, Group, Stack, Text, Tooltip } from "@mantine/core";
 import type { Download } from "../api/types.gen";
 import { CANCELLING_LABEL, isCancellable, isTerminal, jobStep, statusTone } from "../lib/status";
-import { IconRefresh, IconX } from "./Icons";
+import { IconRotateCcw, IconX } from "./Icons";
 import { Pill } from "./Pill";
 
 function chapterCountLabel(item: Download): string {
@@ -90,17 +90,17 @@ export function RecentRow({
           </Tooltip>
         )}
         {isTerminal(item.status) && (
-          <Tooltip label="Requeue" withArrow>
+          <Tooltip label="Run again (requeue)" withArrow>
             <button
               type="button"
               className="icon-btn"
               data-tone="accent"
               data-size="sm"
-              aria-label={`Requeue #${item.id}`}
+              aria-label={`Run #${item.id} again`}
               disabled={inflight && isRequeuePending}
               onClick={onRequeue}
             >
-              <IconRefresh size={14} />
+              <IconRotateCcw size={14} />
             </button>
           </Tooltip>
         )}

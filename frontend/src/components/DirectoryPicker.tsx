@@ -1,20 +1,11 @@
-import {
-  ActionIcon,
-  Button,
-  Group,
-  Loader,
-  Paper,
-  Select,
-  Stack,
-  Text,
-  TextInput,
-  Tooltip,
-} from "@mantine/core";
+import { Button, Group, Loader, Paper, Select, Stack, Text, TextInput } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { createOutputDirMutation, listOutputDirsOptions } from "../api/@tanstack/react-query.gen";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
+import { IconPlus, IconX } from "./Icons";
 
 export interface DirectoryPickerProps {
   label: string;
@@ -73,6 +64,13 @@ export function DirectoryPicker({
       setCreatePath("");
       onChange(entry.path);
       invalidate.outputDirs();
+      // The form collapses on success — without explicit feedback the only
+      // trace would be the silently swapped Select value.
+      notifications.show({
+        title: "Folder created",
+        message: entry.path,
+        color: "green",
+      });
     },
     onError: (err) => setCreateError(extractErrorMessage(err)),
   });
@@ -105,17 +103,16 @@ export function DirectoryPicker({
           comboboxProps={{ withinPortal: true }}
           rightSection={isLoading ? <Loader size="xs" /> : undefined}
         />
-        <Tooltip label={showCreate ? "Cancel" : "Create folder"} withArrow>
-          <ActionIcon
-            variant="default"
-            size="lg"
-            disabled={disabled || !enabled}
-            onClick={() => setShowCreate((s) => !s)}
-            aria-label="Create folder"
-          >
-            {showCreate ? "×" : "+"}
-          </ActionIcon>
-        </Tooltip>
+        <Button
+          variant="default"
+          size="sm"
+          leftSection={showCreate ? <IconX size={14} /> : <IconPlus size={14} />}
+          disabled={disabled || !enabled}
+          onClick={() => setShowCreate((s) => !s)}
+          aria-expanded={showCreate}
+        >
+          New folder
+        </Button>
       </Group>
       {showCreate && (
         <Paper
