@@ -1,4 +1,4 @@
-import { Button, Card, Group, SegmentedControl, Select, Stack, Text, Tooltip } from "@mantine/core";
+import { Button, Card, Group, SegmentedControl, Select, Stack, Tooltip } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
@@ -247,9 +247,7 @@ export function TargetsList({ onOpenJob }: { onOpenJob?: (jobId: number) => void
           />
         )}
         {totalCount > 0 && visible.length === 0 && (
-          <Text size="sm" c="dimmed">
-            No series match the current filters.
-          </Text>
+          <EmptyState compact title="No series match the current filters" />
         )}
         {visible.length > 0 && (
           <Stack gap={0}>

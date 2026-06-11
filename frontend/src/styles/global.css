@@ -676,6 +676,13 @@ a {
   align-items: center;
   margin-top: 4px;
 }
+.app-empty[data-compact] {
+  padding: 16px 14px;
+  gap: 4px;
+}
+.app-empty[data-compact] .app-empty-title {
+  font-size: 15px;
+}
 
 /* Skeleton shimmer — sized in the markup so cards keep their layout on cold
    load instead of collapsing onto a centred spinner. */

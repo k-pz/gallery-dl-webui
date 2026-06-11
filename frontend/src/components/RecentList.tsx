@@ -1,4 +1,4 @@
-import { Card, Group, Select, Stack, Text } from "@mantine/core";
+import { Card, Group, Select, Stack } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { listDownloadsOptions } from "../api/@tanstack/react-query.gen";
@@ -193,9 +193,7 @@ export function RecentList({
           />
         )}
         {totalCount > 0 && visible.length === 0 && (
-          <Text size="sm" c="dimmed">
-            No jobs match the current filters.
-          </Text>
+          <EmptyState compact title="No jobs match the current filters" />
         )}
         {visible.length > 0 && (
           <Stack gap={2}>
