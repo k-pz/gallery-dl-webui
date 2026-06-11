@@ -797,11 +797,21 @@ a {
   }
 }
 
-/* Phones: pagination page buttons become real touch targets. */
+/* Phones: pagination page buttons become real touch targets, and the
+   number strip collapses to previous / current / next — seven 44px buttons
+   don't fit under 540px and wrap into a second row. The "X–Y of Z" text to
+   the left keeps absolute position visible. Prev/next are recognised by
+   their svg chevrons; numbers are text-only. */
 @media (--bp-phone) {
   .list-pagination .mantine-Pagination-control {
     min-width: 44px;
     height: 44px;
+  }
+  .list-pagination .mantine-Pagination-dots {
+    display: none;
+  }
+  .list-pagination .mantine-Pagination-control:not([data-active]):not(:has(svg)) {
+    display: none;
   }
 }
 
