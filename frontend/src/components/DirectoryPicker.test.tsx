@@ -20,7 +20,7 @@ describe("DirectoryPicker create validation", () => {
       <DirectoryPicker label="Output directory" value={null} onChange={() => {}} enabled />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /create folder/i }));
+    await userEvent.click(screen.getByRole("button", { name: /new folder/i }));
     await userEvent.click(screen.getByRole("button", { name: /^create$/i }));
 
     expect(await screen.findByText(/enter a folder name\./i)).toBeInTheDocument();

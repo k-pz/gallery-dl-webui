@@ -20,6 +20,7 @@ import {
 import type { Target } from "../api/types.gen";
 import { useServerSeededState } from "../hooks/useServerSeededState";
 import { extractErrorMessage } from "../lib/apiError";
+import { DURATION_FORMAT_HINT, isValidDuration } from "../lib/duration";
 import { useDataInvalidators } from "../lib/invalidate";
 import { READING_DIRECTION_OPTIONS } from "../lib/readingDirection";
 import { SERIES_STATUS_OPTIONS, seriesStatusTone } from "../lib/seriesStatus";
@@ -110,6 +111,13 @@ export function TargetRow({
 
   const submitPeriod = () => {
     if (!period.dirty) return;
+    // Validate locally before the round-trip — same grammar as the backend
+    // (an empty value is fine: it clears the override).
+    if (period.value.trim() !== "" && !isValidDuration(period.value)) {
+      setPeriodError(DURATION_FORMAT_HINT);
+      return;
+    }
+    setPeriodError(null);
     update.mutate({
       path: { target_id: target.id },
       body: { watch_period: period.value },
