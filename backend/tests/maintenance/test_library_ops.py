@@ -87,6 +87,40 @@ def test_regenerate_series_metadata_writes_series_json_and_rewrites_cbz(tmp_path
     assert md["total_issues"] == 2
 
 
+def test_regenerate_series_metadata_repairs_stray_quoted_authors(tmp_path: Path) -> None:
+    """Archives packed while author lists were str()-ed carry `A', 'B` style
+    Writer values; the regen pass must realign them on disk. The ComicInfo is
+    written verbatim here (not via build_comicinfo_xml) because the builder
+    now cleans authors itself."""
+    series_dir = tmp_path / "Series A"
+    series_dir.mkdir(parents=True)
+    dirty_xml = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        "<ComicInfo>"
+        "<Series>Series A</Series>"
+        "<Number>1</Number>"
+        "<Writer>Author One&apos;, &apos;Author Two</Writer>"
+        "<Penciller>Author One&apos;, &apos;Author Two</Penciller>"
+        "</ComicInfo>"
+    )
+    with zipfile.ZipFile(series_dir / "Series A - c001.cbz", "w") as zf:
+        zf.writestr("ComicInfo.xml", dirty_xml)
+        zf.writestr("001.jpg", b"x")
+
+    result = regenerate_series_metadata([tmp_path], overrides_for=lambda _: None)
+    assert result.archives_updated == 1
+    assert result.failed == 0
+
+    with zipfile.ZipFile(series_dir / "Series A - c001.cbz") as zf:
+        root = ET.fromstring(zf.read("ComicInfo.xml"))
+    assert root.findtext("Writer") == "Author One, Author Two"
+    assert root.findtext("Penciller") == "Author One, Author Two"
+
+    payload = json.loads((series_dir / SERIES_JSON_NAME).read_text())
+    assert payload["metadata"]["writer"] == "Author One, Author Two"
+    assert payload["metadata"]["penciller"] == "Author One, Author Two"
+
+
 def test_regenerate_series_metadata_skips_archives_without_comicinfo(tmp_path: Path) -> None:
     series_dir = tmp_path / "Bare"
     series_dir.mkdir()

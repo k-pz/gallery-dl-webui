@@ -21,10 +21,10 @@ from backend.comic_metadata import (
     SeriesMetadata,
     build_comicinfo_xml,
     chapter_from_comicinfo,
+    clean_person_names,
     derive_series_metadata,
     numbered_cbz_candidates,
     render_chapter_stem,
-    strip_enclosing_brackets,
     write_series_json,
 )
 
@@ -212,10 +212,11 @@ def _read_regen_chapter(
     except ET.ParseError:
         return _REGEN_SKIP_BAD
     ch = chapter_from_comicinfo(cbz, root)
-    # Author normalisation: strip enclosing brackets/quotes from any
-    # extractor-supplied value before we re-emit it.
-    ch.author = strip_enclosing_brackets(ch.author)
-    ch.artist = strip_enclosing_brackets(ch.artist)
+    # Author normalisation: strip enclosing brackets/quotes and repair the
+    # stray-quote leftovers of str()-ed author lists (weebcentral) before we
+    # re-emit the value — this is what realigns previously-packed archives.
+    ch.author = clean_person_names(ch.author)
+    ch.artist = clean_person_names(ch.artist)
     series_name = root.findtext("Series") or cbz.parent.name
     overrides = overrides_for(series_name) if overrides_for else None
     if overrides is not None:
