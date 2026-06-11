@@ -11,7 +11,7 @@ from backend.comic_metadata import (
     SeriesMetadata,
     build_comicinfo_xml,
 )
-from backend.maintenance.library_ops import regenerate_series_metadata
+from backend.maintenance.library_ops import refresh_series_json, regenerate_series_metadata
 
 
 def _write_cbz_with_comicinfo_full(
@@ -194,3 +194,70 @@ def test_regenerate_series_metadata_writes_series_json_before_chapters(
     series_b_json = _index("series.json: Series B")
     series_b_c1 = _index("updated: Series B/Series B - c001.cbz")
     assert series_b_json < series_b_c1
+
+
+def test_refresh_series_json_writes_series_json_without_touching_cbzs(tmp_path: Path) -> None:
+    """The refresh pass derives a fresh series.json from the on-disk ComicInfo
+    plus overrides, byte-for-byte preserving every CBZ."""
+    series_dir = tmp_path / "Series A"
+    cbz = series_dir / "Series A - c001.cbz"
+    _write_cbz_with_comicinfo_full(cbz, "Series A", "1", description="Tale of action.")
+    cbz_bytes_before = cbz.read_bytes()
+
+    def lookup(name: str) -> SeriesMetadata | None:
+        if name.lower().startswith("series a"):
+            return SeriesMetadata(
+                tags=["Action"],
+                reading_direction="rtl",
+                status="Ongoing",
+                published_at="2010-02-15",
+            )
+        return None
+
+    result = refresh_series_json([tmp_path], overrides_for=lookup)
+    assert result.series == 1
+    assert result.series_json_written == 1
+    assert result.skipped == 0
+    assert result.failed == 0
+
+    payload = json.loads((series_dir / SERIES_JSON_NAME).read_text())
+    md = payload["metadata"]
+    assert md["name"] == "Series A"
+    assert md["status"] == "Continuing"
+    assert md["tags"] == ["Action"]
+    assert md["reading_direction"] == "rtl"
+    # The override's stored first-publication date wins over the 2024 chapter
+    # date baked into the on-disk ComicInfo.
+    assert md["publication_date"] == "2010-02-15"
+    assert md["year"] == 2010
+    assert md["total_issues"] == 1
+
+    assert cbz.read_bytes() == cbz_bytes_before
+
+
+def test_refresh_series_json_derives_publish_date_from_earliest_chapter(tmp_path: Path) -> None:
+    """Without an override, the publish date falls back to the earliest
+    chapter date found across the series' ComicInfo files."""
+    series_dir = tmp_path / "Series A"
+    # Helper bakes date 2024-01-15 into both chapters' ComicInfo.
+    _write_cbz_with_comicinfo_full(series_dir / "Series A - c001.cbz", "Series A", "1")
+    _write_cbz_with_comicinfo_full(series_dir / "Series A - c002.cbz", "Series A", "2")
+
+    result = refresh_series_json([tmp_path], overrides_for=lambda _: None)
+    assert result.series_json_written == 1
+
+    md = json.loads((series_dir / SERIES_JSON_NAME).read_text())["metadata"]
+    assert md["publication_date"] == "2024-01-15"
+    assert md["year"] == 2024
+
+
+def test_refresh_series_json_skips_archives_without_comicinfo(tmp_path: Path) -> None:
+    series_dir = tmp_path / "Bare"
+    series_dir.mkdir()
+    with zipfile.ZipFile(series_dir / "no-comicinfo.cbz", "w") as zf:
+        zf.writestr("001.jpg", b"x")
+
+    result = refresh_series_json([tmp_path], overrides_for=lambda _: None)
+    assert result.skipped == 1
+    assert result.series_json_written == 0
+    assert not (series_dir / SERIES_JSON_NAME).exists()

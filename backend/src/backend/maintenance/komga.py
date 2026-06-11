@@ -1,8 +1,16 @@
-"""Komga REST API client used by the `push_komga_series_status` maintenance kind.
+"""Komga REST API client used by the Komga maintenance kinds.
 
+Two jobs run through here: `push_komga_series_status` (status only) and
+`sync_komga_metadata` (every series-level field Komga's REST API accepts).
 Kept deliberately narrow: we only need to (a) authenticate against a Komga
 instance with an API key, (b) search series by name, and (c) PATCH the series
-metadata `status` field. Everything else is out of scope.
+metadata. Everything else is out of scope.
+
+Note on dates: Komga's series-metadata endpoint has no publication-date or
+year field — the date Komga shows for a series is aggregated from its books'
+release dates, which come from each CBZ's ComicInfo.xml. The first-publication
+date we track therefore reaches Komga via series.json + ComicInfo on disk,
+not via this client.
 
 Credentials live in `app_config` under `komga_base_url` + `komga_api_key`
 (set via the Config tab). The worker loads them at job-start time; a missing
@@ -27,6 +35,15 @@ LOCAL_TO_KOMGA_STATUS: dict[str, str] = {
     "Ended": "ENDED",
     "Hiatus": "HIATUS",
     "Abandoned": "ABANDONED",
+}
+
+# Local reading-direction tokens (comic_metadata.READING_DIRECTIONS) mapped to
+# Komga's SeriesMetadata.ReadingDirection enum.
+KOMGA_READING_DIRECTION_BY_LOCAL: dict[str, str] = {
+    "ltr": "LEFT_TO_RIGHT",
+    "rtl": "RIGHT_TO_LEFT",
+    "vertical": "VERTICAL",
+    "webtoon": "WEBTOON",
 }
 
 
@@ -259,5 +276,171 @@ async def push_series_statuses(
 
             result.updated += 1
             emit(f"updated: {target.name} → {komga_status}")
+
+    return result
+
+
+@dataclass(frozen=True)
+class SeriesForMetadataSync:
+    """Everything `sync_series_metadata` may push for one series.
+
+    Built by the maintenance worker from the target row plus the on-disk
+    series.json. Empty/None fields are omitted from the PATCH so a value we
+    don't know locally never blanks one Komga already has.
+    """
+
+    name: str
+    status: str = ""
+    summary: str = ""
+    publisher: str = ""
+    language: str = ""
+    reading_direction: str = ""
+    tags: tuple[str, ...] = ()
+
+
+@dataclass
+class KomgaSyncResult:
+    updated: int = 0
+    skipped_no_fields: int = 0
+    skipped_no_match: int = 0
+    skipped_multi_match: int = 0
+    failed: int = 0
+    total: int = 0
+    unmatched: list[str] = field(default_factory=list)
+    ambiguous: list[str] = field(default_factory=list)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "updated": self.updated,
+            "skipped_no_fields": self.skipped_no_fields,
+            "skipped_no_match": self.skipped_no_match,
+            "skipped_multi_match": self.skipped_multi_match,
+            "failed": self.failed,
+            "total": self.total,
+            "unmatched": list(self.unmatched),
+            "ambiguous": list(self.ambiguous),
+        }
+
+
+def metadata_patch_payload(series: SeriesForMetadataSync) -> dict[str, Any]:
+    """Build the SeriesMetadataUpdate PATCH body for one series.
+
+    Only locally-known (non-empty, mappable) fields are included, and each
+    one is locked — Komga locks pin a field against its import providers
+    (Mylar series.json, ComicInfo aggregation) re-overwriting it on the next
+    library scan, while remaining editable in the Komga UI.
+    """
+    payload: dict[str, Any] = {}
+    status = LOCAL_TO_KOMGA_STATUS.get(series.status)
+    if status is not None:
+        payload["status"] = status
+        payload["statusLock"] = True
+    if series.summary:
+        payload["summary"] = series.summary
+        payload["summaryLock"] = True
+    if series.publisher:
+        payload["publisher"] = series.publisher
+        payload["publisherLock"] = True
+    if series.language:
+        payload["language"] = series.language
+        payload["languageLock"] = True
+    direction = KOMGA_READING_DIRECTION_BY_LOCAL.get(series.reading_direction)
+    if direction is not None:
+        payload["readingDirection"] = direction
+        payload["readingDirectionLock"] = True
+    if series.tags:
+        payload["tags"] = list(series.tags)
+        payload["tagsLock"] = True
+    return payload
+
+
+async def sync_series_metadata(
+    creds: KomgaCredentials,
+    series_list: list[SeriesForMetadataSync],
+    *,
+    on_total: Callable[[int], None] | None = None,
+    on_step: ProgressLine | None = None,
+    should_cancel: ShouldCancel | None = None,
+    client_factory: Callable[[], httpx.AsyncClient] | None = None,
+    on_cancel: Callable[[KomgaSyncResult], Awaitable[None] | None] | None = None,
+) -> KomgaSyncResult:
+    """Push each series' locally-known metadata into the matching Komga series.
+
+    Same matching rule and cancellation contract as `push_series_statuses`:
+    case-insensitive exact name match, zero/multiple matches → log + skip,
+    `should_cancel` polled before each per-series round-trip. A series with
+    no pushable fields (no status, nothing on disk) is counted and skipped
+    without touching Komga.
+    """
+    result = KomgaSyncResult(total=len(series_list))
+    if on_total is not None:
+        on_total(len(series_list))
+
+    def emit(line: str) -> None:
+        if on_step is not None:
+            on_step(line)
+
+    def cancelled() -> bool:
+        return bool(should_cancel and should_cancel())
+
+    headers = {"X-API-Key": creds.api_key}
+
+    def _default_factory() -> httpx.AsyncClient:
+        return httpx.AsyncClient(base_url=creds.base_url, headers=headers, timeout=30.0)
+
+    factory = client_factory or _default_factory
+
+    async with factory() as http:
+        for series in series_list:
+            if cancelled():
+                if on_cancel is not None:
+                    maybe_coro = on_cancel(result)
+                    if maybe_coro is not None:
+                        await maybe_coro
+                return result
+
+            payload = metadata_patch_payload(series)
+            if not payload:
+                result.skipped_no_fields += 1
+                emit(f"skip (no local metadata): {series.name}")
+                continue
+
+            exact, search_error = await _find_exact_matches(http, series.name)
+            if search_error is not None:
+                result.failed += 1
+                emit(f"{search_error} for {series.name!r}")
+                continue
+
+            if len(exact) == 0:
+                result.skipped_no_match += 1
+                result.unmatched.append(series.name)
+                emit(f"skip (no Komga match): {series.name}")
+                continue
+            if len(exact) > 1:
+                result.skipped_multi_match += 1
+                result.ambiguous.append(series.name)
+                emit(f"skip ({len(exact)} Komga matches): {series.name}")
+                continue
+
+            series_id = exact[0].get("id")
+            if not isinstance(series_id, str) or not series_id:
+                result.failed += 1
+                emit(f"Komga match missing id for {series.name!r}")
+                continue
+
+            try:
+                patch_resp = await http.patch(
+                    f"/api/v1/series/{series_id}/metadata",
+                    json=payload,
+                )
+                patch_resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                result.failed += 1
+                emit(f"update failed for {series.name!r}: {exc}")
+                continue
+
+            fields = ", ".join(k for k in payload if not k.endswith("Lock"))
+            result.updated += 1
+            emit(f"updated: {series.name} → {fields}")
 
     return result
