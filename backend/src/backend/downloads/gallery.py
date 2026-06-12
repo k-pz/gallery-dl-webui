@@ -53,6 +53,11 @@ class MetadataResult:
     from the series-level chapter list. `len(chapter_dates)` is the discovered
     chapter count.
 
+    `chapter_titles` maps the same `(manga_name, chapter_string)` key to the
+    chapter's human-readable title. An absent key means the source exposed no
+    title for that chapter — title coverage varies wildly between extractors,
+    so this is always a subset of `chapter_dates`' keys at best.
+
     `earliest_chapter_date` is the minimum of `chapter_dates` values — the
     series' first-publication date as far as the source knows it. `None` when
     no chapter exposed a usable date.
@@ -62,6 +67,7 @@ class MetadataResult:
     series_status: str | None = None
     series_tags: list[str] | None = None
     chapter_dates: dict[tuple[str, str], str] = field(default_factory=dict)
+    chapter_titles: dict[tuple[str, str], str] = field(default_factory=dict)
     earliest_chapter_date: str | None = None
 
 
@@ -183,16 +189,18 @@ class _MetadataSimulationJob(SimulationJob):
     _status_box: list[str | None]
     _tags_box: list[list[str] | None]
     _dates_box: list[dict[tuple[str, str], str]]
+    _titles_box: list[dict[tuple[str, str], str]]
 
     def __init__(self, url: Any, parent: SimulationJob | None = None) -> None:
         super().__init__(url, parent)
         if not _inherit_shared_state(
-            self, parent, "_series_box", "_status_box", "_tags_box", "_dates_box"
+            self, parent, "_series_box", "_status_box", "_tags_box", "_dates_box", "_titles_box"
         ):
             self._series_box = [None]
             self._status_box = [None]
             self._tags_box = [None]
             self._dates_box = [{}]
+            self._titles_box = [{}]
 
     def handle_queue(self, url: str, kwdict: dict[str, Any]) -> None:
         if self._capture(kwdict):
@@ -252,6 +260,12 @@ class _MetadataSimulationJob(SimulationJob):
                     break
         manga = str(kwdict.get("manga") or "").strip()
         chapter = chapter_with_minor(kwdict)
+        if manga and chapter:
+            # Only bank a chapter title when it's keyed to a (manga, chapter)
+            # pair — on series-level kwdicts `title` can be the series name.
+            title = kwdict.get("title")
+            if isinstance(title, str) and title.strip():
+                self._titles_box[0].setdefault((manga, chapter), title.strip())
         date = date_iso(kwdict.get("date"))
         if manga and chapter and date:
             self._dates_box[0].setdefault((manga, chapter), date)
@@ -308,6 +322,7 @@ class Gallery:
             series_status=job._status_box[0],
             series_tags=job._tags_box[0],
             chapter_dates=chapter_dates,
+            chapter_titles=dict(job._titles_box[0]),
             earliest_chapter_date=earliest_date(chapter_dates.values()),
         )
 

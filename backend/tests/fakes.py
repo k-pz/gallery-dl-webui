@@ -42,6 +42,11 @@ class FakeGalleryConfig:
         # values are ISO YYYY-MM-DD strings. Falls back to the parent dirs
         # of `manifest_for` paths when unset.
         self.chapter_dates_for: dict[str, dict[tuple[str, str], str]] = {}
+        # Optional per-URL chapter-title map surfaced by extract_metadata.
+        # Same (manga, chapter) keys as chapter_dates_for; values are the
+        # human-readable chapter titles. Empty when unset — title coverage
+        # is optional, mirroring real extractors.
+        self.chapter_titles_for: dict[str, dict[tuple[str, str], str]] = {}
         # Optional per-URL captured per-chapter errors (chapter name -> reason),
         # surfaced by run_download to exercise outcome reconciliation.
         self.chapter_errors_for: dict[str, dict[str, str]] = {}
@@ -91,6 +96,7 @@ class FakeGallery:
             series_status=self._config.series_status_for.get(url),
             series_tags=self._config.series_tags_for.get(url),
             chapter_dates=dict(dates),
+            chapter_titles=dict(self._config.chapter_titles_for.get(url, {})),
             earliest_chapter_date=earliest_date(dates.values()),
         )
 

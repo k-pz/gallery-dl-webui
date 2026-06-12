@@ -25,6 +25,7 @@ def _fresh_job() -> _MetadataSimulationJob:
     job._status_box = [None]
     job._tags_box = [None]
     job._dates_box = [{}]
+    job._titles_box = [{}]
     return job
 
 
@@ -106,6 +107,36 @@ def test_capture_dedupes_chapter_dates_via_setdefault():
     assert job._dates_box[0] == {("A", "1"): "2026-01-01"}
 
 
+def test_capture_banks_chapter_title_alongside_date():
+    job = _fresh_job()
+    captured = job._capture(
+        {
+            "manga": "S",
+            "chapter": 12,
+            "date": datetime(2026, 1, 5),
+            "title": "The Promised Day",
+        }
+    )
+    assert captured is True
+    assert job._titles_box[0] == {("S", "12"): "The Promised Day"}
+
+
+def test_capture_without_title_still_returns_true():
+    """Title absence must not force a child-extractor descent."""
+    job = _fresh_job()
+    captured = job._capture({"manga": "S", "chapter": 3, "date": datetime(2026, 1, 5)})
+    assert captured is True
+    assert job._titles_box[0] == {}
+
+
+def test_capture_ignores_title_when_manga_missing():
+    """For series-level kwdicts `title` can be the series name, not a chapter
+    title — only bank it when it's keyed to a (manga, chapter) pair."""
+    job = _fresh_job()
+    job._capture({"title": "Series Name Itself", "chapter": ""})
+    assert job._titles_box[0] == {}
+
+
 def test_handle_queue_skips_super_when_capture_succeeds(monkeypatch):
     """The core optimisation: a complete queue kwdict means no child spawn."""
     job = _fresh_job()
@@ -177,3 +208,18 @@ def test_fake_gallery_run_download_returns_chapter_errors():
     assert isinstance(result, tuple)
     assert len(result) == 3
     assert result[2] == {"1": "boom"}
+
+
+def test_fake_gallery_extract_metadata_returns_titles():
+    from pathlib import Path
+
+    from backend.config import Settings
+    from tests.fakes import FakeGallery, FakeGalleryConfig
+
+    config = FakeGalleryConfig()
+    config.chapter_dates_for["https://example/x"] = {("S", "1"): "2026-01-01"}
+    config.chapter_titles_for["https://example/x"] = {("S", "1"): "Intro"}
+    gallery = FakeGallery(Settings(data_dir=Path("/tmp/does-not-matter")), config=config)
+
+    meta = gallery.extract_metadata("https://example/x")
+    assert meta.chapter_titles == {("S", "1"): "Intro"}
