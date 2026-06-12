@@ -201,6 +201,7 @@ export function ProgressCard({
                 const ch = data.chapters[row.index];
                 const badge = chapterBadge(ch);
                 const label = ch.name || "(untitled)";
+                const display = ch.title ? `${label} — ${ch.title}` : label;
                 const meta = [ch.pages ? `${ch.pages}p` : null, ch.date || null]
                   .filter(Boolean)
                   .join(" · ");
@@ -236,9 +237,9 @@ export function ProgressCard({
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
                           }}
-                          title={ch.title || label}
+                          title={display}
                         >
-                          {label}
+                          {display}
                         </Text>
                         {meta && (
                           <Text size="xs" c="dimmed" ff="monospace">

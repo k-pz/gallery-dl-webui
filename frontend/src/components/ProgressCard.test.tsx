@@ -180,7 +180,8 @@ describe("ProgressCard (terminal job)", () => {
 
     renderWithProviders(<ProgressCard jobId={1} status="completed" startedAt={null} />);
 
-    await waitFor(() => expect(screen.getByText("1")).toBeInTheDocument());
+    // Chapter 1 carries a title, so its row reads "<number> — <title>".
+    await waitFor(() => expect(screen.getByText("1 — Intro")).toBeInTheDocument());
     // Per-chapter badges from outcome status.
     expect(screen.getByText("Downloaded")).toBeInTheDocument();
     expect(screen.getByText("Failed")).toBeInTheDocument();
@@ -283,5 +284,18 @@ describe("ProgressCard (active job)", () => {
     expect(await screen.findByText("1 / 2 chapters")).toBeInTheDocument();
     expect(screen.getByText("progress")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
+  });
+});
+
+describe("ProgressCard chapter titles", () => {
+  it("shows the chapter title next to its number", async () => {
+    mockFetch(async (input) => {
+      if (urlOf(input).includes("/progress")) return jsonResponse(PROGRESS);
+      return jsonResponse({});
+    });
+    renderWithProviders(<ProgressCard jobId={5} status="completed" startedAt={null} />);
+    expect(await screen.findByText("1 — Intro")).toBeInTheDocument();
+    // A title-less chapter keeps its bare number.
+    expect(screen.getByText("2")).toBeInTheDocument();
   });
 });
