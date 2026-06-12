@@ -25,9 +25,10 @@ import { useDataInvalidators } from "../lib/invalidate";
 import { READING_DIRECTION_OPTIONS } from "../lib/readingDirection";
 import { SERIES_STATUS_OPTIONS, seriesStatusTone } from "../lib/seriesStatus";
 import { isActive, jobStatusLabel, statusTone } from "../lib/status";
-import { formatRel } from "../lib/time";
+import { formatAbs, formatDate, formatRel } from "../lib/time";
 import { useNotifyingMutation } from "../lib/useNotifyingMutation";
 import { CopyIconButton } from "./CopyIconButton";
+import { DetailField } from "./DetailField";
 import {
   ICON_SIZE,
   IconArrowUpRight,
@@ -356,6 +357,10 @@ export function TargetRow({
               clearable
             />
           </Box>
+          <Group gap="xl" wrap="wrap" mt="md">
+            <DetailField label="Published" value={formatDate(target.series_published_at)} mono />
+            <DetailField label="Added to library" value={formatAbs(target.created_at)} mono />
+          </Group>
           <Group gap={4} wrap="nowrap" align="center" mt={12}>
             <Anchor href={target.url} target="_blank" rel="noreferrer" className="app-url">
               {target.url}
