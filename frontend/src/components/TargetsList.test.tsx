@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { findCall, jsonResponse, methodOf, mockFetch, urlOf } from "../test/mocks";
+import { bodyOf, findCall, jsonResponse, methodOf, mockFetch, urlOf } from "../test/mocks";
 import { renderWithProviders } from "../test/render";
 import { TargetsList } from "./TargetsList";
 
@@ -120,5 +120,31 @@ describe("TargetsList refresh-watched button", () => {
         urlOf(input).includes("/api/targets/poll-watched") && methodOf(input, init) === "POST",
     );
     expect(call).toBeUndefined();
+  });
+});
+
+describe("TargetRow metadata source URL", () => {
+  it("shows the stored URL and PATCHes an edited one on blur", async () => {
+    const spy = mockLibrary([target({ id: 1, metadata_source_url: "https://alt/old" })]);
+
+    renderWithProviders(<TargetsList />);
+    await userEvent.click(await screen.findByRole("button", { name: "Expand Series A" }));
+
+    const input = await screen.findByLabelText("Metadata source URL");
+    expect(input).toHaveValue("https://alt/old");
+
+    await userEvent.clear(input);
+    await userEvent.type(input, "https://alt/new");
+    await userEvent.tab();
+
+    await waitFor(async () => {
+      const call = findCall(
+        spy,
+        (i, init) => urlOf(i).includes("/api/targets/1") && methodOf(i, init) === "PATCH",
+      );
+      expect(call).toBeDefined();
+      const body = await bodyOf(call?.[0] as Parameters<typeof fetch>[0], call?.[1]);
+      expect(JSON.parse(body)).toEqual({ metadata_source_url: "https://alt/new" });
+    });
   });
 });
