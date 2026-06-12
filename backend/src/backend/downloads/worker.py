@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import aiosqlite
@@ -308,7 +309,40 @@ class Worker:
         needed = await asyncio.to_thread(
             _filter_needed_chapters, meta.chapter_dates, meta.chapter_titles, skip_chapter
         )
+        needed = await self._fill_titles_from_metadata_source(job, needed)
         return needed, len(meta.chapter_dates)
+
+    async def _fill_titles_from_metadata_source(
+        self, job: Download, needed: list[ChapterSeed]
+    ) -> list[ChapterSeed]:
+        """Fill-only title lookup against the target's metadata_source_url.
+
+        Runs at most one extra extract_metadata, and only when some needed
+        chapter still lacks a title. Titles match by chapter number alone —
+        the alternate source's series name will differ. Best-effort: any
+        failure logs a warning and leaves the seeds untouched.
+        """
+        if job.target_id is None or not needed or all(s.title for s in needed):
+            return needed
+        target = await targets_service.get(self._db, job.target_id)
+        if target is None or not target.metadata_source_url:
+            return needed
+        try:
+            alt = await asyncio.to_thread(
+                self._gallery.extract_metadata, target.metadata_source_url
+            )
+        except Exception:
+            logger.warning(
+                "metadata source lookup failed for target %d (%s)",
+                job.target_id,
+                target.metadata_source_url,
+                exc_info=True,
+            )
+            return needed
+        titles_by_chapter = {chapter: t for (_manga, chapter), t in alt.chapter_titles.items()}
+        return [
+            s if s.title else replace(s, title=titles_by_chapter.get(s.name, "")) for s in needed
+        ]
 
     async def _execute_download(
         self,
