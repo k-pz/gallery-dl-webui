@@ -344,3 +344,24 @@ async def test_reset_to_pending_accepts_cancelled(db: aiosqlite.Connection) -> N
     fetched = await service.get(db, d.id)
     assert fetched is not None
     assert fetched.status == "pending"
+
+
+async def test_save_manifest_persists_titles(db: aiosqlite.Connection) -> None:
+    d = await service.insert_pending(db, "https://example/x", "fake")
+    await service.save_manifest(db, d.id, ["1", "2"], titles={"1": "Intro"}, discovered=2)
+    outcomes = await service.get_chapter_outcomes(db, d.id)
+    by_name = {o.name: o for o in outcomes}
+    assert by_name["1"].title == "Intro"
+    assert by_name["2"].title == ""
+
+
+async def test_outcome_with_empty_title_does_not_blank_seeded_title(
+    db: aiosqlite.Connection,
+) -> None:
+    from backend.downloads.outcomes import ChapterOutcome
+
+    d = await service.insert_pending(db, "https://example/x", "fake")
+    await service.save_manifest(db, d.id, ["1"], titles={"1": "Seeded"})
+    await service.save_chapter_outcomes(db, d.id, [ChapterOutcome("1", "skipped", 0, "", "", None)])
+    outcomes = await service.get_chapter_outcomes(db, d.id)
+    assert outcomes[0].title == "Seeded"
