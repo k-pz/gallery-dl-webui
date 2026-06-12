@@ -65,6 +65,7 @@ export function TargetRow({
 }) {
   const invalidate = useDataInvalidators();
   const period = useServerSeededState(target.watch_period ?? "");
+  const metaSource = useServerSeededState(target.metadata_source_url ?? "");
   const [periodError, setPeriodError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -72,6 +73,7 @@ export function TargetRow({
     ...updateTargetMutation(),
     onSuccess: () => {
       period.markClean();
+      metaSource.markClean();
       setPeriodError(null);
       invalidate.targets();
     },
@@ -129,6 +131,16 @@ export function TargetRow({
     update.mutate({
       path: { target_id: target.id },
       body: { watch_period: period.value },
+    });
+  };
+
+  const submitMetaSource = () => {
+    if (!metaSource.dirty) return;
+    // An empty value clears the lookup source; the backend validates that a
+    // non-empty URL matches a gallery-dl extractor.
+    update.mutate({
+      path: { target_id: target.id },
+      body: { metadata_source_url: metaSource.value.trim() },
     });
   };
 
@@ -355,6 +367,20 @@ export function TargetRow({
               }
               disabled={update.isPending}
               clearable
+            />
+          </Box>
+          <Box mt="sm">
+            <TextInput
+              label="Metadata source URL"
+              placeholder="https://mangadex.org/title/…"
+              value={metaSource.value}
+              disabled={update.isPending}
+              onChange={(e) => metaSource.setValue(e.currentTarget.value)}
+              onBlur={submitMetaSource}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitMetaSource();
+              }}
+              description="Optional. Another site for this series (e.g. MangaDex) used to look up chapter names when this source has none."
             />
           </Box>
           <Group gap="xl" wrap="wrap" mt="md">
