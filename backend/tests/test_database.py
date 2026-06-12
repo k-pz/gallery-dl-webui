@@ -127,3 +127,23 @@ async def test_transaction_commits_on_success(tmp_path: Path) -> None:
             assert await cur.fetchone() is not None
     finally:
         await conn.close()
+
+
+async def test_migrate_adds_target_metadata_source_url(tmp_path: Path) -> None:
+    path = tmp_path / "jobs.db"
+    db = await open_database(path)
+    try:
+        async with db.execute("PRAGMA table_info(targets)") as cur:
+            target_cols = {r["name"] for r in await cur.fetchall()}
+    finally:
+        await db.close()
+    assert "metadata_source_url" in target_cols
+
+    # Re-open: _migrate runs again over a DB that already has the column.
+    db = await open_database(path)
+    try:
+        async with db.execute("PRAGMA table_info(targets)") as cur:
+            target_cols = {r["name"] for r in await cur.fetchall()}
+    finally:
+        await db.close()
+    assert "metadata_source_url" in target_cols

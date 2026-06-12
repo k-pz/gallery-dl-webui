@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS targets (
     tags TEXT,
     reading_direction TEXT,
     series_status TEXT,
-    series_published_at TEXT
+    series_published_at TEXT,
+    metadata_source_url TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_targets_watched ON targets(watched, last_polled_at);
 
@@ -206,6 +207,8 @@ async def _migrate(db: aiosqlite.Connection) -> None:
         await db.execute("ALTER TABLE targets ADD COLUMN series_status TEXT")
     if "series_published_at" not in target_cols:
         await db.execute("ALTER TABLE targets ADD COLUMN series_published_at TEXT")
+    if "metadata_source_url" not in target_cols:
+        await db.execute("ALTER TABLE targets ADD COLUMN metadata_source_url TEXT")
 
 
 async def _backfill_targets(db: aiosqlite.Connection) -> None:
