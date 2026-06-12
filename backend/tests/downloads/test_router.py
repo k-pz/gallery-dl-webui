@@ -157,6 +157,39 @@ def test_progress_reports_persisted_outcomes_for_terminal_job(
     assert names["2"]["error"] == "boom"
 
 
+def test_progress_surfaces_seeded_titles_while_job_runs(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    import threading
+    import time
+
+    gallery_config.chapter_dates_for["https://example/x"] = {
+        ("S", "1"): "2026-01-01",
+        ("S", "2"): "2026-01-02",
+    }
+    gallery_config.chapter_titles_for["https://example/x"] = {("S", "1"): "Intro"}
+    gate = threading.Event()
+    gallery_config.gate_for["https://example/x"] = gate
+
+    created = client.post("/api/downloads", json={"url": "https://example/x"}).json()
+    try:
+        # The gate holds run_download open; the manifest (with titles) is
+        # saved just before that, so poll until the chapter rows appear.
+        deadline = time.time() + 5
+        chapters: list[dict] = []
+        while time.time() < deadline:
+            prog = client.get(f"/api/downloads/{created['id']}/progress").json()
+            chapters = prog["chapters"]
+            if chapters and prog["status"] not in ("completed", "failed", "cancelled"):
+                break
+            time.sleep(0.02)
+        titles = {c["name"]: c["title"] for c in chapters}
+        assert titles == {"1": "Intro", "2": None}
+    finally:
+        gate.set()
+        _wait_for_status(client, created["id"], {"completed", "failed", "cancelled"})
+
+
 def test_progress_endpoint_returns_404_for_missing(client: TestClient) -> None:
     resp = client.get("/api/downloads/99999/progress")
     assert resp.status_code == 404

@@ -154,18 +154,18 @@ async def get_progress(
     settings: SettingsDep,
     live: LiveProgressDep,
 ) -> ProgressOut:
+    outcomes = await service.get_chapter_outcomes(db, download.id)
     if download.status in TERMINAL_STATUSES:
-        outcomes = await service.get_chapter_outcomes(db, download.id)
         if any(o.status != "pending" for o in outcomes):
             return _progress_from_outcomes(download, outcomes)
         # Legacy terminal job (no persisted outcomes): keep the neutral fallback.
-        manifest = await service.get_manifest(db, download.id)
+        manifest = [o.name for o in outcomes]
         chapters = chapter_progress(
             manifest, settings.downloads_dir, download.status, download.postprocess_status
         )
-        return _legacy_progress(download, chapters)
+        return _legacy_progress(download, chapters, outcomes)
 
-    manifest = await service.get_manifest(db, download.id)
+    manifest = [o.name for o in outcomes]
     completed = live.snapshot(download.id)
     if completed is not None:
         chapters = chapter_progress_from_completed(
@@ -175,10 +175,12 @@ async def get_progress(
         chapters = chapter_progress(
             manifest, settings.downloads_dir, download.status, download.postprocess_status
         )
-    return _legacy_progress(download, chapters)
+    return _legacy_progress(download, chapters, outcomes)
 
 
-def _legacy_progress(download: Download, chapters: list) -> ProgressOut:
+def _legacy_progress(
+    download: Download, chapters: list, outcomes: list[ChapterOutcome]
+) -> ProgressOut:
     files_present = sum(c.files_present for c in chapters)
     return ProgressOut(
         status=download.status,
@@ -187,13 +189,18 @@ def _legacy_progress(download: Download, chapters: list) -> ProgressOut:
         chapters_discovered=download.chapters_discovered,
         chapters_needed=download.chapters_total,
         chapters=[
+            # `chapters` is built from the manifest rows in `outcomes`, in
+            # order, so the zip pairs each progress row with its seeded
+            # title/date. The guard is belt-and-braces only.
             ChapterProgress(
                 name=c.name,
                 files_total=c.files_total,
                 files_present=c.files_present,
                 stage=c.stage,
+                title=(outcomes[i].title or None) if i < len(outcomes) else None,
+                date=(outcomes[i].date or None) if i < len(outcomes) else None,
             )
-            for c in chapters
+            for i, c in enumerate(chapters)
         ],
     )
 
