@@ -93,22 +93,28 @@ async def save_manifest(
     chapter_names: list[str],
     *,
     dates: dict[str, str] | None = None,
+    titles: dict[str, str] | None = None,
     discovered: int | None = None,
 ) -> None:
     """Persist the chapter list discovered by the metadata pull.
 
-    Each needed chapter gets one row in `download_files` (status 'pending', with
-    its discovered date when known). `files_expected` and `chapters_total` carry
-    the needed count; `chapters_discovered` carries the total seen before
-    skip-filtering (defaults to the needed count when not supplied).
+    Each needed chapter gets one row in `download_files` (status 'pending',
+    with its discovered date and title when known). `files_expected` and
+    `chapters_total` carry the needed count; `chapters_discovered` carries the
+    total seen before skip-filtering (defaults to the needed count when not
+    supplied).
     """
     dates = dates or {}
+    titles = titles or {}
     async with transaction(db):
         await db.execute("DELETE FROM download_files WHERE download_id = ?", (download_id,))
         await db.executemany(
-            "INSERT INTO download_files(download_id, idx, relpath, status, date) "
-            "VALUES(?, ?, ?, 'pending', ?)",
-            [(download_id, i, name, dates.get(name, "")) for i, name in enumerate(chapter_names)],
+            "INSERT INTO download_files(download_id, idx, relpath, status, date, title) "
+            "VALUES(?, ?, ?, 'pending', ?, ?)",
+            [
+                (download_id, i, name, dates.get(name, ""), titles.get(name, ""))
+                for i, name in enumerate(chapter_names)
+            ],
         )
         n = len(chapter_names)
         disc = discovered if discovered is not None else n
@@ -159,7 +165,8 @@ async def save_chapter_outcomes(
     async with transaction(db):
         if updates:
             await db.executemany(
-                "UPDATE download_files SET status = ?, pages = ?, title = ?, "
+                "UPDATE download_files SET status = ?, pages = ?, "
+                "title = COALESCE(NULLIF(?, ''), title), "
                 "date = COALESCE(NULLIF(?, ''), date), error = ? "
                 "WHERE download_id = ? AND relpath = ?",
                 updates,
