@@ -33,6 +33,9 @@ class Target(BaseModel):
     # First-publication date of the series (ISO date string), auto-discovered
     # as the earliest chapter date the upstream extractor exposes.
     series_published_at: str | None = None
+    # Alternate gallery-dl-supported URL for the same series, used to look up
+    # chapter names when this target's own source exposes none.
+    metadata_source_url: str | None = None
     # Joined summary fields (None/0 when not from the summary SELECT):
     last_download_id: int | None = None
     last_status: str | None = None
@@ -79,6 +82,8 @@ class TargetUpdate(BaseModel):
     reading_direction: str | None = None
     # Empty string clears; otherwise one of postprocess.SERIES_STATUSES.
     series_status: str | None = None
+    # Empty string clears; otherwise must be a URL gallery-dl can extract.
+    metadata_source_url: str | None = None
 
 
 class PollWatchedResult(BaseModel):
