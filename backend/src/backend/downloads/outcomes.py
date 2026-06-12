@@ -24,6 +24,7 @@ class ChapterSeed:
 
     name: str
     date: str
+    title: str = ""
 
 
 @dataclass(frozen=True)
@@ -44,13 +45,15 @@ def _first(values: Iterable[str], fallback: str = "") -> str:
     return next((v for v in values if v), fallback)
 
 
-def _downloaded(name: str, recs: list[FileRecord], date_fallback: str = "") -> ChapterOutcome:
+def _downloaded(
+    name: str, recs: list[FileRecord], date_fallback: str = "", title_fallback: str = ""
+) -> ChapterOutcome:
     """Build a `downloaded` outcome from the records keyed to one chapter."""
     return ChapterOutcome(
         name=name,
         status="downloaded",
         pages=_pages(recs),
-        title=_first(r.title for r in recs),
+        title=_first((r.title for r in recs), title_fallback),
         date=_first((r.date for r in recs), date_fallback),
         error=None,
     )
@@ -81,15 +84,17 @@ def reconcile_outcomes(
     for seed in needed:
         recs = by_chapter.get(seed.name)
         if recs:
-            out.append(_downloaded(seed.name, recs, seed.date))
+            out.append(_downloaded(seed.name, recs, seed.date, seed.title))
         elif seed.name in chapter_errors:
             out.append(
-                ChapterOutcome(seed.name, "failed", 0, "", seed.date, chapter_errors[seed.name])
+                ChapterOutcome(
+                    seed.name, "failed", 0, seed.title, seed.date, chapter_errors[seed.name]
+                )
             )
         elif exit_code == 0:
-            out.append(ChapterOutcome(seed.name, "skipped", 0, "", seed.date, None))
+            out.append(ChapterOutcome(seed.name, "skipped", 0, seed.title, seed.date, None))
         else:
-            out.append(ChapterOutcome(seed.name, "failed", 0, "", seed.date, None))
+            out.append(ChapterOutcome(seed.name, "failed", 0, seed.title, seed.date, None))
 
     needed_names = {s.name for s in needed}
     for chapter, recs in by_chapter.items():

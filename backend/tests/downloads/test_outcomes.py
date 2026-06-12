@@ -63,3 +63,31 @@ def test_records_for_unlisted_chapter_are_synthesized() -> None:
     assert out[0].name == "9"
     assert out[0].status == "downloaded"
     assert out[0].pages == 1
+
+
+def test_skipped_chapter_keeps_seed_title() -> None:
+    needed = [ChapterSeed(name="3", date="2026-03-03", title="Calm Before")]
+    out = reconcile_outcomes(needed, [], {}, exit_code=0)
+    assert out[0].status == "skipped"
+    assert out[0].title == "Calm Before"
+
+
+def test_failed_chapter_keeps_seed_title() -> None:
+    needed = [ChapterSeed(name="7", date="", title="Storm")]
+    out = reconcile_outcomes(needed, [], {"7": "403"}, exit_code=1)
+    assert out[0].status == "failed"
+    assert out[0].title == "Storm"
+
+
+def test_downloaded_chapter_prefers_record_title_over_seed() -> None:
+    needed = [ChapterSeed(name="1", date="", title="Seeded")]
+    records = [_rec("1", "001.jpg", title="From Download")]
+    out = reconcile_outcomes(needed, records, {}, exit_code=0)
+    assert out[0].title == "From Download"
+
+
+def test_downloaded_chapter_falls_back_to_seed_title() -> None:
+    needed = [ChapterSeed(name="1", date="", title="Seeded")]
+    records = [_rec("1", "001.jpg")]  # record has no title
+    out = reconcile_outcomes(needed, records, {}, exit_code=0)
+    assert out[0].title == "Seeded"
