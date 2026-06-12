@@ -729,3 +729,38 @@ async def test_incremental_download_keeps_series_publish_year_in_series_json(
         assert payload["metadata"]["year"] == 2010
     finally:
         await worker.stop()
+
+
+async def test_worker_seeds_chapter_titles_from_metadata_pass(
+    settings: Settings, db: aiosqlite.Connection
+) -> None:
+    config = FakeGalleryConfig()
+    config.chapter_dates_for["https://example/x"] = {
+        ("S", "1"): "2026-01-01",
+        ("S", "2"): "2026-01-02",
+    }
+    config.chapter_titles_for["https://example/x"] = {
+        ("S", "1"): "Intro",
+        ("S", "2"): "Rising Action",
+    }
+    # Nothing downloads (clean exit, no records): both chapters settle as
+    # skipped — exactly the case where titles used to be lost.
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        d = await downloads_service.insert_pending(db, "https://example/x", "fake")
+        worker.notify()
+
+        async def done() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.status == "completed"
+
+        await wait_for(done)
+
+        outcomes = await downloads_service.get_chapter_outcomes(db, d.id)
+        by_name = {o.name: o for o in outcomes}
+        assert by_name["1"].title == "Intro"
+        assert by_name["2"].title == "Rising Action"
+    finally:
+        await worker.stop()
