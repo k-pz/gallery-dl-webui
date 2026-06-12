@@ -44,6 +44,28 @@ function mockLibrary(targets: unknown[]) {
   });
 }
 
+describe("TargetRow expanded metadata", () => {
+  it("shows the published and added-to-library dates in the expanded detail", async () => {
+    mockLibrary([target({ id: 1, series_published_at: "2019-05-01" })]);
+
+    renderWithProviders(<TargetsList />);
+    await userEvent.click(await screen.findByRole("button", { name: "Expand Series A" }));
+
+    expect(await screen.findByText("Published")).toBeInTheDocument();
+    expect(screen.getByText("Added to library")).toBeInTheDocument();
+  });
+
+  it("renders an em dash when the publication date is unknown", async () => {
+    mockLibrary([target({ id: 1, series_published_at: null })]);
+
+    renderWithProviders(<TargetsList />);
+    await userEvent.click(await screen.findByRole("button", { name: "Expand Series A" }));
+
+    expect(await screen.findByText("Published")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+});
+
 describe("TargetsList refresh-watched button", () => {
   it("posts to poll-watched when clicked", async () => {
     const spy = mockLibrary([

@@ -14,6 +14,23 @@ export function formatAbs(iso: string | null | undefined): string {
   });
 }
 
+/** Format a date-only ISO string ("2019-05-01" → "May 1, 2019").
+ * A bare year ("2019") passes through as-is — some sources only expose that
+ * much. Date-only strings parse as UTC midnight, so format in UTC to keep
+ * the calendar day from shifting in negative-offset timezones. */
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  if (/^\d{4}$/.test(iso)) return iso;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  return new Date(t).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    ...(iso.includes("T") ? {} : { timeZone: "UTC" }),
+  });
+}
+
 /** Format an ISO timestamp as a short relative-time string ("3h ago"). */
 export function formatRel(iso: string | null | undefined): string {
   if (!iso) return "—";
