@@ -37,3 +37,16 @@ async def test_set_series_published_at_empty_is_noop(db: aiosqlite.Connection) -
     updated = await targets_service.set_series_published_at(db, target.id, "")
     assert updated is not None
     assert updated.series_published_at == "2015-05-01"
+
+
+async def test_update_sets_and_clears_metadata_source_url(db: aiosqlite.Connection) -> None:
+    t = await targets_service.upsert(db, "https://example/s", "fake", None)
+    updated = await targets_service.update(
+        db, t.id, metadata_source_url="https://mangadex.org/title/abc"
+    )
+    assert updated is not None
+    assert updated.metadata_source_url == "https://mangadex.org/title/abc"
+
+    cleared = await targets_service.update(db, t.id, metadata_source_url=None)
+    assert cleared is not None
+    assert cleared.metadata_source_url is None

@@ -118,6 +118,7 @@ async def upsert(
         reading_direction=reading_direction,
         series_status=None,
         series_published_at=None,
+        metadata_source_url=None,
     )
 
 
@@ -157,6 +158,7 @@ async def update(
     tags: list[str] | None | Unset = UNSET,
     reading_direction: str | None | Unset = UNSET,
     series_status: str | None | Unset = UNSET,
+    metadata_source_url: str | None | Unset = UNSET,
 ) -> Target | None:
     updates: list[str] = []
     params: list[object] = []
@@ -178,6 +180,9 @@ async def update(
     if not isinstance(series_status, Unset):
         updates.append("series_status = ?")
         params.append(series_status)
+    if not isinstance(metadata_source_url, Unset):
+        updates.append("metadata_source_url = ?")
+        params.append(metadata_source_url)
     if not updates:
         return await get(db, id_)
     params.append(id_)

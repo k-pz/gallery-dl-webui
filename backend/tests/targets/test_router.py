@@ -440,3 +440,38 @@ def test_poll_watched_with_empty_library_schedules_nothing(client: TestClient) -
     resp = client.post("/api/targets/poll-watched")
     assert resp.status_code == 200
     assert resp.json() == {"scheduled": 0, "skipped_active": 0}
+
+
+def test_patch_target_sets_and_clears_metadata_source_url(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    gallery_config.manifest_for["https://example/x"] = []
+    created = client.post("/api/downloads", json={"url": "https://example/x"}).json()
+    _wait_terminal(client, created["id"])
+    target_id = client.get("/api/targets").json()[0]["id"]
+
+    resp = client.patch(
+        f"/api/targets/{target_id}", json={"metadata_source_url": "https://alt/x"}
+    )
+    assert resp.status_code == 200, resp.json()
+    assert resp.json()["metadata_source_url"] == "https://alt/x"
+
+    cleared = client.patch(f"/api/targets/{target_id}", json={"metadata_source_url": ""})
+    assert cleared.status_code == 200
+    assert cleared.json()["metadata_source_url"] is None
+
+
+def test_patch_target_rejects_unextractable_metadata_source_url(
+    client: TestClient, gallery_config: FakeGalleryConfig
+) -> None:
+    gallery_config.manifest_for["https://example/x"] = []
+    created = client.post("/api/downloads", json={"url": "https://example/x"}).json()
+    _wait_terminal(client, created["id"])
+    target_id = client.get("/api/targets").json()[0]["id"]
+
+    gallery_config.extractor_for["https://nowhere/unsupported"] = None
+    resp = client.patch(
+        f"/api/targets/{target_id}",
+        json={"metadata_source_url": "https://nowhere/unsupported"},
+    )
+    assert resp.status_code == 400

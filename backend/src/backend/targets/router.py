@@ -10,7 +10,7 @@ from backend.app_config.exceptions import PostprocessRootNotConfigured
 from backend.comic_metadata import SERIES_STATUSES, normalize_tags
 from backend.dependencies import DbDep, EventBusDep
 from backend.downloads import service as downloads_service
-from backend.downloads.dependencies import WorkerDep
+from backend.downloads.dependencies import GalleryDep, WorkerDep
 from backend.events import downloads_event, targets_event
 from backend.exceptions import BadRequestError
 from backend.output_dirs.utils import coerce_optional, validate_under_root
@@ -48,6 +48,7 @@ async def update_target(
     db: DbDep,
     poller: PollerDep,
     bus: EventBusDep,
+    gallery: GalleryDep,
 ) -> Target:
     new_watched = target.watched if body.watched is None else body.watched
     new_period: str | None | Unset = UNSET
@@ -55,6 +56,7 @@ async def update_target(
     new_tags: list[str] | None | Unset = UNSET
     new_direction: str | None | Unset = UNSET
     new_series_status: str | None | Unset = UNSET
+    new_metadata_source_url: str | None | Unset = UNSET
 
     if body.watch_period is not None:
         cleaned = body.watch_period.strip()
@@ -107,6 +109,15 @@ async def update_target(
         else:
             new_series_status = cleaned_status
 
+    if body.metadata_source_url is not None:
+        cleaned_url = body.metadata_source_url.strip()
+        if cleaned_url == "":
+            new_metadata_source_url = None
+        elif gallery.find_extractor(cleaned_url) is None:
+            raise BadRequestError(f"no gallery-dl extractor matches {cleaned_url!r}")
+        else:
+            new_metadata_source_url = cleaned_url
+
     await service.update(
         db,
         target.id,
@@ -116,6 +127,7 @@ async def update_target(
         tags=new_tags,
         reading_direction=new_direction,
         series_status=new_series_status,
+        metadata_source_url=new_metadata_source_url,
     )
 
     if body.watched is True and not target.watched:
