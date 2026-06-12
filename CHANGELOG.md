@@ -1,3 +1,17 @@
+## v1.7.0 (2026-06-12)
+
+### Feat
+
+- **komga**: sync cleaned author names to Komga in the metadata sync job
+- **ui**: surface the refresh and Komga metadata-sync maintenance jobs
+- **maintenance**: add refresh_series_metadata and sync_komga_metadata jobs
+- **targets**: persist the discovered first-publication date per target
+
+### Fix
+
+- **metadata**: clean stray quotes from list-valued author names
+- **metadata**: derive the series publish date from the earliest chapter date
+
 ## v1.6.0 (2026-06-11)
 
 ### Feat
