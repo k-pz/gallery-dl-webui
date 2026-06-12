@@ -21,8 +21,8 @@ import { REFETCH_ACTIVE_MS } from "../lib/polling";
 import { isCancellable, isTerminal, jobStep } from "../lib/status";
 import { formatAbs } from "../lib/time";
 import { CopyIconButton } from "./CopyIconButton";
+import { DetailField } from "./DetailField";
 import { ICON_SIZE, IconAlertTriangle, IconX } from "./Icons";
-import { JobDetailField } from "./JobDetailField";
 import { JobStepper } from "./JobStepper";
 import { ProgressCard } from "./ProgressCard";
 
@@ -206,12 +206,12 @@ export function ActiveJobCard({ jobId, onClose }: { jobId: number; onClose?: () 
         <JobStepper job={{ status: job.status, step }} />
         <Divider />
         <Group gap="xl" wrap="wrap">
-          <JobDetailField label="Extractor" value={job.extractor ?? "—"} mono />
-          <JobDetailField label="Started" value={formatAbs(job.started_at)} mono />
+          <DetailField label="Extractor" value={job.extractor ?? "—"} mono />
+          <DetailField label="Started" value={formatAbs(job.started_at)} mono />
           {job.finished_at && (
-            <JobDetailField label="Finished" value={formatAbs(job.finished_at)} mono />
+            <DetailField label="Finished" value={formatAbs(job.finished_at)} mono />
           )}
-          {duration && <JobDetailField label="Duration" value={duration} mono />}
+          {duration && <DetailField label="Duration" value={duration} mono />}
         </Group>
         {job.error && (
           <Box className="app-alert">

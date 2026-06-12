@@ -1,6 +1,6 @@
 import { Stack, Text } from "@mantine/core";
 
-export function JobDetailField({
+export function DetailField({
   label,
   value,
   mono,
