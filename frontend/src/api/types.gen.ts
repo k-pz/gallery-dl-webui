@@ -550,6 +550,10 @@ export type Target = {
      */
     series_published_at?: string | null;
     /**
+     * Metadata Source Url
+     */
+    metadata_source_url?: string | null;
+    /**
      * Last Download Id
      */
     last_download_id?: number | null;
@@ -599,6 +603,10 @@ export type TargetUpdate = {
      * Series Status
      */
     series_status?: string | null;
+    /**
+     * Metadata Source Url
+     */
+    metadata_source_url?: string | null;
 };
 
 /**
