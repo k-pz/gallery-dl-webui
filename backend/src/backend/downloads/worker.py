@@ -225,6 +225,7 @@ class Worker:
                 job.id,
                 [s.name for s in needed],
                 dates={s.name: s.date for s in needed if s.date},
+                titles={s.name: s.title for s in needed if s.title},
                 discovered=discovered,
             )
             self._publish(downloads_event("manifest_ready", id=job.id, files=len(needed)))
@@ -304,7 +305,9 @@ class Worker:
             await targets_service.set_series_published_at(
                 self._db, job.target_id, meta.earliest_chapter_date
             )
-        needed = await asyncio.to_thread(_filter_needed_chapters, meta.chapter_dates, skip_chapter)
+        needed = await asyncio.to_thread(
+            _filter_needed_chapters, meta.chapter_dates, meta.chapter_titles, skip_chapter
+        )
         return needed, len(meta.chapter_dates)
 
     async def _execute_download(
@@ -481,6 +484,7 @@ class Worker:
 
 def _filter_needed_chapters(
     chapter_dates: dict[tuple[str, str], str],
+    chapter_titles: dict[tuple[str, str], str],
     skip_chapter: SkipChapterFn | None,
 ) -> list[ChapterSeed]:
     """Drop chapters the skip callable says are already packed as CBZs.
@@ -493,5 +497,7 @@ def _filter_needed_chapters(
     for (manga, chapter), date in chapter_dates.items():
         if skip_chapter is not None and manga and chapter and skip_chapter(manga, chapter):
             continue
-        needed.append(ChapterSeed(name=chapter, date=date))
+        needed.append(
+            ChapterSeed(name=chapter, date=date, title=chapter_titles.get((manga, chapter), ""))
+        )
     return needed
