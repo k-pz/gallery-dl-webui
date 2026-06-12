@@ -450,9 +450,7 @@ def test_patch_target_sets_and_clears_metadata_source_url(
     _wait_terminal(client, created["id"])
     target_id = client.get("/api/targets").json()[0]["id"]
 
-    resp = client.patch(
-        f"/api/targets/{target_id}", json={"metadata_source_url": "https://alt/x"}
-    )
+    resp = client.patch(f"/api/targets/{target_id}", json={"metadata_source_url": "https://alt/x"})
     assert resp.status_code == 200, resp.json()
     assert resp.json()["metadata_source_url"] == "https://alt/x"
 

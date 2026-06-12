@@ -50,6 +50,9 @@ class FakeGalleryConfig:
         # Optional per-URL captured per-chapter errors (chapter name -> reason),
         # surfaced by run_download to exercise outcome reconciliation.
         self.chapter_errors_for: dict[str, dict[str, str]] = {}
+        # Optional per-URL exception raised by extract_metadata, to exercise
+        # callers' resilience against a failing (e.g. secondary) lookup.
+        self.metadata_error_for: dict[str, Exception] = {}
         # Optional per-URL gate: when set, run_download blocks until the event
         # fires (or a safety timeout), keeping the job deterministically
         # "running" while a test pokes at concurrent-download behaviour.
@@ -88,6 +91,9 @@ class FakeGallery:
 
     def extract_metadata(self, url: str) -> MetadataResult:
         self.metadata_calls.append(url)
+        err = self._config.metadata_error_for.get(url)
+        if err is not None:
+            raise err
         dates = self._config.chapter_dates_for.get(url)
         if dates is None:
             dates = self._derive_chapter_dates(url)

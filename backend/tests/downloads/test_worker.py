@@ -764,3 +764,94 @@ async def test_worker_seeds_chapter_titles_from_metadata_pass(
         assert by_name["2"].title == "Rising Action"
     finally:
         await worker.stop()
+
+
+async def test_worker_fills_titles_from_metadata_source_url(
+    settings: Settings, db: aiosqlite.Connection
+) -> None:
+    config = FakeGalleryConfig()
+    # Original source: dates but no titles.
+    config.chapter_dates_for["https://example/x"] = {("S", "1"): "2026-01-01"}
+    # Alternate source: same chapter numbers under a different series name.
+    config.chapter_dates_for["https://alt/x"] = {("S Alt", "1"): "2026-01-01"}
+    config.chapter_titles_for["https://alt/x"] = {("S Alt", "1"): "Intro"}
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await targets_service.upsert(db, "https://example/x", "fake", None)
+        await targets_service.update(db, target.id, metadata_source_url="https://alt/x")
+        d = await downloads_service.insert_pending(
+            db, "https://example/x", "fake", target_id=target.id
+        )
+        worker.notify()
+
+        async def done() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.status == "completed"
+
+        await wait_for(done)
+
+        outcomes = await downloads_service.get_chapter_outcomes(db, d.id)
+        assert outcomes[0].title == "Intro"
+        assert "https://alt/x" in gallery.metadata_calls
+    finally:
+        await worker.stop()
+
+
+async def test_worker_skips_metadata_source_when_titles_complete(
+    settings: Settings, db: aiosqlite.Connection
+) -> None:
+    config = FakeGalleryConfig()
+    config.chapter_dates_for["https://example/x"] = {("S", "1"): "2026-01-01"}
+    config.chapter_titles_for["https://example/x"] = {("S", "1"): "Already Here"}
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await targets_service.upsert(db, "https://example/x", "fake", None)
+        await targets_service.update(db, target.id, metadata_source_url="https://alt/x")
+        d = await downloads_service.insert_pending(
+            db, "https://example/x", "fake", target_id=target.id
+        )
+        worker.notify()
+
+        async def done() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.status == "completed"
+
+        await wait_for(done)
+
+        # No wasted upstream fetch when the original source already has titles.
+        assert "https://alt/x" not in gallery.metadata_calls
+    finally:
+        await worker.stop()
+
+
+async def test_worker_survives_failing_metadata_source_lookup(
+    settings: Settings, db: aiosqlite.Connection
+) -> None:
+    config = FakeGalleryConfig()
+    config.chapter_dates_for["https://example/x"] = {("S", "1"): "2026-01-01"}
+    config.metadata_error_for["https://alt/x"] = RuntimeError("alt source down")
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await targets_service.upsert(db, "https://example/x", "fake", None)
+        await targets_service.update(db, target.id, metadata_source_url="https://alt/x")
+        d = await downloads_service.insert_pending(
+            db, "https://example/x", "fake", target_id=target.id
+        )
+        worker.notify()
+
+        async def done() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return row is not None and row.status == "completed"
+
+        await wait_for(done)
+
+        outcomes = await downloads_service.get_chapter_outcomes(db, d.id)
+        assert outcomes[0].title == ""
+    finally:
+        await worker.stop()
