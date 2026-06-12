@@ -1,3 +1,23 @@
+## v1.8.0 (2026-06-12)
+
+### Feat
+
+- **ui**: edit a target's metadata source URL
+- **downloads**: fill missing chapter titles from the target's metadata source
+- **targets**: per-target metadata source URL
+- **db**: add targets.metadata_source_url column
+- **ui**: show chapter titles in the job chapter list
+- **downloads**: surface seeded chapter titles on live progress
+- **downloads**: seed manifest chapter titles from the metadata pass
+- **downloads**: persist seeded chapter titles on manifest rows
+- **downloads**: carry seeded chapter titles through outcome reconciliation
+- **downloads**: capture per-chapter titles in the metadata sim pass
+- **ui**: show published and added-to-library dates in series detail
+
+### Refactor
+
+- **ui**: rename JobDetailField to DetailField for reuse beyond jobs
+
 ## v1.7.0 (2026-06-12)
 
 ### Feat
