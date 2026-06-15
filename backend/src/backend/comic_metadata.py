@@ -296,13 +296,8 @@ def earliest_date(values: Iterable[str]) -> str | None:
     `YYYY-…` of the same year — close enough for a first-publication date.
     Returns None when nothing qualifies.
     """
-    earliest: str | None = None
-    for value in values:
-        if len(value) < 4 or not value[:4].isdigit():
-            continue
-        if earliest is None or value < earliest:
-            earliest = value
-    return earliest
+    qualifying = (value for value in values if len(value) >= 4 and value[:4].isdigit())
+    return min(qualifying, default=None)
 
 
 def chapter_with_minor(kwdict: dict[str, Any]) -> str:
