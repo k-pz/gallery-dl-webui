@@ -35,7 +35,6 @@ up the pinned pnpm version from `package.json`'s `packageManager` field.
 | `pnpm test:e2e`      | Playwright suite in `e2e/`                       |
 | `pnpm test:e2e:ui`   | Playwright UI mode                               |
 | `pnpm storybook`     | Storybook dev server on :6006                    |
-| `pnpm docs`          | TypeDoc → markdown reference                     |
 
 ## Layout
 

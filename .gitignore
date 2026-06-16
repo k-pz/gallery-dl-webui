@@ -260,7 +260,6 @@ venv.bak/
 
 # mkdocs documentation
 /site
-/docs/reference
 
 # storybook
 /frontend/storybook-static
