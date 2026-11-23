@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelDownload, cancelMaintenanceJob, checkForUpdates, createDownload, createOutputDir, deleteTarget, exportLibrary, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, getUpdatePreviewRef, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, pollWatchedTargets, putConfig, requeueDownload, scheduleMaintenanceJob, setUpdatePreviewRef, tailLogsApiLogsTailGet, updateTarget } from '../sdk.gen';
-import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CancelMaintenanceJobData, CancelMaintenanceJobError, CancelMaintenanceJobResponse, CheckForUpdatesData, CheckForUpdatesError, CheckForUpdatesResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, ExportLibraryData, ExportLibraryResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetError, GetTargetResponse, GetUpdatePreviewRefData, GetUpdatePreviewRefResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PollWatchedTargetsData, PollWatchedTargetsResponse, PutConfigData, PutConfigError, PutConfigResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, SetUpdatePreviewRefData, SetUpdatePreviewRefError, SetUpdatePreviewRefResponse, TailLogsApiLogsTailGetData, TailLogsApiLogsTailGetError, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
+import { cancelDownload, cancelMaintenanceJob, checkForUpdates, createDownload, createOutputDir, deleteTarget, downloadTargetEpubBook, exportLibrary, exportTargetEpubBook, exportTargetEpubBooks, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, getTargetEpub, getUpdatePreviewRef, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, pollWatchedTargets, putConfig, putTargetEpubBooks, requeueDownload, scheduleMaintenanceJob, setUpdatePreviewRef, tailLogsApiLogsTailGet, updateTarget } from '../sdk.gen';
+import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CancelMaintenanceJobData, CancelMaintenanceJobError, CancelMaintenanceJobResponse, CheckForUpdatesData, CheckForUpdatesError, CheckForUpdatesResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, DownloadTargetEpubBookData, DownloadTargetEpubBookError, ExportLibraryData, ExportLibraryResponse, ExportTargetEpubBookData, ExportTargetEpubBookError, ExportTargetEpubBookResponse, ExportTargetEpubBooksData, ExportTargetEpubBooksError, ExportTargetEpubBooksResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetEpubData, GetTargetEpubError, GetTargetEpubResponse, GetTargetError, GetTargetResponse, GetUpdatePreviewRefData, GetUpdatePreviewRefResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PollWatchedTargetsData, PollWatchedTargetsResponse, PutConfigData, PutConfigError, PutConfigResponse, PutTargetEpubBooksData, PutTargetEpubBooksError, PutTargetEpubBooksResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, SetUpdatePreviewRefData, SetUpdatePreviewRefError, SetUpdatePreviewRefResponse, TailLogsApiLogsTailGetData, TailLogsApiLogsTailGetError, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -271,6 +271,105 @@ export const pollTargetMutation = (options?: Partial<Options<PollTargetData>>): 
     };
     return mutationOptions;
 };
+
+export const getTargetEpubQueryKey = (options: Options<GetTargetEpubData>) => createQueryKey('getTargetEpub', options);
+
+/**
+ * Get Target Epub
+ *
+ * The series' packed chapters, its books, and each book's export status.
+ */
+export const getTargetEpubOptions = (options: Options<GetTargetEpubData>) => queryOptions<GetTargetEpubResponse, GetTargetEpubError, GetTargetEpubResponse, ReturnType<typeof getTargetEpubQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getTargetEpub({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getTargetEpubQueryKey(options)
+});
+
+/**
+ * Put Target Epub Books
+ *
+ * Replace the series' book list. Books are re-numbered in chapter order.
+ */
+export const putTargetEpubBooksMutation = (options?: Partial<Options<PutTargetEpubBooksData>>): UseMutationOptions<PutTargetEpubBooksResponse, PutTargetEpubBooksError, Options<PutTargetEpubBooksData>> => {
+    const mutationOptions: UseMutationOptions<PutTargetEpubBooksResponse, PutTargetEpubBooksError, Options<PutTargetEpubBooksData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await putTargetEpubBooks({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Export Target Epub Book
+ *
+ * (Re)build one book's EPUB into the export directory.
+ */
+export const exportTargetEpubBookMutation = (options?: Partial<Options<ExportTargetEpubBookData>>): UseMutationOptions<ExportTargetEpubBookResponse, ExportTargetEpubBookError, Options<ExportTargetEpubBookData>> => {
+    const mutationOptions: UseMutationOptions<ExportTargetEpubBookResponse, ExportTargetEpubBookError, Options<ExportTargetEpubBookData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await exportTargetEpubBook({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Export Target Epub Books
+ *
+ * Export every book that was never exported or is outdated.
+ *
+ * One failing book doesn't stop the rest; failures are reported per book.
+ */
+export const exportTargetEpubBooksMutation = (options?: Partial<Options<ExportTargetEpubBooksData>>): UseMutationOptions<ExportTargetEpubBooksResponse, ExportTargetEpubBooksError, Options<ExportTargetEpubBooksData>> => {
+    const mutationOptions: UseMutationOptions<ExportTargetEpubBooksResponse, ExportTargetEpubBooksError, Options<ExportTargetEpubBooksData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await exportTargetEpubBooks({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const downloadTargetEpubBookQueryKey = (options: Options<DownloadTargetEpubBookData>) => createQueryKey('downloadTargetEpubBook', options);
+
+/**
+ * Download Target Epub Book
+ *
+ * The book's last exported EPUB file.
+ */
+export const downloadTargetEpubBookOptions = (options: Options<DownloadTargetEpubBookData>) => queryOptions<unknown, DownloadTargetEpubBookError, unknown, ReturnType<typeof downloadTargetEpubBookQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await downloadTargetEpubBook({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: downloadTargetEpubBookQueryKey(options)
+});
 
 export const listOutputDirsQueryKey = (options?: Options<ListOutputDirsData>) => createQueryKey('listOutputDirs', options);
 
