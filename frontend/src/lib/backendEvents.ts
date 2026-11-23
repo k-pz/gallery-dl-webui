@@ -17,6 +17,7 @@ import {
   getDownloadProgressQueryKey,
   getDownloadQueryKey,
   getMaintenanceJobProgressQueryKey,
+  getTargetEpubQueryKey,
   listDownloadsQueryKey,
   listMaintenanceJobsQueryKey,
   listOutputDirsQueryKey,
@@ -73,6 +74,15 @@ export function handleBackendEvent(
     case "maintenance":
       qc.invalidateQueries({ queryKey: listMaintenanceJobsQueryKey() });
       break;
+    case "epub": {
+      const targetId = numberOrNull(event.data.target_id);
+      if (targetId !== null) {
+        qc.invalidateQueries({
+          queryKey: getTargetEpubQueryKey({ path: { target_id: targetId } }),
+        });
+      }
+      break;
+    }
     default:
       // Unknown topic — ignore. The handshake / keep-alive lands here too.
       break;

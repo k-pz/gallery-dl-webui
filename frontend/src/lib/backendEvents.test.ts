@@ -11,6 +11,7 @@ import {
   getDownloadProgressQueryKey,
   getDownloadQueryKey,
   getMaintenanceJobProgressQueryKey,
+  getTargetEpubQueryKey,
   listDownloadsQueryKey,
   listMaintenanceJobsQueryKey,
   listOutputDirsQueryKey,
@@ -29,6 +30,18 @@ function setup() {
 }
 
 describe("handleBackendEvent", () => {
+  it("epub events invalidate that series' EPUB overview", () => {
+    const { qc, invalidated } = setup();
+    handleBackendEvent(qc, { topic: "epub", type: "updated", data: { target_id: 3 } });
+    expect(invalidated).toEqual([getTargetEpubQueryKey({ path: { target_id: 3 } })]);
+  });
+
+  it("epub events without a target id are ignored", () => {
+    const { qc, invalidated } = setup();
+    handleBackendEvent(qc, { topic: "epub", type: "updated", data: {} });
+    expect(invalidated).toEqual([]);
+  });
+
   it("downloads events invalidate the list, the job, its progress, and targets", () => {
     const { qc, invalidated } = setup();
     handleBackendEvent(qc, { topic: "downloads", type: "updated", data: { id: 7 } });
