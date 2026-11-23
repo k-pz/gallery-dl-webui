@@ -235,10 +235,10 @@ def test_get_config_defaults_epub_export_dir(client: TestClient, settings: Setti
 def test_put_config_persists_epub_export_dir_outside_root(
     client: TestClient, tmp_path: Path
 ) -> None:
-    # The export dir is independent of the postprocess root (e.g. a Calibre
-    # auto-add folder elsewhere on disk); it only has to be writable.
+    # The export dir is independent of the postprocess root (e.g. a share the
+    # Calibre machine imports from); it only has to be writable.
     root = tmp_path / "media"
-    calibre = tmp_path / "calibre" / "auto-add"
+    calibre = tmp_path / "calibre" / "import"
     resp = _put(client, postprocess_root=str(root), epub_export_dir=str(calibre))
     assert resp.status_code == 200, resp.json()
     assert resp.json()["epub_export_dir"] == str(calibre.resolve())
