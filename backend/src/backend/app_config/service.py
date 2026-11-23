@@ -8,11 +8,12 @@ at the edges.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import aiosqlite
 
-from backend.app_config.constants import KNOWN_OUTPUT_DIRS_LIMIT
+from backend.app_config.constants import DEFAULT_EPUB_EXPORT_DIR_NAME, KNOWN_OUTPUT_DIRS_LIMIT
 from backend.database import transaction
 
 
@@ -32,6 +33,18 @@ def coerce_clamped_int(value: Any, default: int, *, lo: int, hi: int) -> int:
         except ValueError:
             return default
     return default
+
+
+def default_epub_export_dir(data_dir: Path) -> Path:
+    return data_dir / DEFAULT_EPUB_EXPORT_DIR_NAME
+
+
+def epub_export_dir(cfg: dict[str, Any], data_dir: Path) -> Path:
+    """The effective EPUB export directory: the configured one, else the default."""
+    raw = cfg.get("epub_export_dir")
+    if isinstance(raw, str) and raw:
+        return Path(raw)
+    return default_epub_export_dir(data_dir)
 
 
 async def get_all(db: aiosqlite.Connection) -> dict[str, Any]:

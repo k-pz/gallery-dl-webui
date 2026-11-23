@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from backend.app_config.constants import DEFAULT_CHAPTER_NAMING_TEMPLATE
+from backend.config import Settings
 
 
 def _put(client: TestClient, **fields):
@@ -223,3 +224,44 @@ def test_put_config_preserves_komga_credentials_when_omitted(client: TestClient)
     assert cleared.status_code == 200, cleared.json()
     assert cleared.json()["komga_base_url"] is None
     assert cleared.json()["komga_api_key"] is None
+
+
+def test_get_config_defaults_epub_export_dir(client: TestClient, settings: Settings) -> None:
+    body = client.get("/api/config").json()
+    assert body["epub_export_dir"] is None
+    assert body["epub_export_dir_default"] == str(settings.data_dir / "epub")
+
+
+def test_put_config_persists_epub_export_dir_outside_root(
+    client: TestClient, tmp_path: Path
+) -> None:
+    # The export dir is independent of the postprocess root (e.g. a Calibre
+    # auto-add folder elsewhere on disk); it only has to be writable.
+    root = tmp_path / "media"
+    calibre = tmp_path / "calibre" / "auto-add"
+    resp = _put(client, postprocess_root=str(root), epub_export_dir=str(calibre))
+    assert resp.status_code == 200, resp.json()
+    assert resp.json()["epub_export_dir"] == str(calibre.resolve())
+    assert calibre.is_dir()
+    assert client.get("/api/config").json()["epub_export_dir"] == str(calibre.resolve())
+
+
+def test_put_config_rejects_relative_epub_export_dir(client: TestClient) -> None:
+    resp = _put(client, epub_export_dir="relative/epub")
+    assert resp.status_code == 400
+    assert "epub_export_dir" in resp.json()["detail"]
+
+
+def test_put_config_preserves_epub_export_dir_when_omitted(
+    client: TestClient, tmp_path: Path
+) -> None:
+    target = tmp_path / "epub-out"
+    _put(client, epub_export_dir=str(target))
+    resp = _put(client)
+    assert resp.json()["epub_export_dir"] == str(target.resolve())
+
+
+def test_put_config_clears_epub_export_dir_with_blank(client: TestClient, tmp_path: Path) -> None:
+    _put(client, epub_export_dir=str(tmp_path / "epub-out"))
+    resp = _put(client, epub_export_dir="  ")
+    assert resp.json()["epub_export_dir"] is None

@@ -15,6 +15,10 @@ class AppConfigOut(BaseModel):
     max_parallel_postprocess: int
     komga_base_url: str | None
     komga_api_key: str | None
+    # Where EPUB exports are written; None means the default
+    # `<data dir>/epub` (see `epub_export_dir_default`).
+    epub_export_dir: str | None = None
+    epub_export_dir_default: str = ""
 
 
 class AppConfigIn(BaseModel):
@@ -28,3 +32,5 @@ class AppConfigIn(BaseModel):
     max_parallel_postprocess: int | None = None
     komga_base_url: str | None = None
     komga_api_key: str | None = None
+    # Omitted preserves the stored value; null or blank resets to the default.
+    epub_export_dir: str | None = None

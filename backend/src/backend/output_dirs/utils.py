@@ -42,6 +42,26 @@ async def validate_under_root(
     return await asyncio.to_thread(_validate_under_root_sync, raw, root, field=field, create=create)
 
 
+async def validate_writable_dir(raw: str, *, field: str) -> Path:
+    """Async front for `_validate_writable_dir_sync` — same NAS caveat as above."""
+    return await asyncio.to_thread(_validate_writable_dir_sync, raw, field=field)
+
+
+def _validate_writable_dir_sync(raw: str, *, field: str) -> Path:
+    """An absolute directory anywhere on disk (not tied to the postprocess
+    root), created with `mkdir -p` and write-probed."""
+    path = Path(raw)
+    if not path.is_absolute():
+        raise HTTPException(status_code=400, detail=f"{field} must be an absolute path")
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"cannot create {field}: {exc}") from exc
+    resolved = path.resolve()
+    _probe_writable(resolved, field)
+    return resolved
+
+
 def _validate_root_sync(raw: str) -> Path:
     path = Path(raw)
     if not path.is_absolute():
