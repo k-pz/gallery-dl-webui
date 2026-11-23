@@ -147,3 +147,38 @@ async def test_migrate_adds_target_metadata_source_url(tmp_path: Path) -> None:
     finally:
         await db.close()
     assert "metadata_source_url" in target_cols
+
+
+async def test_epub_books_cascade_on_target_delete(tmp_path: Path) -> None:
+    from backend.targets import service as targets_service
+
+    db = await open_database(tmp_path / "jobs.db")
+    try:
+        target = await targets_service.upsert(db, "https://example/s", "fake", None)
+        await db.execute(
+            "INSERT INTO epub_books(target_id, position, chapter_start, chapter_end) "
+            "VALUES (?, 1, 1, 10)",
+            (target.id,),
+        )
+        await db.commit()
+        await targets_service.delete(db, target.id)
+        async with db.execute("SELECT COUNT(*) FROM epub_books") as cur:
+            row = await cur.fetchone()
+        assert row is not None
+        assert row[0] == 0
+    finally:
+        await db.close()
+
+
+async def test_epub_books_position_is_unique_per_target(tmp_path: Path) -> None:
+    from backend.targets import service as targets_service
+
+    db = await open_database(tmp_path / "jobs.db")
+    try:
+        target = await targets_service.upsert(db, "https://example/s", "fake", None)
+        sql = "INSERT INTO epub_books(target_id, position, chapter_start) VALUES (?, 1, ?)"
+        await db.execute(sql, (target.id, 1))
+        with pytest.raises(aiosqlite.IntegrityError):
+            await db.execute(sql, (target.id, 5))
+    finally:
+        await db.close()
