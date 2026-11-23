@@ -25,3 +25,8 @@ DEFAULT_READING_DIRECTION = "ltr"
 # typo'd config value can't spawn a thread storm.
 DEFAULT_MAX_PARALLEL_POSTPROCESS = 3
 MAX_PARALLEL_POSTPROCESS_CAP = 16
+
+# EPUB exports land in `<data dir>/<this>` unless the user configures a
+# directory (e.g. a Calibre auto-add folder). The data dir is always writable,
+# including under the systemd unit's ProtectSystem=strict sandbox.
+DEFAULT_EPUB_EXPORT_DIR_NAME = "epub"

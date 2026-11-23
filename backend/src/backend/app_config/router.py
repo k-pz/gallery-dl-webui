@@ -16,16 +16,22 @@ from backend.app_config.constants import (
 from backend.app_config.exceptions import DefaultOutputDirWithoutRoot
 from backend.app_config.schemas import AppConfigIn, AppConfigOut
 from backend.comic_metadata import validate_chapter_naming_template
-from backend.dependencies import DbDep, EventBusDep
+from backend.config import Settings
+from backend.dependencies import DbDep, EventBusDep, SettingsDep
 from backend.events import config_event
 from backend.exceptions import BadRequestError
-from backend.output_dirs.utils import coerce_optional, validate_root, validate_under_root
+from backend.output_dirs.utils import (
+    coerce_optional,
+    validate_root,
+    validate_under_root,
+    validate_writable_dir,
+)
 from backend.targets.utils import parse_duration
 
 router = APIRouter(tags=["config"])
 
 
-def _load_config(cfg: dict[str, object]) -> AppConfigOut:
+def _load_config(cfg: dict[str, object], settings: Settings) -> AppConfigOut:
     root = cfg.get("postprocess_root")
     if not isinstance(root, str):
         root = None
@@ -65,6 +71,9 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
     komga_api_key = cfg.get("komga_api_key")
     if not isinstance(komga_api_key, str) or not komga_api_key:
         komga_api_key = None
+    epub_dir = cfg.get("epub_export_dir")
+    if not isinstance(epub_dir, str) or not epub_dir:
+        epub_dir = None
     return AppConfigOut(
         postprocess_root=root,
         postprocess_default_output_dir=default,
@@ -77,16 +86,20 @@ def _load_config(cfg: dict[str, object]) -> AppConfigOut:
         max_parallel_postprocess=max_postprocess,
         komga_base_url=komga_base_url,
         komga_api_key=komga_api_key,
+        epub_export_dir=epub_dir,
+        epub_export_dir_default=str(service.default_epub_export_dir(settings.data_dir)),
     )
 
 
 @router.get("/config", operation_id="getConfig")
-async def get_config(db: DbDep) -> AppConfigOut:
-    return _load_config(await service.get_all(db))
+async def get_config(db: DbDep, settings: SettingsDep) -> AppConfigOut:
+    return _load_config(await service.get_all(db), settings)
 
 
 @router.put("/config", operation_id="putConfig")
-async def put_config(body: AppConfigIn, db: DbDep, bus: EventBusDep) -> AppConfigOut:
+async def put_config(
+    body: AppConfigIn, db: DbDep, bus: EventBusDep, settings: SettingsDep
+) -> AppConfigOut:
     root_raw = coerce_optional(body.postprocess_root)
     default_raw = coerce_optional(body.postprocess_default_output_dir)
 
@@ -176,6 +189,20 @@ async def put_config(body: AppConfigIn, db: DbDep, bus: EventBusDep) -> AppConfi
         stored_key = existing.get("komga_api_key")
         komga_api_key_raw = stored_key if isinstance(stored_key, str) and stored_key else None
 
+    # EPUB export dir: same omitted-preserves / null-clears contract as the
+    # Komga fields. It may live outside the postprocess root (a Calibre
+    # auto-add folder usually does), so it is only checked for writability.
+    if "epub_export_dir" in body.model_fields_set:
+        epub_raw = coerce_optional(body.epub_export_dir)
+        epub_dir = (
+            str(await validate_writable_dir(epub_raw, field="epub_export_dir"))
+            if epub_raw is not None
+            else None
+        )
+    else:
+        stored_epub = existing.get("epub_export_dir")
+        epub_dir = stored_epub if isinstance(stored_epub, str) and stored_epub else None
+
     updates: dict[str, object] = {
         "postprocess_root": root_str,
         "postprocess_default_output_dir": str(default_path) if default_path else None,
@@ -188,7 +215,8 @@ async def put_config(body: AppConfigIn, db: DbDep, bus: EventBusDep) -> AppConfi
         "max_parallel_postprocess": max_post,
         "komga_base_url": komga_base_url_raw,
         "komga_api_key": komga_api_key_raw,
+        "epub_export_dir": epub_dir,
     }
     await service.set_many(db, updates)
     bus.publish(config_event())
-    return _load_config(updates)
+    return _load_config(updates, settings)
