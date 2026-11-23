@@ -938,6 +938,21 @@ a {
   margin: -4px -8px 0;
   border-top: 1px solid var(--app-border-subtle);
 }
+.epub-panel {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--app-border-subtle);
+}
+.epub-book-row {
+  padding: 8px 10px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 6px;
+}
+.epub-book-index {
+  min-width: 28px;
+  padding-bottom: 6px;
+}
 .lib-row-chev {
   transition: transform 0.18s ease;
   color: var(--app-text-muted);
