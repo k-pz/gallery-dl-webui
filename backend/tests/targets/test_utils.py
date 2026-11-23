@@ -27,3 +27,29 @@ def test_parse_duration_accepts_valid(raw: str, expected: timedelta) -> None:
 def test_parse_duration_rejects_invalid(raw: str) -> None:
     with pytest.raises(ValueError):
         parse_duration(raw)
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("1w 2d\t3h  4m 5s", timedelta(weeks=1, days=2, hours=3, minutes=4, seconds=5)),
+        ("90 M", timedelta(minutes=90)),
+        ("007h", timedelta(hours=7)),
+    ],
+)
+def test_parse_duration_handles_spacing_case_and_padding(raw: str, expected: timedelta) -> None:
+    assert parse_duration(raw) == expected
+
+
+def test_parse_duration_rejects_case_folded_unit_lookalikes() -> None:
+    # U+017F (long s) case-folds to "s", so the case-insensitive shape check
+    # accepts it; it must still be rejected as invalid, not crash.
+    with pytest.raises(ValueError):
+        parse_duration("1\u017f")
+
+
+def test_parse_duration_long_digit_runs_stay_linear() -> None:
+    # A unit-less digit run must be rejected without quadratic backtracking.
+    with pytest.raises(ValueError):
+        parse_duration("9" * 200_000)
+    assert parse_duration("1s" * 50_000) == timedelta(seconds=50_000)
