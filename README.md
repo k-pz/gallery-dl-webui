@@ -34,6 +34,7 @@ backend/                ← FastAPI app (uv project, src-layout)
     downloads/          ← downloads domain (router, schemas, service, worker,
                           gallery, postprocess, live_progress, progress)
     targets/            ← watched targets (router, service, poller, durations)
+    epub/               ← per-series EPUB books (CBZ → fixed-layout EPUB3)
     maintenance/        ← maintenance jobs (rebuild library, Komga push,
                           LXC update, …) + worker + live progress
     realtime/           ← websocket fan-out of EventBus events
@@ -138,6 +139,51 @@ Config, so a missing whitelist surfaces immediately as a 400.
 toggling the delete-raw setting and resubmitting the same URL will not re-pack
 a chapter — `gallery-dl` will short-circuit. To force a re-pack, wipe the
 matching archive row first.
+
+### EPUB export (Calibre)
+
+Packed chapters can be bundled into EPUB books, e.g. to import into
+Calibre. In the **Library** tab, expand a series and open **EPUB books**:
+
+- Each book is a chapter range (`From chapter` – `To chapter`, inclusive,
+  decimals allowed). Leave `To chapter` empty on the last book to keep it
+  open, so chapters downloaded later land in it. Books are numbered in
+  chapter order; that number is the book's series index.
+- **Use volumes** pre-fills one book per ComicInfo `Volume`, plus an open
+  book for chapters not yet collected in a volume. Chapters without a volume
+  that sit between two volumes (extras, `x.5` chapters) join the earlier one.
+- Chapters that fall in no book are listed under the books.
+- **Export** writes a book; **Export N pending** writes every book that was
+  never exported or is outdated (new chapters, re-packed CBZs, or changed
+  metadata). **Download** serves the exported file through the browser.
+
+Exports go to `<export-dir>/<Series>/<Series> - Vol. NN.epub`. The export dir
+is set in **Config → EPUB export** and defaults to `epub/` inside
+`WEBUI_DATA_DIR`. It doesn't have to be under the CBZ root. Under the systemd
+unit, a directory outside `WEBUI_DATA_DIR` needs to be added via
+`EXTRA_RW_PATHS`. Because books sit in per-series subfolders, the export dir
+can't be used as a Calibre *auto-add* folder (that only picks up top-level
+files); add them with Calibre's "Add books from directories, including
+sub-directories" or `calibredb add -r`.
+
+Each EPUB is a fixed-layout (pre-paginated) EPUB3. Page images are copied
+unchanged from the CBZs. Metadata comes from the series row (tags, reading
+direction), `series.json`, and the chapters' ComicInfo:
+
+| Calibre field   | Source                                                       |
+|-----------------|--------------------------------------------------------------|
+| Title           | Custom book title, else `<Series>, Vol. <n>`                 |
+| Series / index  | Series name / book number (`calibre:series` + EPUB3 collection) |
+| Authors         | Writer and penciller (deduplicated)                          |
+| Published       | Earliest chapter date in the book                            |
+| Tags            | Series tags                                                  |
+| Publisher, languages, comments | `series.json` / ComicInfo; comments end with the book's chapter span |
+| Cover           | First page of the book                                       |
+
+Right-to-left series get `page-progression-direction="rtl"`; the table of
+contents has one entry per chapter (with its title when known). The book
+identifier is derived from the series URL and book number, so a re-exported
+book keeps the same identifier.
 
 ## Deployment
 
