@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CancelMaintenanceJobData, CancelMaintenanceJobErrors, CancelMaintenanceJobResponses, CheckForUpdatesData, CheckForUpdatesErrors, CheckForUpdatesResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, ExportLibraryData, ExportLibraryResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetMaintenanceJobProgressData, GetMaintenanceJobProgressErrors, GetMaintenanceJobProgressResponses, GetTargetData, GetTargetErrors, GetTargetResponses, GetUpdatePreviewRefData, GetUpdatePreviewRefResponses, ImportLibraryData, ImportLibraryResponses, ListDownloadsData, ListDownloadsResponses, ListMaintenanceJobsData, ListMaintenanceJobsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PollWatchedTargetsData, PollWatchedTargetsResponses, PutConfigData, PutConfigErrors, PutConfigResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, ScheduleMaintenanceJobData, ScheduleMaintenanceJobErrors, ScheduleMaintenanceJobResponses, SetUpdatePreviewRefData, SetUpdatePreviewRefErrors, SetUpdatePreviewRefResponses, TailLogsApiLogsTailGetData, TailLogsApiLogsTailGetErrors, TailLogsApiLogsTailGetResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
+import type { CancelDownloadData, CancelDownloadErrors, CancelDownloadResponses, CancelMaintenanceJobData, CancelMaintenanceJobErrors, CancelMaintenanceJobResponses, CheckForUpdatesData, CheckForUpdatesErrors, CheckForUpdatesResponses, CreateDownloadData, CreateDownloadErrors, CreateDownloadResponses, CreateOutputDirData, CreateOutputDirErrors, CreateOutputDirResponses, DeleteTargetData, DeleteTargetErrors, DeleteTargetResponses, DownloadTargetEpubBookData, DownloadTargetEpubBookErrors, DownloadTargetEpubBookResponses, ExportLibraryData, ExportLibraryResponses, ExportTargetEpubBookData, ExportTargetEpubBookErrors, ExportTargetEpubBookResponses, ExportTargetEpubBooksData, ExportTargetEpubBooksErrors, ExportTargetEpubBooksResponses, GetConfigData, GetConfigResponses, GetDownloadData, GetDownloadErrors, GetDownloadProgressData, GetDownloadProgressErrors, GetDownloadProgressResponses, GetDownloadResponses, GetHealthData, GetHealthResponses, GetMaintenanceJobProgressData, GetMaintenanceJobProgressErrors, GetMaintenanceJobProgressResponses, GetTargetData, GetTargetEpubData, GetTargetEpubErrors, GetTargetEpubResponses, GetTargetErrors, GetTargetResponses, GetUpdatePreviewRefData, GetUpdatePreviewRefResponses, ImportLibraryData, ImportLibraryResponses, ListDownloadsData, ListDownloadsResponses, ListMaintenanceJobsData, ListMaintenanceJobsResponses, ListOutputDirsData, ListOutputDirsResponses, ListTargetsData, ListTargetsResponses, PollTargetData, PollTargetErrors, PollTargetResponses, PollWatchedTargetsData, PollWatchedTargetsResponses, PutConfigData, PutConfigErrors, PutConfigResponses, PutTargetEpubBooksData, PutTargetEpubBooksErrors, PutTargetEpubBooksResponses, RequeueDownloadData, RequeueDownloadErrors, RequeueDownloadResponses, ScheduleMaintenanceJobData, ScheduleMaintenanceJobErrors, ScheduleMaintenanceJobResponses, SetUpdatePreviewRefData, SetUpdatePreviewRefErrors, SetUpdatePreviewRefResponses, TailLogsApiLogsTailGetData, TailLogsApiLogsTailGetErrors, TailLogsApiLogsTailGetResponses, UpdateTargetData, UpdateTargetErrors, UpdateTargetResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -102,6 +102,50 @@ export const pollWatchedTargets = <ThrowOnError extends boolean = false>(options
  * Poll Target
  */
 export const pollTarget = <ThrowOnError extends boolean = false>(options: Options<PollTargetData, ThrowOnError>) => (options.client ?? client).post<PollTargetResponses, PollTargetErrors, ThrowOnError>({ url: '/api/targets/{target_id}/poll', ...options });
+
+/**
+ * Get Target Epub
+ *
+ * The series' packed chapters, its books, and each book's export status.
+ */
+export const getTargetEpub = <ThrowOnError extends boolean = false>(options: Options<GetTargetEpubData, ThrowOnError>) => (options.client ?? client).get<GetTargetEpubResponses, GetTargetEpubErrors, ThrowOnError>({ url: '/api/targets/{target_id}/epub', ...options });
+
+/**
+ * Put Target Epub Books
+ *
+ * Replace the series' book list. Books are re-numbered in chapter order.
+ */
+export const putTargetEpubBooks = <ThrowOnError extends boolean = false>(options: Options<PutTargetEpubBooksData, ThrowOnError>) => (options.client ?? client).put<PutTargetEpubBooksResponses, PutTargetEpubBooksErrors, ThrowOnError>({
+    url: '/api/targets/{target_id}/epub/books',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Export Target Epub Book
+ *
+ * (Re)build one book's EPUB into the export directory.
+ */
+export const exportTargetEpubBook = <ThrowOnError extends boolean = false>(options: Options<ExportTargetEpubBookData, ThrowOnError>) => (options.client ?? client).post<ExportTargetEpubBookResponses, ExportTargetEpubBookErrors, ThrowOnError>({ url: '/api/targets/{target_id}/epub/books/{book_id}/export', ...options });
+
+/**
+ * Export Target Epub Books
+ *
+ * Export every book that was never exported or is outdated.
+ *
+ * One failing book doesn't stop the rest; failures are reported per book.
+ */
+export const exportTargetEpubBooks = <ThrowOnError extends boolean = false>(options: Options<ExportTargetEpubBooksData, ThrowOnError>) => (options.client ?? client).post<ExportTargetEpubBooksResponses, ExportTargetEpubBooksErrors, ThrowOnError>({ url: '/api/targets/{target_id}/epub/export', ...options });
+
+/**
+ * Download Target Epub Book
+ *
+ * The book's last exported EPUB file.
+ */
+export const downloadTargetEpubBook = <ThrowOnError extends boolean = false>(options: Options<DownloadTargetEpubBookData, ThrowOnError>) => (options.client ?? client).get<DownloadTargetEpubBookResponses, DownloadTargetEpubBookErrors, ThrowOnError>({ url: '/api/targets/{target_id}/epub/books/{book_id}/file', ...options });
 
 /**
  * List Output Dirs
