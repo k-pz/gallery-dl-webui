@@ -43,6 +43,7 @@ export function ConfigPanel() {
   const [maxPostprocess, setMaxPostprocess] = useState<number>(3);
   const [komgaBaseUrl, setKomgaBaseUrl] = useState("");
   const [komgaApiKey, setKomgaApiKey] = useState("");
+  const [epubExportDir, setEpubExportDir] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
@@ -64,6 +65,7 @@ export function ConfigPanel() {
       setMaxPostprocess(data.max_parallel_postprocess ?? 3);
       setKomgaBaseUrl(data.komga_base_url ?? "");
       setKomgaApiKey(data.komga_api_key ?? "");
+      setEpubExportDir(data.epub_export_dir ?? "");
     }
   }, [data]);
 
@@ -100,6 +102,7 @@ export function ConfigPanel() {
       maxPostprocess !== (data.max_parallel_postprocess ?? 3) ||
       (komgaBaseUrl.trim() || null) !== (data.komga_base_url ?? null) ||
       (komgaApiKey.trim() || null) !== (data.komga_api_key ?? null) ||
+      (epubExportDir.trim() || null) !== (data.epub_export_dir ?? null) ||
       excludedDirty);
 
   /** Wrap a state setter so any user edit marks the form as touched. */
@@ -125,6 +128,7 @@ export function ConfigPanel() {
         max_parallel_postprocess: maxPostprocess,
         komga_base_url: komgaBaseUrl.trim() || null,
         komga_api_key: komgaApiKey.trim() || null,
+        epub_export_dir: epubExportDir.trim() || null,
       },
     });
   };
@@ -302,6 +306,29 @@ export function ConfigPanel() {
               onChange={(e) => touch(setKomgaApiKey)(e.currentTarget.value)}
               disabled={mutation.isPending}
               autoComplete="off"
+              styles={{ input: { fontFamily: "var(--app-mono)" } }}
+            />
+          </FormSection>
+
+          <Divider />
+
+          <FormSection
+            kicker="export"
+            title="EPUB export"
+            description={
+              <>
+                Books exported from a series in the Library are written to{" "}
+                <Code>&lt;export-dir&gt;/&lt;Series&gt;/&lt;Series&gt; - Vol. NN.epub</Code>.
+              </>
+            }
+          >
+            <TextInput
+              label="EPUB export directory"
+              placeholder={data.epub_export_dir_default}
+              description="Leave empty to use the default shown. Doesn't need to be under the root. Created if missing; must be writable."
+              value={epubExportDir}
+              onChange={(e) => touch(setEpubExportDir)(e.currentTarget.value)}
+              disabled={mutation.isPending}
               styles={{ input: { fontFamily: "var(--app-mono)" } }}
             />
           </FormSection>

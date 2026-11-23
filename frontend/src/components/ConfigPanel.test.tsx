@@ -24,6 +24,8 @@ type ConfigShape = {
   max_parallel_postprocess: number;
   komga_base_url: string | null;
   komga_api_key: string | null;
+  epub_export_dir: string | null;
+  epub_export_dir_default: string;
 };
 
 const emptyConfig: ConfigShape = {
@@ -38,6 +40,8 @@ const emptyConfig: ConfigShape = {
   max_parallel_postprocess: 3,
   komga_base_url: null,
   komga_api_key: null,
+  epub_export_dir: null,
+  epub_export_dir_default: "/data/epub",
 };
 
 function configHandler(state: { current: ConfigShape }) {
@@ -158,6 +162,7 @@ describe("ConfigPanel", () => {
       max_parallel_postprocess: 3,
       komga_base_url: null,
       komga_api_key: null,
+      epub_export_dir: null,
     });
     await screen.findByText(/saved/i);
   });
@@ -240,6 +245,8 @@ describe("ConfigPanel", () => {
         max_parallel_postprocess: 3,
         komga_base_url: null,
         komga_api_key: null,
+        epub_export_dir: null,
+        epub_export_dir_default: "/data/epub",
       },
     };
     const fetchSpy = mockFetch(configHandler(state));
@@ -270,6 +277,28 @@ describe("ConfigPanel", () => {
       max_parallel_postprocess: 3,
       komga_base_url: null,
       komga_api_key: null,
+      epub_export_dir: null,
     });
+  });
+  it("shows the default EPUB export dir and sends a custom one", async () => {
+    const state = { current: { ...emptyConfig } };
+    const fetchSpy = mockFetch(configHandler(state));
+
+    renderWithProviders(<ConfigPanel />);
+
+    const input = (await screen.findByLabelText(/epub export directory/i)) as HTMLInputElement;
+    expect(input.placeholder).toBe("/data/epub");
+    fireEvent.change(input, { target: { value: "  /mnt/nas/Books/manga  " } });
+    fireEvent.click(await screen.findByRole("button", { name: /save/i }));
+
+    let putCall: FetchArgs | undefined;
+    await waitFor(() => {
+      putCall = findCall(fetchSpy, (i, init) => methodOf(i, init) === "PUT");
+      expect(putCall).toBeDefined();
+    });
+    const [putInput, putInit] = putCall as FetchArgs;
+    expect(JSON.parse(await bodyOf(putInput, putInit)).epub_export_dir).toBe(
+      "/mnt/nas/Books/manga",
+    );
   });
 });
