@@ -27,6 +27,8 @@ DEFAULT_MAX_PARALLEL_POSTPROCESS = 3
 MAX_PARALLEL_POSTPROCESS_CAP = 16
 
 # EPUB exports land in `<data dir>/<this>` unless the user configures a
-# directory (e.g. a Calibre auto-add folder). The data dir is always writable,
-# including under the systemd unit's ProtectSystem=strict sandbox.
+# directory (e.g. a share the Calibre machine imports from). Books are
+# written into per-series subfolders, so it is *not* usable as a Calibre
+# auto-add folder, which only picks up top-level files. The data dir is always
+# writable, including under the systemd unit's ProtectSystem=strict sandbox.
 DEFAULT_EPUB_EXPORT_DIR_NAME = "epub"

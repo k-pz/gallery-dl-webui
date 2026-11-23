@@ -190,8 +190,9 @@ async def put_config(
         komga_api_key_raw = stored_key if isinstance(stored_key, str) and stored_key else None
 
     # EPUB export dir: same omitted-preserves / null-clears contract as the
-    # Komga fields. It may live outside the postprocess root (a Calibre
-    # auto-add folder usually does), so it is only checked for writability.
+    # Komga fields. It may live outside the postprocess root (e.g. a share
+    # the Calibre machine imports from), so it is only checked for
+    # writability.
     if "epub_export_dir" in body.model_fields_set:
         epub_raw = coerce_optional(body.epub_export_dir)
         epub_dir = (
