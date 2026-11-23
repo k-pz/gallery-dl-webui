@@ -15,6 +15,7 @@ from backend.downloads.gallery import Gallery
 from backend.downloads.live_progress import LiveProgress
 from backend.downloads.router import router as downloads_router
 from backend.downloads.worker import Worker
+from backend.epub.router import router as epub_router
 from backend.events import EventBus
 from backend.health.router import router as health_router
 from backend.library.router import router as library_router
@@ -110,6 +111,7 @@ def create_app(
     app.include_router(health_router, prefix="/api")
     app.include_router(downloads_router, prefix="/api")
     app.include_router(targets_router, prefix="/api")
+    app.include_router(epub_router, prefix="/api")
     app.include_router(output_dirs_router, prefix="/api")
     app.include_router(config_router, prefix="/api")
     app.include_router(library_router, prefix="/api")

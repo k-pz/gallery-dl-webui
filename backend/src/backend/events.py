@@ -142,6 +142,11 @@ def maintenance_event(action: str, **data: Any) -> Event:
     return Event(topic="maintenance", type=action, data=data)
 
 
+def epub_event(target_id: int) -> Event:
+    """A series' EPUB book list or export state changed."""
+    return Event(topic="epub", type="updated", data={"target_id": target_id})
+
+
 def progress_event(download_id: int, **data: Any) -> Event:
     """Per-download fine-grained progress (file completed, postprocess tick)."""
     return Event(topic="progress", type="download", data={"download_id": download_id, **data})
