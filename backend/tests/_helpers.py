@@ -67,3 +67,60 @@ def write_cbz_with_comicinfo(path: Path, series: str, chapter: str, title: str =
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("ComicInfo.xml", build_comicinfo_xml(ch))
         zf.writestr("001.jpg", b"x")
+
+
+def png_bytes(width: int, height: int) -> bytes:
+    """Smallest byte string `sniff_image` reads as a PNG of the given size."""
+    ihdr = width.to_bytes(4) + height.to_bytes(4) + b"\x08\x02\x00\x00\x00"
+    return b"\x89PNG\r\n\x1a\n" + (13).to_bytes(4) + b"IHDR" + ihdr + b"\x00\x00\x00\x00"
+
+
+def jpeg_bytes(width: int, height: int) -> bytes:
+    """A JPEG header (SOI + APP0 + SOF0) carrying the given frame size."""
+    app0 = b"\xff\xe0" + (16).to_bytes(2) + b"JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+    sof0 = (
+        b"\xff\xc0"
+        + (17).to_bytes(2)
+        + b"\x08"
+        + height.to_bytes(2)
+        + width.to_bytes(2)
+        + b"\x03\x01\x22\x00\x02\x11\x01\x03\x11\x01"
+    )
+    return b"\xff\xd8" + app0 + sof0 + b"\xff\xd9"
+
+
+def write_chapter_cbz(
+    path: Path,
+    series: str,
+    chapter: str,
+    *,
+    pages: list[tuple[str, bytes]] | None = None,
+    title: str = "",
+    volume: str = "",
+    date: str = "",
+    author: str = "",
+    artist: str = "",
+    lang: str = "",
+    description: str = "",
+) -> Path:
+    """Write a CBZ with ComicInfo.xml and real (header-only) page images."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    page_list = pages if pages is not None else [("001.png", png_bytes(800, 1200))]
+    ch = ChapterRecord(
+        manga=series,
+        chapter=chapter,
+        title=title,
+        volume=volume,
+        lang=lang,
+        author=author,
+        date=date,
+        dir=path.parent,
+        pages=[Path(name) for name, _ in page_list],
+        description=description,
+        artist=artist,
+    )
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("ComicInfo.xml", build_comicinfo_xml(ch))
+        for name, data in page_list:
+            zf.writestr(name, data)
+    return path
