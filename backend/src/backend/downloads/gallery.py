@@ -18,6 +18,7 @@ from backend.comic_metadata import (
     earliest_date,
     normalize_series_status,
     normalize_tags,
+    volume_string,
 )
 from backend.config import Settings
 from backend.downloads.capture import ChapterErrorCollector
@@ -58,6 +59,11 @@ class MetadataResult:
     title for that chapter — title coverage varies wildly between extractors,
     so this is always a subset of `chapter_dates`' keys at best.
 
+    `chapter_volumes` maps the same key to the chapter's volume number, as a
+    string ("3"). Only chapters the source has assigned to a volume appear:
+    extractors report "no volume yet" as 0 or an empty value, and both are
+    left out. MangaDex fills it from the series-level chapter feed.
+
     `earliest_chapter_date` is the minimum of `chapter_dates` values — the
     series' first-publication date as far as the source knows it. `None` when
     no chapter exposed a usable date.
@@ -68,6 +74,7 @@ class MetadataResult:
     series_tags: list[str] | None = None
     chapter_dates: dict[tuple[str, str], str] = field(default_factory=dict)
     chapter_titles: dict[tuple[str, str], str] = field(default_factory=dict)
+    chapter_volumes: dict[tuple[str, str], str] = field(default_factory=dict)
     earliest_chapter_date: str | None = None
 
 
@@ -190,17 +197,26 @@ class _MetadataSimulationJob(SimulationJob):
     _tags_box: list[list[str] | None]
     _dates_box: list[dict[tuple[str, str], str]]
     _titles_box: list[dict[tuple[str, str], str]]
+    _volumes_box: list[dict[tuple[str, str], str]]
 
     def __init__(self, url: Any, parent: SimulationJob | None = None) -> None:
         super().__init__(url, parent)
         if not _inherit_shared_state(
-            self, parent, "_series_box", "_status_box", "_tags_box", "_dates_box", "_titles_box"
+            self,
+            parent,
+            "_series_box",
+            "_status_box",
+            "_tags_box",
+            "_dates_box",
+            "_titles_box",
+            "_volumes_box",
         ):
             self._series_box = [None]
             self._status_box = [None]
             self._tags_box = [None]
             self._dates_box = [{}]
             self._titles_box = [{}]
+            self._volumes_box = [{}]
 
     def handle_queue(self, url: str, kwdict: dict[str, Any]) -> None:
         if self._capture(kwdict):
@@ -266,6 +282,9 @@ class _MetadataSimulationJob(SimulationJob):
             title = kwdict.get("title")
             if isinstance(title, str) and title.strip():
                 self._titles_box[0].setdefault((manga, chapter), title.strip())
+            volume = volume_string(kwdict.get("volume"))
+            if volume:
+                self._volumes_box[0].setdefault((manga, chapter), volume)
         date = date_iso(kwdict.get("date"))
         if manga and chapter and date:
             self._dates_box[0].setdefault((manga, chapter), date)
@@ -323,6 +342,7 @@ class Gallery:
             series_tags=job._tags_box[0],
             chapter_dates=chapter_dates,
             chapter_titles=dict(job._titles_box[0]),
+            chapter_volumes=dict(job._volumes_box[0]),
             earliest_chapter_date=earliest_date(chapter_dates.values()),
         )
 

@@ -26,6 +26,7 @@ def _fresh_job() -> _MetadataSimulationJob:
     job._tags_box = [None]
     job._dates_box = [{}]
     job._titles_box = [{}]
+    job._volumes_box = [{}]
     return job
 
 
@@ -137,6 +138,22 @@ def test_capture_ignores_title_when_manga_missing():
     assert job._titles_box[0] == {}
 
 
+def test_capture_banks_chapter_volume():
+    job = _fresh_job()
+    job._capture({"manga": "S", "chapter": 12, "date": datetime(2026, 1, 5), "volume": 3})
+    job._capture({"manga": "S", "chapter": 13, "chapter_minor": ".5", "volume": "04"})
+    assert job._volumes_box[0] == {("S", "12"): "3", ("S", "13.5"): "4"}
+
+
+@pytest.mark.parametrize("volume", [0, "", None, "0", "TBD", 2.5, True])
+def test_capture_skips_unassigned_or_unusable_volume(volume):
+    """MangaDex reports "not in a volume yet" as 0; ComicInfo needs a whole
+    number, so fractional and non-numeric values are dropped too."""
+    job = _fresh_job()
+    job._capture({"manga": "S", "chapter": 1, "volume": volume})
+    assert job._volumes_box[0] == {}
+
+
 def test_handle_queue_skips_super_when_capture_succeeds(monkeypatch):
     """The core optimisation: a complete queue kwdict means no child spawn."""
     job = _fresh_job()
@@ -223,3 +240,18 @@ def test_fake_gallery_extract_metadata_returns_titles():
 
     meta = gallery.extract_metadata("https://example/x")
     assert meta.chapter_titles == {("S", "1"): "Intro"}
+
+
+def test_fake_gallery_extract_metadata_returns_volumes():
+    from pathlib import Path
+
+    from backend.config import Settings
+    from tests.fakes import FakeGallery, FakeGalleryConfig
+
+    config = FakeGalleryConfig()
+    config.chapter_dates_for["https://example/x"] = {("S", "1"): "2026-01-01"}
+    config.chapter_volumes_for["https://example/x"] = {("S", "1"): "1"}
+    gallery = FakeGallery(Settings(data_dir=Path("/tmp/does-not-matter")), config=config)
+
+    meta = gallery.extract_metadata("https://example/x")
+    assert meta.chapter_volumes == {("S", "1"): "1"}
