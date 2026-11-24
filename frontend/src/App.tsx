@@ -1,4 +1,4 @@
-import { Box, Container, Stack, Tabs } from "@mantine/core";
+import { Container, Stack, Tabs } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
@@ -8,14 +8,13 @@ import { AppVersion } from "./components/AppVersion";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { CountBadge } from "./components/CountBadge";
 import { HealthBadge } from "./components/HealthBadge";
+import { LibraryView } from "./components/LibraryView";
 import { LogsPanel } from "./components/LogsPanel";
 import { MaintenancePanel } from "./components/MaintenancePanel";
 import { MobileMenuButton } from "./components/MobileMenuButton";
 import { MobileNavDrawer } from "./components/MobileNavDrawer";
 import { RecentList } from "./components/RecentList";
 import { RunningJobsPanel } from "./components/RunningJobsPanel";
-import { SubmitForm } from "./components/SubmitForm";
-import { TargetsList } from "./components/TargetsList";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { useAutoSelectJob } from "./hooks/useAutoSelectJob";
 import { useModalFocusTrap } from "./hooks/useModalFocusTrap";
@@ -66,82 +65,82 @@ export default function App() {
     setTab("library");
   };
 
+  // One Tabs root spans the header (where the tab list lives) and the body
+  // (the panels). The Library panel is full-bleed and sized to the viewport
+  // so its panes scroll on their own; the other tabs keep the centred
+  // reading-width container.
   return (
-    <Box>
+    <Tabs value={tab} onChange={setTab} keepMounted variant="default" className="app-tabs">
       <a href="#main" className="app-skip-link">
         Skip to main content
       </a>
       <header className="app-shell-header">
-        <Container size="lg">
-          <div className="app-shell-header-inner">
-            <a
-              href="/library"
-              className="app-brand"
-              aria-label="gallery-dl-webui — go to library"
-              aria-current={tab === "library" ? "page" : undefined}
-              onClick={handleBrandClick}
+        <div className="app-shell-header-inner">
+          <a
+            href="/library"
+            className="app-brand"
+            aria-label="gallery-dl-webui — go to library"
+            aria-current={tab === "library" ? "page" : undefined}
+            onClick={handleBrandClick}
+          >
+            <span className="app-brand-mark" aria-hidden="true">
+              g
+            </span>
+            <h1 className="app-brand-word">gallery-dl-webui</h1>
+            <span className="app-brand-tag" aria-hidden="true">
+              archive
+            </span>
+          </a>
+          <Tabs.List className="app-nav">
+            <Tabs.Tab value="library">Library</Tabs.Tab>
+            <Tabs.Tab
+              value="jobs"
+              rightSection={<CountBadge running={running} queued={scheduled} />}
             >
-              <span className="app-brand-mark" aria-hidden="true">
-                g
-              </span>
-              <h1 className="app-brand-word">gallery-dl-webui</h1>
-              <span className="app-brand-tag" aria-hidden="true">
-                archive
-              </span>
-            </a>
-            <div className="app-shell-header-meta">
-              <HealthBadge />
-              <ThemeToggle />
-              <MobileMenuButton open={navOpen} onClick={() => setNavOpen((o) => !o)} />
-            </div>
+              Jobs
+            </Tabs.Tab>
+            <Tabs.Tab value="config">Config</Tabs.Tab>
+            <Tabs.Tab value="maintenance">Maintenance</Tabs.Tab>
+            <Tabs.Tab value="logs">Logs</Tabs.Tab>
+          </Tabs.List>
+          <div className="app-shell-header-meta">
+            <HealthBadge />
+            <ThemeToggle />
+            <MobileMenuButton open={navOpen} onClick={() => setNavOpen((o) => !o)} />
           </div>
-        </Container>
+        </div>
       </header>
-      <Container size="lg" py="xl" component="main" id="main" className="app-shell-body">
-        <Stack gap="xl">
-          <Tabs value={tab} onChange={setTab} keepMounted className="app-tabs" variant="default">
-            <Tabs.List>
-              <Tabs.Tab value="library">Library</Tabs.Tab>
-              <Tabs.Tab
-                value="jobs"
-                rightSection={<CountBadge running={running} queued={scheduled} />}
-              >
-                Jobs
-              </Tabs.Tab>
-              <Tabs.Tab value="config">Config</Tabs.Tab>
-              <Tabs.Tab value="maintenance">Maintenance</Tabs.Tab>
-              <Tabs.Tab value="logs">Logs</Tabs.Tab>
-            </Tabs.List>
-            <Tabs.Panel value="library" pt="xl">
-              <Stack gap="lg">
-                <SubmitForm />
-                <TargetsList onOpenJob={openJob} />
-              </Stack>
-            </Tabs.Panel>
-            <Tabs.Panel value="jobs" pt="xl">
-              <JobsTabBody
-                selectedId={selectedId}
-                onSelect={selectJob}
-                hasAnyActive={running > 0 || scheduled > 0}
-              />
-            </Tabs.Panel>
-            <Tabs.Panel value="config" pt="xl">
-              <ConfigPanel />
-            </Tabs.Panel>
-            <Tabs.Panel value="maintenance" pt="xl">
-              <MaintenancePanel />
-            </Tabs.Panel>
-            <Tabs.Panel value="logs" pt="xl">
-              {/* Only mount when active so the SSE stream is opened on demand
-                  and torn down when the user navigates away. */}
-              {tab === "logs" ? <LogsPanel /> : null}
-            </Tabs.Panel>
-          </Tabs>
-          <div className="app-footnote">
-            gallery-dl · webui · <AppVersion />
-          </div>
-        </Stack>
-      </Container>
+      <main id="main" className="app-shell-main" data-tab={tab}>
+        <Tabs.Panel value="library">
+          <LibraryView tab={tab} onOpenJob={openJob} />
+        </Tabs.Panel>
+        <Tabs.Panel value="jobs">
+          <PagePanel>
+            <JobsTabBody
+              selectedId={selectedId}
+              onSelect={selectJob}
+              hasAnyActive={running > 0 || scheduled > 0}
+            />
+          </PagePanel>
+        </Tabs.Panel>
+        <Tabs.Panel value="config">
+          <PagePanel>
+            <ConfigPanel />
+          </PagePanel>
+        </Tabs.Panel>
+        <Tabs.Panel value="maintenance">
+          <PagePanel>
+            <MaintenancePanel />
+          </PagePanel>
+        </Tabs.Panel>
+        <Tabs.Panel value="logs">
+          <PagePanel>
+            {/* Only mount when active so the SSE stream is opened on demand
+                and torn down when the user navigates away. */}
+            {tab === "logs" ? <LogsPanel /> : null}
+          </PagePanel>
+        </Tabs.Panel>
+      </main>
       <MobileNavDrawer
         active={tab}
         open={navOpen}
@@ -149,7 +148,21 @@ export default function App() {
         onChange={(k) => setTab(k)}
         onClose={() => setNavOpen(false)}
       />
-    </Box>
+    </Tabs>
+  );
+}
+
+/** Centred, reading-width body for every tab except the full-bleed Library. */
+function PagePanel({ children }: { children: React.ReactNode }) {
+  return (
+    <Container size="lg" py="xl" className="app-shell-body">
+      <Stack gap="xl">
+        {children}
+        <div className="app-footnote">
+          gallery-dl · webui · <AppVersion />
+        </div>
+      </Stack>
+    </Container>
   );
 }
 

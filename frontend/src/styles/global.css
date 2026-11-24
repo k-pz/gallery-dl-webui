@@ -14,6 +14,11 @@
      --bp-nav    768px  top tabs → slide-in drawer navigation
      --bp-split  880px  Jobs master-detail grid → single column
 
+   Library tiers (mirrored in hooks/useLibraryLayout.ts):
+     --bp-lib-stack   < 900px   list, then a full-screen series view
+     --bp-lib-ultra  >= 2400px  list · details · EPUB packer side by side
+     --bp-lib-rail   >= 2900px  ultra plus the activity column
+
    Container queries can't read custom-media (the spec only resolves tokens
    inside `@media`), so the 480px `.app-row` `@container` query below stays a
    literal — it is the row-local sibling of --bp-phone, documented inline. */
@@ -21,6 +26,15 @@
 @custom-media --bp-maint (max-width: 640px);
 @custom-media --bp-nav (max-width: 768px);
 @custom-media --bp-split (max-width: 880px);
+@custom-media --bp-lib-stack (max-width: 899px);
+@custom-media --bp-lib-ultra (min-width: 2400px);
+@custom-media --bp-lib-rail (min-width: 2900px);
+
+:root {
+  /* Header height (incl. its hairline). The library sizes itself to the
+     viewport below it. */
+  --app-header-h: calc(57px + env(safe-area-inset-top, 0px));
+}
 
 html,
 body,
@@ -102,8 +116,9 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--mantine-spacing-md);
-  padding: var(--mantine-spacing-md) 0;
+  gap: var(--mantine-spacing-lg);
+  height: 56px;
+  padding: 0 24px;
 }
 
 .app-brand {
@@ -180,7 +195,7 @@ a {
    the health badge is alongside it. Hide the tag, shrink the word a touch. */
 @media (--bp-phone) {
   .app-shell-header-inner {
-    padding: 0.7rem 0;
+    padding: 0 12px;
     gap: 0.5rem;
   }
   .app-brand {
@@ -197,36 +212,49 @@ a {
   }
 }
 
-/* Tab bar — a single hairline above the panel, no boxy backgrounds. */
-.app-tabs[data-variant="default"] {
-  border-bottom: 1px solid var(--app-border-subtle);
-}
-.app-tabs .mantine-Tabs-list {
-  border-bottom: none;
+/* Section tabs live in the header bar, underlined against its hairline —
+   one row of chrome instead of two, so the library gets the height. */
+.app-nav {
+  align-self: stretch;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
   gap: 0.25rem;
+  border-bottom: none;
+  min-width: 0;
 }
-.app-tabs .mantine-Tabs-tab {
+.app-nav::before {
+  display: none;
+}
+.app-nav .mantine-Tabs-tab {
   font-family: var(--app-serif);
   font-size: 1rem;
   font-weight: 500;
   letter-spacing: -0.005em;
-  padding: 0.6rem 0.95rem;
+  height: 100%;
+  padding: 0 0.85rem;
   margin-bottom: -1px;
   color: var(--app-text-muted);
   border-bottom: 2px solid transparent;
+  border-radius: 0;
   background: transparent;
   transition:
     color 0.18s ease,
     border-color 0.18s ease;
 }
-.app-tabs .mantine-Tabs-tab[data-active] {
+.app-nav .mantine-Tabs-tab[data-active] {
   color: var(--app-text);
   border-bottom-color: var(--app-accent);
   background: transparent;
 }
-.app-tabs .mantine-Tabs-tab:hover {
+.app-nav .mantine-Tabs-tab:hover {
   background: transparent;
   color: var(--app-text);
+}
+/* Narrow desktops/tablets: the brand tag yields its width to the tabs. */
+@media (max-width: 1100px) {
+  .app-brand-tag {
+    display: none;
+  }
 }
 
 /* Card section helpers — a tiny "kicker" label + heading + optional rule.
@@ -776,7 +804,6 @@ a {
    touching each component's data-size prop. */
 @media (--bp-phone) {
   .app-row .icon-btn,
-  .lib-row-actions .icon-btn,
   .jobs-list-row .icon-btn,
   .active-job-head-actions .icon-btn,
   .maint-jobs-table .icon-btn {
@@ -785,14 +812,12 @@ a {
     border-radius: 10px;
   }
   .app-row .icon-btn svg,
-  .lib-row-actions .icon-btn svg,
   .jobs-list-row .icon-btn svg,
   .active-job-head-actions .icon-btn svg,
   .maint-jobs-table .icon-btn svg {
     width: 18px;
     height: 18px;
   }
-  .lib-row-actions,
   .active-job-head-actions {
     gap: 8px;
   }
@@ -826,129 +851,563 @@ a {
   }
 }
 
-/* Collapsible library row — Direction B. Shows status + URL + summary on one
-   line. The expanded panel below carries the edit controls. */
-.lib-row {
-  border-top: 1px solid var(--app-border-subtle);
+/* ---- Library (LibraryView) ---------------------------------------------
+   One screen sized to the viewport below the header; each pane scrolls on
+   its own. Columns per tier (see --bp-lib-* and useLibraryLayout):
+     split  list | detail with tabs
+     ultra  list | details | EPUB packer   (+ activity from --bp-lib-rail)
+     stack  list in the page flow, the series view full-screen over it */
+.lib-view {
+  display: grid;
+  grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
+  gap: 16px;
+  height: calc(100dvh - var(--app-header-h));
+  min-height: 520px;
+  padding: 16px 24px;
+  box-sizing: border-box;
 }
-.lib-row-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  margin: 0 -8px;
-  transition: background-color 0.15s ease;
+.lib-view[data-layout="ultra"] {
+  grid-template-columns: 460px 600px minmax(0, 1fr);
+}
+.lib-view[data-layout="ultra"][data-rail="true"] {
+  grid-template-columns: 460px 600px minmax(0, 1fr) 340px;
+}
+.lib-view[data-layout="stack"] {
+  display: block;
+  height: auto;
+  min-height: 0;
+  padding: 0;
 }
 
-/* Library row inner layout. Two stable rows so the layout doesn't shift with
-   the presence of the "watched" indicator or the length of the tag list:
-     row 1 — pills, name (truncates), meta (right-aligned)
-     row 2 — tags
-   On phones (≤540px) the top row wraps: name on its own line, then pills,
-   then meta, so nothing is ellipsised down to "I…". */
-.lib-row-main {
-  flex: 1;
-  min-width: 0;
+.lib-pane {
+  /* Containing block for visually hidden labels inside the scrolling
+     lists, so they can't escape the pane and stretch the page. */
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-.lib-row-top {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  min-height: 0;
   min-width: 0;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  box-shadow: var(--app-shadow);
+  overflow: hidden;
 }
-.lib-row-name {
+.lib-pane-scroll {
   flex: 1 1 auto;
-  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.lib-pane-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 14px 20px 10px;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+.lib-pane-title-name {
+  font-family: var(--app-serif);
+  font-size: 1.1rem;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lib-row-pills {
-  display: inline-flex;
+.lib-subhead {
+  margin: 6px 0 0;
+  font-family: var(--app-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--app-accent);
+}
+
+/* List pane */
+.lib-add {
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+.lib-add-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+.lib-add-url {
+  flex: 1;
+  min-width: 0;
+}
+.lib-add-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--app-surface-muted);
+  border-radius: 8px;
+}
+.lib-add-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.lib-list-tools {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px 6px;
+}
+.lib-list-search {
+  flex: 1;
+  min-width: 0;
+}
+.lib-chips {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  display: flex;
   flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 12px 8px;
+}
+.lib-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--app-bg-elevated);
+  color: var(--app-text-muted);
+  font: 500 0.78rem / 1 var(--mantine-font-family);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lib-chip:hover {
+  color: var(--app-text);
+}
+.lib-chip[aria-pressed="true"] {
+  background: var(--app-text);
+  border-color: var(--app-text);
+  color: var(--app-bg);
+}
+.lib-chip:focus-visible,
+.lib-item:focus-visible,
+.series-run:focus-visible,
+.rail-item:focus-visible,
+.packer-row-pos:focus-visible,
+.lib-detail-back-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--app-ring);
+}
+.lib-chips-source {
+  margin-left: auto;
+}
+.lib-chip-count {
+  font-family: var(--app-mono);
+  font-size: 0.72rem;
+  opacity: 0.8;
+}
+.lib-list-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 12px 6px 14px;
+  font-family: var(--app-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--app-text-muted);
+}
+.lib-list-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 6px 8px;
+}
+.lib-item {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.lib-item:hover {
+  background: var(--app-surface-muted);
+}
+.lib-item[aria-current="true"] {
+  background: color-mix(in srgb, var(--app-accent) 14%, var(--app-surface-muted));
+}
+.lib-item-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.lib-item-line + .lib-item-line {
+  margin-top: 5px;
+}
+.lib-item-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lib-item-count {
+  flex-shrink: 0;
+  font-family: var(--app-mono);
+  font-size: 0.75rem;
+  color: var(--app-text-muted);
+}
+.lib-item-meta {
+  min-width: 0;
+  font-family: var(--app-mono);
+  font-size: 0.72rem;
+  color: var(--app-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lib-item-badges {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
 }
-.lib-row-meta {
-  flex-shrink: 0;
-  text-align: right;
-}
-.lib-row-tags {
-  min-width: 0;
-}
-.lib-row-actions {
-  flex-shrink: 0;
+.lib-item-watched {
+  display: inline-flex;
+  color: var(--app-accent);
 }
 
-/* Phones: let the row head wrap so the action column slides under the name
-   when there isn't room for both side-by-side, and stack the top-row pieces
-   so the name owns its own line above the pills. */
-@media (--bp-phone) {
-  .lib-row-head {
-    flex-wrap: wrap;
-    gap: 6px 8px;
-    padding: 12px 10px;
-  }
-  .lib-row-main {
-    flex-basis: 100%;
-  }
-  .lib-row-top {
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .lib-row-name {
-    order: 1;
-    flex: 1 1 100%;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    line-height: 1.35;
-  }
-  .lib-row-pills {
-    order: 2;
-    flex-basis: 100%;
-  }
-  .lib-row-meta {
-    order: 3;
-    flex-basis: 100%;
-    text-align: left;
-    /* Keep the extractor/run-count strip readable — 11.5px was the small
-       outlier among the row's phone type sizes. */
-    font-size: 12.5px;
-  }
-  .lib-row-actions {
-    margin-left: auto;
-  }
+/* Detail pane */
+.series-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 20px 12px;
 }
-.lib-row-head:hover {
-  background: var(--app-surface-muted);
+.series-head-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
-.lib-row[data-expanded="true"] .lib-row-head {
-  background: var(--app-surface-muted);
+.series-head-watched {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--app-accent);
 }
-.lib-row-body {
-  padding: 14px 16px 18px;
+.series-head-name {
+  margin: 0;
+  font-family: var(--app-serif);
+  font-size: 1.6rem;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.series-head-url {
+  min-width: 0;
+}
+.series-head-url .app-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+}
+.series-head-remove {
+  margin-left: auto;
+}
+.lib-details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px 20px 20px;
+}
+.series-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+.series-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
   background: var(--app-surface-muted);
   border-radius: 8px;
-  margin: -4px -8px 0;
-  border-top: 1px solid var(--app-border-subtle);
 }
-.epub-panel {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--app-border-subtle);
-}
-.lib-row-chev {
-  transition: transform 0.18s ease;
+.series-stat-label {
+  font-family: var(--app-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   color: var(--app-text-muted);
 }
-.lib-row[data-expanded="true"] .lib-row-chev {
-  transform: rotate(180deg);
+.series-stat-value {
+  font-family: var(--app-serif);
+  font-size: 1.3rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+.series-stat-sub {
+  font-size: 0.75rem;
+  color: var(--app-text-muted);
+}
+.series-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+  align-items: start;
+}
+.series-settings-watch {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding-top: 26px;
+}
+.series-settings-watch .mantine-Switch-root {
+  padding-top: 8px;
+}
+.series-settings-grow {
+  flex: 1;
+  margin-top: -26px;
+}
+.series-settings-wide {
+  grid-column: 1 / -1;
+}
+.series-runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.series-run {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 9px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--app-border-subtle);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+.series-run:hover {
+  background: var(--app-surface-muted);
+}
+.series-run-id {
+  font-family: var(--app-mono);
+  color: var(--app-accent);
+}
+.series-run-when,
+.series-run-ch {
+  font-family: var(--app-mono);
+  font-size: 0.78rem;
+  color: var(--app-text-muted);
+}
+
+/* Split/stack: details, EPUB books and runs behind tabs in one pane. */
+.lib-detail-tabs {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lib-detail-tabs > .mantine-Tabs-list {
+  padding: 0 20px;
+  gap: 0.25rem;
+}
+.lib-detail-tabs .mantine-Tabs-tab {
+  font-family: var(--app-serif);
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--app-text-muted);
+}
+.lib-detail-tabs .mantine-Tabs-tab[data-active] {
+  color: var(--app-text);
+  border-color: var(--app-accent);
+}
+.lib-detail-tabs > .mantine-Tabs-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lib-detail-packer {
+  display: flex;
+  flex-direction: column;
+}
+.lib-detail-empty {
+  justify-content: center;
+  padding: 24px;
+}
+.lib-detail-back {
+  display: none;
+}
+
+/* Activity column */
+.lib-rail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px 16px 16px;
+}
+.rail-title {
+  margin: 0 0 6px;
+  font-family: var(--app-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--app-accent);
+}
+.rail-count {
+  color: var(--app-text-muted);
+}
+.rail-empty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--app-text-muted);
+}
+.rail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.rail-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  width: 100%;
+  padding: 7px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--app-border-subtle);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rail-item:hover {
+  background: var(--app-surface-muted);
+}
+.rail-item-name {
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail-item-meta {
+  grid-column: 1;
+  font-family: var(--app-mono);
+  font-size: 0.72rem;
+  color: var(--app-text-muted);
+}
+.rail-item .pill {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+/* Phones and portrait tablets: the list flows with the page; the series
+   view is a full-screen layer over it with a back button. */
+@media (--bp-lib-stack) {
+  .lib-view[data-layout="stack"] > .lib-list {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
+  }
+  .lib-view[data-layout="stack"] .lib-list-scroll {
+    overflow: visible;
+    padding: 0 4px 16px;
+  }
+  .lib-item {
+    min-height: 56px;
+    padding: 10px 12px;
+  }
+  .lib-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .lib-chip {
+    min-height: 36px;
+  }
+  .lib-add-pair,
+  .series-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lib-detail[data-stacked="true"] {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    border: 0;
+    border-radius: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    animation: jobs-sheet-fade 0.15s ease;
+  }
+  .lib-detail[data-stacked="true"] .lib-detail-tabs,
+  .lib-detail[data-stacked="true"] .lib-detail-tabs > .mantine-Tabs-panel {
+    flex: none;
+    min-height: auto;
+  }
+  .lib-detail[data-stacked="true"] .lib-pane-scroll {
+    overflow: visible;
+  }
+  .lib-detail-back {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: calc(4px + env(safe-area-inset-top, 0px)) 8px 4px;
+    background: var(--app-surface);
+    border-bottom: 1px solid var(--app-border-subtle);
+  }
+  .lib-detail-back-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--app-text);
+    cursor: pointer;
+  }
+  .lib-detail-back-icon {
+    transform: rotate(90deg);
+  }
+  .lib-detail-back-title {
+    font-family: var(--app-serif);
+    font-size: 1.05rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .series-head-name {
+    font-size: 1.35rem;
+  }
 }
 
 /* ---- EPUB packer (EpubPacker + ChapterMap) ----------------------------- */
@@ -1189,6 +1648,24 @@ a {
   }
 }
 
+/* Short panes (tablets, small laptop windows) and phones: rather than
+   squeezing the book list under the map, the whole packer scrolls as one
+   column; the save/export bar stays pinned at the bottom. */
+@media (max-height: 860px), (--bp-lib-stack) {
+  .lib-detail-packer {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .lib-detail-packer .packer {
+    flex: none;
+  }
+  .lib-detail-packer .packer-list {
+    flex: none;
+    min-height: 0;
+    overflow: visible;
+  }
+}
+
 /* Touch screens: map cells and row controls become finger-sized. */
 @media (pointer: coarse) {
   .chmap-cell {
@@ -1205,6 +1682,12 @@ a {
   .packer-row-actions .icon-btn {
     min-height: 40px;
     min-width: 40px;
+  }
+  .lib-item {
+    min-height: 60px;
+  }
+  .lib-chip {
+    min-height: 36px;
   }
 }
 
@@ -1541,12 +2024,9 @@ a {
   .mob-drawer-root[data-open="true"] {
     pointer-events: auto;
   }
-  /* The top Tabs.List hides on phones — drawer owns navigation. */
-  .app-tabs .mantine-Tabs-list {
+  /* The header tab list hides on phones — the drawer owns navigation. */
+  .app-nav {
     display: none;
-  }
-  .app-tabs[data-variant="default"] {
-    border-bottom: none;
   }
 }
 
@@ -1720,8 +2200,8 @@ a {
 
 /* Phones: reclaim horizontal space. By default Container + Card + row each
    add ~16px sides → ~100px of chrome eats into a 430px viewport before any
-   content shows. Trim the Container gutter, shrink Card padding, and let
-   the lib-row hug closer to the card edge. The Card padding override targets
+   content shows. Trim the Container gutter and shrink Card padding. The
+   Card padding override targets
    the internal `.app-surface` class our theme stamps on Card root, since
    Card sets `padding` from the `padding` prop as an inline `--card-padding`
    variable and CSS-variable overrides on the same element lose to inline. */
@@ -1737,9 +2217,6 @@ a {
   }
   .app-surface.mantine-Card-root {
     padding: 14px;
-  }
-  .lib-row-head {
-    margin: 0 -4px;
   }
 }
 

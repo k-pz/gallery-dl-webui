@@ -17,7 +17,7 @@ test.describe("downloads UI", () => {
 
   test("submits a URL and shows it completed in the recent list", async ({ page }) => {
     await page.getByLabel(/gallery url/i).fill(OK_URL);
-    await page.getByRole("button", { name: /^download$/i }).click();
+    await page.getByRole("button", { name: /^add$/i }).click();
 
     // Submit doesn't auto-select. Switch to the Jobs tab and click the row
     // that just landed to open it in the active-job card.
@@ -30,7 +30,7 @@ test.describe("downloads UI", () => {
 
   test("rejects an unsupported URL inline", async ({ page }) => {
     await page.getByLabel(/gallery url/i).fill(UNSUPPORTED_URL);
-    await page.getByRole("button", { name: /^download$/i }).click();
+    await page.getByRole("button", { name: /^add$/i }).click();
 
     // The error surfaces in two places — inline under the form *and* in the
     // notification. Either is enough to confirm rejection.
@@ -39,14 +39,14 @@ test.describe("downloads UI", () => {
 
   test("validates blank input before hitting the backend", async ({ page }) => {
     await page.getByLabel(/gallery url/i).fill("   ");
-    await page.getByRole("button", { name: /^download$/i }).click();
+    await page.getByRole("button", { name: /^add$/i }).click();
 
     await expect(page.getByText(/enter a gallery url\./i)).toBeVisible();
   });
 
   test("shows live progress for a slow download", async ({ page }) => {
     await page.getByLabel(/gallery url/i).fill(SLOW_URL);
-    await page.getByRole("button", { name: /^download$/i }).click();
+    await page.getByRole("button", { name: /^add$/i }).click();
 
     await openJobByUrl(page, SLOW_URL);
 
@@ -61,7 +61,7 @@ test.describe("downloads UI", () => {
     // completed before the cancel landed (the backend then 409s) and the
     // "Cancelled" pill never appeared.
     await page.getByLabel(/gallery url/i).fill(VERY_SLOW_URL);
-    await page.getByRole("button", { name: /^download$/i }).click();
+    await page.getByRole("button", { name: /^add$/i }).click();
 
     await openJobByUrl(page, VERY_SLOW_URL);
 
@@ -88,7 +88,7 @@ test.describe("downloads UI", () => {
     // SLOW_URL on purpose — OK_URL completes in <100ms and a requeued run
     // would finish before we can observe the intermediate non-terminal state.
     await page.getByLabel(/gallery url/i).fill(SLOW_URL);
-    await page.getByRole("button", { name: /^download$/i }).click();
+    await page.getByRole("button", { name: /^add$/i }).click();
 
     await openJobByUrl(page, SLOW_URL);
 
