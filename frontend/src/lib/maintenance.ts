@@ -9,6 +9,7 @@ export const KIND_LABEL: Record<string, string> = {
   sync_komga_metadata: "Sync series metadata to Komga",
   update_lxc: "Update LXC from upstream",
   unwatch_ended_series: "Unwatch ended series",
+  fill_mangadex_volumes: "Fill volumes from MangaDex",
 };
 
 // Maintenance jobs share the download lifecycle vocabulary but not its

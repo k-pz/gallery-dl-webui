@@ -16,6 +16,7 @@ import {
   IconClock,
   IconEyeOff,
   IconFileText,
+  IconLibrary,
   IconRefresh,
 } from "./Icons";
 import { KomgaSyncCard } from "./KomgaSyncCard";
@@ -104,6 +105,14 @@ export function MaintenancePanel() {
               loading={schedulingKind === "unwatch_ended_series"}
             >
               Unwatch ended series
+            </Button>
+            <Button
+              variant="light"
+              leftSection={<IconLibrary size={ICON_SIZE.sm} />}
+              onClick={() => schedule.mutate({ body: { kind: "fill_mangadex_volumes" } })}
+              loading={schedulingKind === "fill_mangadex_volumes"}
+            >
+              Fill volumes from MangaDex
             </Button>
           </Group>
           {scheduleError && (
