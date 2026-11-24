@@ -87,9 +87,9 @@ def test_overview_lists_chapters_and_volume_suggestion(
     assert body["books"] == []
     assert body["unassigned"] == ["1", "2", "3", "4"]
     assert body["suggested_books"] == [
-        {"title": None, "chapter_start": 1.0, "chapter_end": 2.0},
-        {"title": None, "chapter_start": 3.0, "chapter_end": 3.0},
-        {"title": None, "chapter_start": 4.0, "chapter_end": None},
+        {"title": None, "chapter_start": 1.0},
+        {"title": None, "chapter_start": 3.0},
+        {"title": None, "chapter_start": 4.0},
     ]
 
 
@@ -114,16 +114,13 @@ def test_put_books_assigns_chapters_in_order(client: TestClient, library: Path) 
     resp = _put_books(
         client,
         [
-            {"chapter_start": 3, "chapter_end": None, "title": "  "},
-            {"chapter_start": 1, "chapter_end": 2, "title": "Beginnings"},
+            {"chapter_start": 3, "title": "  "},
+            {"chapter_start": 1, "title": "Beginnings"},
         ],
     )
     assert resp.status_code == 200, resp.text
     books = resp.json()["books"]
-    assert [(b["position"], b["chapter_start"], b["chapter_end"]) for b in books] == [
-        (1, 1.0, 2.0),
-        (2, 3.0, None),
-    ]
+    assert [(b["position"], b["chapter_start"]) for b in books] == [(1, 1.0), (2, 3.0)]
     assert books[0]["title"] == "Beginnings"
     assert books[0]["custom_title"] == "Beginnings"
     assert books[1]["title"] == f"{SERIES}, Vol. 2"
@@ -136,27 +133,33 @@ def test_put_books_assigns_chapters_in_order(client: TestClient, library: Path) 
     assert positions == {"1": 1, "2": 1, "3": 2, "7": 2}
 
 
-@pytest.mark.parametrize(
-    ("books", "message"),
-    [
-        ([{"chapter_start": 1, "chapter_end": 5}, {"chapter_start": 5}], "overlap"),
-        ([{"chapter_start": 1}, {"chapter_start": 5, "chapter_end": 9}], "open-ended"),
-        ([{"chapter_start": 4, "chapter_end": 2}], "ends before it starts"),
-    ],
-)
-def test_put_books_rejects_invalid_ranges(
-    client: TestClient, library: Path, books: list[dict[str, Any]], message: str
-) -> None:
-    resp = _put_books(client, books)
+def test_put_books_puts_every_numbered_chapter_in_a_book(client: TestClient, library: Path) -> None:
+    # Chapters below the first start join the first book; later chapters
+    # join the last (open) book; only non-numeric chapters stay unassigned.
+    _write_chapters(library, ["0.5", "1", "4", "9", "Extra"])
+    body = _put_books(client, [{"chapter_start": 1}, {"chapter_start": 5}]).json()
+    positions = {c["number"]: c["book_position"] for c in body["chapters"]}
+    assert positions == {"0.5": 1, "1": 1, "4": 1, "9": 2, "Extra": None}
+    assert body["unassigned"] == ["Extra"]
+
+
+def test_put_books_ignores_legacy_chapter_end(client: TestClient, library: Path) -> None:
+    _write_chapters(library, ["1", "2", "3"])
+    body = _put_books(client, [{"chapter_start": 1, "chapter_end": 1}]).json()
+    assert body["books"][0]["chapter_count"] == 3
+
+
+def test_put_books_rejects_duplicate_starts(client: TestClient, library: Path) -> None:
+    resp = _put_books(client, [{"chapter_start": 1}, {"chapter_start": 1}])
     assert resp.status_code == 400
-    assert message in resp.json()["detail"]
+    assert "two books start at chapter 1" in resp.json()["detail"]
 
 
 def test_export_writes_epub_with_series_metadata(
     client: TestClient, library: Path, settings: Settings
 ) -> None:
     _write_chapters(library, ["1", "2", "3"])
-    books = _put_books(client, [{"chapter_start": 1, "chapter_end": 2}, {"chapter_start": 3}])
+    books = _put_books(client, [{"chapter_start": 1}, {"chapter_start": 3}])
     first = books.json()["books"][0]
     tid = _target_id(client)
 
@@ -200,13 +203,13 @@ def test_new_chapter_marks_export_outdated(client: TestClient, library: Path) ->
 
 def test_resaving_unchanged_range_keeps_export_record(client: TestClient, library: Path) -> None:
     _write_chapters(library, ["1", "2"])
-    book = _put_books(client, [{"chapter_start": 1, "chapter_end": 2}]).json()["books"][0]
+    book = _put_books(client, [{"chapter_start": 1}]).json()["books"][0]
     tid = _target_id(client)
     client.post(f"/api/targets/{tid}/epub/books/{book['id']}/export")
 
-    resaved = _put_books(client, [{"chapter_start": 1, "chapter_end": 2}]).json()["books"][0]
+    resaved = _put_books(client, [{"chapter_start": 1}]).json()["books"][0]
     assert resaved["status"] == "exported"
-    retitled = _put_books(client, [{"chapter_start": 1, "chapter_end": 2, "title": "New"}])
+    retitled = _put_books(client, [{"chapter_start": 1, "title": "New"}])
     assert retitled.json()["books"][0]["status"] == "outdated"
 
 
@@ -216,11 +219,7 @@ def test_export_all_exports_pending_books_and_skips_current(
     _write_chapters(library, ["1", "2", "3"])
     _put_books(
         client,
-        [
-            {"chapter_start": 1, "chapter_end": 1},
-            {"chapter_start": 2, "chapter_end": 2},
-            {"chapter_start": 10, "chapter_end": 20},
-        ],
+        [{"chapter_start": 1}, {"chapter_start": 2}, {"chapter_start": 10}],
     )
     tid = _target_id(client)
     resp = client.post(f"/api/targets/{tid}/epub/export")
@@ -236,7 +235,7 @@ def test_export_all_reports_failures_per_book(client: TestClient, library: Path)
     _write_chapters(library, ["1"])
     # A chapter archive with ComicInfo but no pages fails its book only.
     write_chapter_cbz(library / f"{SERIES} - c002.cbz", SERIES, "2", pages=[])
-    _put_books(client, [{"chapter_start": 1, "chapter_end": 1}, {"chapter_start": 2}])
+    _put_books(client, [{"chapter_start": 1}, {"chapter_start": 2}])
     resp = client.post(f"/api/targets/{_target_id(client)}/epub/export").json()
     assert resp["exported"] == 1
     assert resp["failed"] == 1
@@ -245,7 +244,7 @@ def test_export_all_reports_failures_per_book(client: TestClient, library: Path)
 
 def test_export_empty_book_conflicts(client: TestClient, library: Path) -> None:
     _write_chapters(library, ["1"])
-    book = _put_books(client, [{"chapter_start": 5}]).json()["books"][0]
+    book = _put_books(client, [{"chapter_start": 1}, {"chapter_start": 5}]).json()["books"][1]
     resp = client.post(f"/api/targets/{_target_id(client)}/epub/books/{book['id']}/export")
     assert resp.status_code == 409
 
@@ -282,7 +281,7 @@ def test_renumbered_book_moves_its_export(
     assert (series_out / f"{SERIES} - Vol. 01.epub").is_file()
 
     # Insert a book in front: the old book becomes Vol. 2 and is outdated.
-    books = _put_books(client, [{"chapter_start": 1, "chapter_end": 1}, {"chapter_start": 2}])
+    books = _put_books(client, [{"chapter_start": 1}, {"chapter_start": 2}])
     moved = books.json()["books"][1]
     assert moved["status"] == "outdated"
 

@@ -1,7 +1,7 @@
 """Glue between a series' packed CBZs on disk and the EPUB builder.
 
 Scans a series directory into chapter records (read from each CBZ's
-ComicInfo.xml), assigns chapters to the user's book ranges, assembles each
+ComicInfo.xml), splits chapters into the user's books at their start chapters, assembles each
 book's metadata from the series-level sources, and fingerprints the result
 so the UI can tell whether an earlier export is still current.
 
@@ -17,6 +17,7 @@ import json
 import logging
 import xml.etree.ElementTree as ET
 import zipfile
+from bisect import bisect_right
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
@@ -213,40 +214,18 @@ def chapter_sort_key(ch: DiskChapter) -> tuple[bool, float, str]:
     return (ch.value is None, ch.value if ch.value is not None else 0.0, ch.number)
 
 
-@dataclass(frozen=True)
-class BookRange:
-    start: float
-    end: float | None
+def validate_starts(starts: Sequence[float]) -> list[float]:
+    """Sort book start chapters and reject duplicates.
 
-    def contains(self, value: float | None) -> bool:
-        if value is None:
-            return False
-        return value >= self.start and (self.end is None or value <= self.end)
-
-
-def validate_ranges(ranges: Sequence[BookRange]) -> list[BookRange]:
-    """Sort ranges by start and check they form a valid, disjoint book list.
-
-    Raises ValueError with a user-facing message otherwise. Only the last
-    book may be open-ended (its end is None).
+    Books partition the series: each runs from its start up to (not
+    including) the next book's start, so the only invalid list is one where
+    two books start at the same chapter. Raises ValueError with a
+    user-facing message.
     """
-    ordered = sorted(ranges, key=lambda r: r.start)
-    for r in ordered:
-        if r.end is not None and r.end < r.start:
-            raise ValueError(
-                f"book starting at chapter {format_number(r.start)} ends before it starts"
-            )
+    ordered = sorted(starts)
     for prev, nxt in pairwise(ordered):
-        if prev.end is None:
-            raise ValueError(
-                f"only the last book can be open-ended; the book starting at chapter "
-                f"{format_number(prev.start)} needs an end chapter"
-            )
-        if nxt.start <= prev.end:
-            raise ValueError(
-                f"books overlap: chapter {format_number(nxt.start)} is already in the book "
-                f"ending at chapter {format_number(prev.end)}"
-            )
+        if nxt == prev:
+            raise ValueError(f"two books start at chapter {format_number(nxt)}")
     return ordered
 
 
@@ -254,14 +233,40 @@ def format_number(value: float) -> str:
     return str(int(value)) if value.is_integer() else repr(value)
 
 
-def suggest_ranges_from_volumes(chapters: Iterable[DiskChapter]) -> list[BookRange]:
-    """One book per ComicInfo volume, plus an open-ended book for the
-    not-yet-collected chapters after the last volume. Chapters without a
-    volume that sit between two volumes join the earlier one.
+def book_index(value: float, starts: Sequence[float]) -> int:
+    """Index of the book a chapter number falls in, for sorted `starts`.
 
-    Returns an empty list when no chapter has a volume, or when the volumes'
-    chapter ranges interleave (volume metadata too inconsistent to trust).
-    Volume 0 is treated as "no volume", matching the ComicInfo writer.
+    Every number belongs to exactly one book: the first book also takes
+    chapters numbered below its start (a prologue added later), and the
+    last book is open-ended so newly downloaded chapters land in it.
+    """
+    return max(bisect_right(starts, value) - 1, 0)
+
+
+def split_chapters(
+    starts: Sequence[float], chapters: Iterable[DiskChapter]
+) -> list[list[DiskChapter]]:
+    """Distribute the numbered chapters over the books starting at `starts`
+    (sorted). Chapters without a numeric number fit no book and are left out."""
+    out: list[list[DiskChapter]] = [[] for _ in starts]
+    if not starts:
+        return out
+    for ch in chapters:
+        if ch.value is not None:
+            out[book_index(ch.value, starts)].append(ch)
+    return out
+
+
+def suggest_starts_from_volumes(chapters: Iterable[DiskChapter]) -> list[float]:
+    """One book per ComicInfo volume, plus one for the not-yet-collected
+    chapters after the last volume; returns each book's start chapter.
+
+    Chapters without a volume between two volumes (extras, omake, x.5
+    chapters) end up in the earlier volume's book, since a book runs up to
+    the next one's start. Returns an empty list when no chapter has a
+    volume, or when the volumes' chapter ranges interleave (volume metadata
+    too inconsistent to trust). Volume 0 is treated as "no volume",
+    matching the ComicInfo writer.
     """
     by_volume: dict[float, list[float]] = {}
     unvolumed: list[float] = []
@@ -275,22 +280,16 @@ def suggest_ranges_from_volumes(chapters: Iterable[DiskChapter]) -> list[BookRan
             by_volume.setdefault(volume, []).append(ch.value)
     if not by_volume:
         return []
-    ranges = [BookRange(min(vals), max(vals)) for _, vals in sorted(by_volume.items())]
-    for prev, nxt in pairwise(ranges):
-        if prev.end is not None and nxt.start <= prev.end:
+    spans = [(min(vals), max(vals)) for _, vals in sorted(by_volume.items())]
+    for (_, prev_end), (nxt_start, _) in pairwise(spans):
+        if nxt_start <= prev_end:
             return []
-    # Volume-less chapters between two volumes (extras, omake, x.5 chapters)
-    # usually belong with the volume before them: stretch that volume's end
-    # over them so they aren't left unassigned.
-    for i, (prev, nxt) in enumerate(pairwise(ranges)):
-        between = [v for v in unvolumed if prev.end is not None and prev.end < v < nxt.start]
-        if between:
-            ranges[i] = BookRange(prev.start, max(between))
-    last_end = ranges[-1].end
-    tail = [v for v in unvolumed if last_end is not None and v > last_end]
+    starts = [start for start, _ in spans]
+    last_end = spans[-1][1]
+    tail = [v for v in unvolumed if v > last_end]
     if tail:
-        ranges.append(BookRange(min(tail), None))
-    return ranges
+        starts.append(min(tail))
+    return starts
 
 
 @dataclass(frozen=True)
@@ -441,7 +440,7 @@ class BookPlan:
     position: int
     title: str
     custom_title: str | None
-    range: BookRange
+    start: float
     chapters: list[DiskChapter]
     status: BookStatus
     path: Path
@@ -463,7 +462,6 @@ class StoredBook:
     position: int
     title: str | None
     chapter_start: float
-    chapter_end: float | None
     export_path: str | None
     export_fingerprint: str | None
     exported_at: str | None
@@ -477,16 +475,20 @@ def plan_books(
 ) -> list[BookPlan]:
     """Resolve each stored book to its chapters, metadata and export status.
 
-    `ctx` is None when the series has no name yet (never downloaded); every
-    book then plans as empty.
+    Books split the series at their start chapters (see `book_index`), so
+    every numbered chapter belongs to exactly one book. `ctx` is None when
+    the series has no name yet (never downloaded); every book then plans as
+    empty.
     """
+    ordered = sorted(books, key=lambda b: b.chapter_start)
+    split = split_chapters([b.chapter_start for b in ordered], chapters)
+    chapters_by_id = {b.id: in_book for b, in_book in zip(ordered, split, strict=True)}
     plans: list[BookPlan] = []
     for book in sorted(books, key=lambda b: b.position):
-        rng = BookRange(book.chapter_start, book.chapter_end)
         series = ctx.name if ctx is not None else ""
         title = book.title or default_book_title(series, book.position)
         path = book_file_path(export_dir, series or "_", book.position)
-        in_book = [ch for ch in chapters if rng.contains(ch.value)] if ctx is not None else []
+        in_book = chapters_by_id[book.id] if ctx is not None else []
         meta: EpubMetadata | None = None
         fingerprint: str | None = None
         file_exists = bool(book.export_path) and Path(book.export_path or "").is_file()
@@ -508,7 +510,7 @@ def plan_books(
                 position=book.position,
                 title=title,
                 custom_title=book.title,
-                range=rng,
+                start=book.chapter_start,
                 chapters=in_book,
                 status=status,
                 path=path,

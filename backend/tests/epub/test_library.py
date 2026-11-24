@@ -5,18 +5,19 @@ from pathlib import Path
 import pytest
 
 from backend.epub.library import (
-    BookRange,
     DiskChapter,
     SeriesContext,
     StoredBook,
     book_file_path,
     book_fingerprint,
+    book_index,
     book_metadata,
     build_series_context,
     plan_books,
     scan_series_chapters,
-    suggest_ranges_from_volumes,
-    validate_ranges,
+    split_chapters,
+    suggest_starts_from_volumes,
+    validate_starts,
 )
 from tests._helpers import png_bytes, write_chapter_cbz
 
@@ -121,37 +122,35 @@ def test_scan_picks_up_rewritten_archive(tmp_path: Path) -> None:
     assert scan_series_chapters(d, "Series")[0].title == "after, longer title"
 
 
-# --- validate_ranges ------------------------------------------------------
+# --- validate_starts / book_index / split_chapters ----------------------
 
 
-def test_validate_ranges_sorts_and_accepts_open_last_book() -> None:
-    ordered = validate_ranges([BookRange(11, None), BookRange(1, 10)])
-    assert ordered == [BookRange(1, 10), BookRange(11, None)]
+def test_validate_starts_sorts() -> None:
+    assert validate_starts([11, 1, 4.5]) == [1, 4.5, 11]
+    assert validate_starts([]) == []
+
+
+def test_validate_starts_rejects_duplicates() -> None:
+    with pytest.raises(ValueError, match="two books start at chapter 10"):
+        validate_starts([10, 1, 10])
 
 
 @pytest.mark.parametrize(
-    ("ranges", "message"),
-    [
-        ([BookRange(5, 3)], "ends before it starts"),
-        ([BookRange(1, None), BookRange(5, 8)], "only the last book can be open-ended"),
-        ([BookRange(1, 10), BookRange(10, 20)], "books overlap"),
-        ([BookRange(1, 10), BookRange(9.5, 20)], "books overlap"),
-    ],
+    ("value", "index"),
+    [(0.5, 0), (1, 0), (9.5, 0), (10, 1), (19, 1), (20, 2), (999, 2)],
 )
-def test_validate_ranges_rejects_invalid(ranges: list[BookRange], message: str) -> None:
-    with pytest.raises(ValueError, match=message):
-        validate_ranges(ranges)
+def test_book_index_partitions_every_number(value: float, index: int) -> None:
+    assert book_index(value, [1, 10, 20]) == index
 
 
-def test_book_range_contains() -> None:
-    assert BookRange(1, 5).contains(5)
-    assert BookRange(1, 5).contains(2.5)
-    assert not BookRange(1, 5).contains(5.5)
-    assert BookRange(6, None).contains(999)
-    assert not BookRange(1, None).contains(None)
+def test_split_chapters_leaves_out_only_non_numeric() -> None:
+    chapters = [_chapter("0.5"), _chapter("1"), _chapter("9"), _chapter("10"), _chapter("Extra")]
+    split = split_chapters([1, 10], chapters)
+    assert [[c.number for c in book] for book in split] == [["0.5", "1", "9"], ["10"]]
+    assert split_chapters([], chapters) == []
 
 
-# --- suggest_ranges_from_volumes ------------------------------------------
+# --- suggest_starts_from_volumes ------------------------------------------
 
 
 def test_suggest_one_book_per_volume_plus_open_tail() -> None:
@@ -164,11 +163,7 @@ def test_suggest_one_book_per_volume_plus_open_tail() -> None:
         _chapter("6", volume="0"),
         _chapter("Extra", volume="2"),
     ]
-    assert suggest_ranges_from_volumes(chapters) == [
-        BookRange(1, 2),
-        BookRange(3, 4),
-        BookRange(5, None),
-    ]
+    assert suggest_starts_from_volumes(chapters) == [1, 3, 5]
 
 
 def test_suggest_volume_absorbs_following_unvolumed_extras() -> None:
@@ -179,20 +174,17 @@ def test_suggest_volume_absorbs_following_unvolumed_extras() -> None:
         _chapter("3", volume="2"),
         _chapter("4"),
     ]
-    assert suggest_ranges_from_volumes(chapters) == [
-        BookRange(1, 2.5),
-        BookRange(3, 3),
-        BookRange(4, None),
-    ]
+    # 2.5 sits before volume 2's start, so it stays in volume 1's book.
+    assert suggest_starts_from_volumes(chapters) == [1, 3, 4]
 
 
 def test_suggest_nothing_without_volumes() -> None:
-    assert suggest_ranges_from_volumes([_chapter("1"), _chapter("2")]) == []
+    assert suggest_starts_from_volumes([_chapter("1"), _chapter("2")]) == []
 
 
 def test_suggest_nothing_when_volumes_interleave() -> None:
     chapters = [_chapter("1", volume="2"), _chapter("2", volume="1"), _chapter("3", volume="2")]
-    assert suggest_ranges_from_volumes(chapters) == []
+    assert suggest_starts_from_volumes(chapters) == []
 
 
 # --- series context + metadata --------------------------------------------
@@ -308,13 +300,12 @@ def test_book_file_path_uses_position() -> None:
 # --- plan_books -----------------------------------------------------------
 
 
-def _stored(id_: int, position: int, start: float, end: float | None, **kw: object) -> StoredBook:
+def _stored(id_: int, position: int, start: float, **kw: object) -> StoredBook:
     base: dict[str, object] = {
         "id": id_,
         "position": position,
         "title": None,
         "chapter_start": start,
-        "chapter_end": end,
         "export_path": None,
         "export_fingerprint": None,
         "exported_at": None,
@@ -326,7 +317,8 @@ def _stored(id_: int, position: int, start: float, end: float | None, **kw: obje
 def test_plan_books_assigns_chapters_and_statuses(tmp_path: Path) -> None:
     ctx = _ctx()
     chapters = [_chapter("1"), _chapter("2"), _chapter("3"), _chapter("9")]
-    first = plan_books(ctx, [_stored(1, 1, 1, 2), _stored(2, 2, 3, None)], chapters, tmp_path)
+    second = _stored(2, 2, 3)
+    first = plan_books(ctx, [_stored(1, 1, 1), second], chapters, tmp_path)
     assert [c.number for c in first[0].chapters] == ["1", "2"]
     assert [c.number for c in first[1].chapters] == ["3", "9"]
     assert [p.status for p in first] == ["not_exported", "not_exported"]
@@ -338,37 +330,48 @@ def test_plan_books_assigns_chapters_and_statuses(tmp_path: Path) -> None:
     p.parent.mkdir(parents=True)
     p.write_bytes(b"epub")
     exported = _stored(
-        1, 1, 1, 2, export_path=str(p), export_fingerprint=first[0].fingerprint, exported_at="t"
+        1, 1, 1, export_path=str(p), export_fingerprint=first[0].fingerprint, exported_at="t"
     )
-    again = plan_books(ctx, [exported], chapters, tmp_path)
+    again = plan_books(ctx, [exported, second], chapters, tmp_path)
     assert again[0].status == "exported"
     assert again[0].file_exists
 
     # New chapter in range → outdated.
-    grown = plan_books(ctx, [exported], [*chapters, _chapter("1.5")], tmp_path)
+    grown = plan_books(ctx, [exported, second], [*chapters, _chapter("1.5")], tmp_path)
     assert grown[0].status == "outdated"
 
     # Same content but the book moved to a new position (new path) → outdated.
     moved = plan_books(
         ctx,
-        [_stored(1, 2, 1, 2, export_path=str(p), export_fingerprint=first[0].fingerprint)],
+        [
+            _stored(3, 1, 0),
+            _stored(1, 2, 1, export_path=str(p), export_fingerprint=first[0].fingerprint),
+            _stored(2, 3, 3),
+        ],
         chapters,
         tmp_path,
     )
-    assert moved[0].status == "outdated"
+    assert next(plan for plan in moved if plan.book_id == 1).status == "outdated"
 
     # Export file deleted → not exported.
     p.unlink()
-    gone = plan_books(ctx, [exported], chapters, tmp_path)
+    gone = plan_books(ctx, [exported, second], chapters, tmp_path)
     assert gone[0].status == "not_exported"
     assert not gone[0].file_exists
 
 
-def test_plan_books_empty_range_and_unnamed_series(tmp_path: Path) -> None:
-    plans = plan_books(_ctx(), [_stored(1, 1, 50, 60, title="Custom")], [_chapter("1")], tmp_path)
-    assert plans[0].status == "empty"
-    assert plans[0].title == "Custom"
-    assert plans[0].meta is None
-    unnamed = plan_books(None, [_stored(1, 1, 1, None)], [_chapter("1")], tmp_path)
+def test_plan_books_first_book_takes_earlier_chapters(tmp_path: Path) -> None:
+    plans = plan_books(_ctx(), [_stored(1, 1, 5)], [_chapter("1"), _chapter("7")], tmp_path)
+    assert [c.number for c in plans[0].chapters] == ["1", "7"]
+
+
+def test_plan_books_empty_book_and_unnamed_series(tmp_path: Path) -> None:
+    plans = plan_books(
+        _ctx(), [_stored(1, 1, 1), _stored(2, 2, 50, title="Custom")], [_chapter("1")], tmp_path
+    )
+    assert plans[1].status == "empty"
+    assert plans[1].title == "Custom"
+    assert plans[1].meta is None
+    unnamed = plan_books(None, [_stored(1, 1, 1)], [_chapter("1")], tmp_path)
     assert unnamed[0].status == "empty"
     assert unnamed[0].title == "Vol. 1"

@@ -92,11 +92,14 @@ CREATE TABLE IF NOT EXISTS maintenance_jobs (
 CREATE INDEX IF NOT EXISTS idx_maintenance_jobs_status ON maintenance_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_maintenance_jobs_created_at ON maintenance_jobs(created_at DESC);
 
--- EPUB books a series' chapters are grouped into. Each row is an inclusive
--- chapter-number range; a NULL chapter_end leaves the (last) book open so
--- newly downloaded chapters land in it. `position` is the 1-based series
--- index, i.e. the book's place in chapter order. The export_* columns
--- record the last export so the UI can flag books whose chapters changed.
+-- EPUB books a series' chapters are grouped into. Books split the series at
+-- their chapter_start: each holds the chapters up to the next book's start,
+-- and the last one stays open so newly downloaded chapters land in it.
+-- chapter_end is unused (books used to be inclusive ranges with gaps) and
+-- kept only so existing databases need no rebuild. `position` is the
+-- 1-based series index, i.e. the book's place in chapter order. The
+-- export_* columns record the last export so the UI can flag books whose
+-- chapters changed.
 CREATE TABLE IF NOT EXISTS epub_books (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
