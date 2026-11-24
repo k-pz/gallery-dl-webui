@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from backend.exceptions import ConflictError, NotFoundError, WebUIError
+from backend.exceptions import BadRequestError, ConflictError, NotFoundError, WebUIError
 
 
 class EpubBookNotFound(NotFoundError):
@@ -12,7 +12,7 @@ class EpubBookEmpty(ConflictError):
 
 
 class EpubExportBusy(ConflictError):
-    detail = "an EPUB export for this series is already running"
+    detail = "an EPUB export or volume fill for this series is already running"
 
 
 class EpubFileMissing(NotFoundError):
@@ -22,3 +22,15 @@ class EpubFileMissing(NotFoundError):
 class EpubExportFailed(WebUIError):
     status_code = 500
     detail = "EPUB export failed"
+
+
+class EpubNoVolumeSource(BadRequestError):
+    detail = (
+        "this series has no MangaDex URL: set its URL or its metadata source URL "
+        "to a mangadex.org/title/… page"
+    )
+
+
+class EpubVolumeLookupFailed(WebUIError):
+    status_code = 502
+    detail = "MangaDex lookup failed"

@@ -348,3 +348,78 @@ def test_epub_endpoints_update_library_list_stats(client: TestClient, library: P
     client.post(f"/api/targets/{tid}/epub/export")
     listed = next(t for t in client.get("/api/targets").json() if t["id"] == tid)
     assert listed["epub_pending_count"] == 0
+
+
+MD_URL = "https://mangadex.org/title/0aea9f43-d4a9-4bf7-bebc-550a512f9b95"
+
+
+def _volume_in(path: Path) -> str | None:
+    with zipfile.ZipFile(path) as zf:
+        return ET.fromstring(zf.read("ComicInfo.xml")).findtext("Volume")
+
+
+def test_fill_volumes_writes_mangadex_volumes_and_returns_overview(
+    client: TestClient, library: Path, gallery_config: Any
+) -> None:
+    _write_chapters(library, ["1", "2", "3", "4"], volumes={"1": "1"})
+    tid = _target_id(client)
+    client.patch(f"/api/targets/{tid}", json={"metadata_source_url": MD_URL})
+    gallery_config.chapter_volumes_for[MD_URL] = {
+        ("Other Name", "1"): "5",
+        ("Other Name", "2"): "1",
+        ("Other Name", "3"): "2",
+    }
+
+    resp = client.post(f"/api/targets/{tid}/epub/volumes/fill")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["source_url"] == MD_URL
+    assert (body["chapters"], body["missing"], body["filled"], body["unassigned"]) == (4, 3, 2, 1)
+    assert body["failed"] == 0
+    assert _volume_in(library / f"{SERIES} - c1.cbz") == "1"  # already set: kept
+    assert _volume_in(library / f"{SERIES} - c2.cbz") == "1"
+    assert _volume_in(library / f"{SERIES} - c3.cbz") == "2"
+    assert _volume_in(library / f"{SERIES} - c4.cbz") is None
+    overview = body["overview"]
+    assert [c["volume"] for c in overview["chapters"]] == ["1", "1", "2", ""]
+    assert [b["chapter_start"] for b in overview["suggested_books"]] == [1, 3, 4]
+    assert {"topic": "epub", "type": "updated", "data": {"target_id": tid}} in json.loads(
+        resp.headers["x-events"]
+    )
+
+
+def test_fill_volumes_skips_lookup_when_nothing_is_missing(
+    client: TestClient, library: Path, gallery: Any
+) -> None:
+    _write_chapters(library, ["1", "2"], volumes={"1": "1", "2": "1"})
+    tid = _target_id(client)
+    client.patch(f"/api/targets/{tid}", json={"metadata_source_url": MD_URL})
+
+    resp = client.post(f"/api/targets/{tid}/epub/volumes/fill")
+
+    assert resp.status_code == 200, resp.text
+    assert (resp.json()["missing"], resp.json()["filled"]) == (0, 0)
+    assert MD_URL not in gallery.metadata_calls
+
+
+def test_fill_volumes_needs_a_mangadex_url(client: TestClient, library: Path) -> None:
+    _write_chapters(library, ["1"])
+    resp = client.post(f"/api/targets/{_target_id(client)}/epub/volumes/fill")
+    assert resp.status_code == 400
+    assert "MangaDex" in resp.json()["detail"]
+
+
+def test_fill_volumes_reports_a_failed_lookup(
+    client: TestClient, library: Path, gallery_config: Any
+) -> None:
+    _write_chapters(library, ["1"])
+    tid = _target_id(client)
+    client.patch(f"/api/targets/{tid}", json={"metadata_source_url": MD_URL})
+    gallery_config.metadata_error_for[MD_URL] = RuntimeError("HTTP 503")
+
+    resp = client.post(f"/api/targets/{tid}/epub/volumes/fill")
+
+    assert resp.status_code == 502
+    assert "HTTP 503" in resp.json()["detail"]
+    assert _volume_in(library / f"{SERIES} - c1.cbz") is None
