@@ -352,6 +352,29 @@ def safe_float(value: str) -> float | None:
         return None
 
 
+def volume_string(value: Any) -> str:
+    """A ComicInfo `Volume` value from an extractor's raw volume field.
+
+    ComicInfo's schema types Volume as an integer, and extractors report
+    "not collected in a volume yet" as 0, "" or None, so only positive whole
+    numbers survive ("03" → "3"); everything else becomes "".
+    """
+    if isinstance(value, bool):
+        return ""
+    if isinstance(value, int | float):
+        number = float(value)
+    elif isinstance(value, str):
+        parsed = safe_float(value.strip())
+        if parsed is None:
+            return ""
+        number = parsed
+    else:
+        return ""
+    if number <= 0 or not number.is_integer():
+        return ""
+    return str(int(number))
+
+
 _ILLEGAL = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
 
