@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse
 
 from backend.config import Settings
 from backend.dependencies import DbDep, EventBusDep, SettingsDep
+from backend.downloads.dependencies import GalleryDep
 from backend.epub import service
 from backend.epub.builder import build_epub
 from backend.epub.exceptions import (
@@ -30,6 +31,8 @@ from backend.epub.exceptions import (
     EpubExportBusy,
     EpubExportFailed,
     EpubFileMissing,
+    EpubNoVolumeSource,
+    EpubVolumeLookupFailed,
 )
 from backend.epub.library import BookPlan, book_chapters, validate_starts
 from backend.epub.schemas import (
@@ -39,6 +42,7 @@ from backend.epub.schemas import (
     EpubChapterOut,
     EpubExportAllResult,
     EpubOverview,
+    EpubVolumeFillResult,
 )
 from backend.epub.state import SeriesState, load_state
 from backend.events import EventBus, epub_event, targets_event
@@ -46,6 +50,7 @@ from backend.exceptions import BadRequestError
 from backend.series_stats import service as stats_service
 from backend.targets.dependencies import TargetDep
 from backend.targets.schemas import Target
+from backend.volume_fill import service as volume_service
 
 logger = logging.getLogger(__name__)
 
@@ -237,6 +242,44 @@ async def export_target_epub_books(
         bus.publish(epub_event(target.id))
         await _settled_state(target, db, settings, bus)
     return EpubExportAllResult(exported=exported, failed=len(errors), errors=errors)
+
+
+@router.post("/targets/{target_id}/epub/volumes/fill", operation_id="fillTargetEpubVolumes")
+async def fill_target_epub_volumes(
+    target: TargetDep,
+    db: DbDep,
+    settings: SettingsDep,
+    bus: EventBusDep,
+    gallery: GalleryDep,
+    locks: ExportLocksDep,
+) -> EpubVolumeFillResult:
+    """Write volume numbers from the series' MangaDex page into the CBZs whose
+    ComicInfo has none, so "one book per volume" can use them.
+
+    The MangaDex page is the series URL when it is one, else its metadata
+    source URL. Chapters that already have a volume are left alone.
+    """
+    async with _exclusive(locks, target.id):
+        try:
+            fill = await volume_service.fill_target_volumes(db, gallery, target)
+        except volume_service.NoVolumeSource as exc:
+            raise EpubNoVolumeSource() from exc
+        except volume_service.VolumeLookupFailed as exc:
+            logger.warning("volume lookup failed: target=%s", target.id, exc_info=True)
+            raise EpubVolumeLookupFailed(str(exc)) from exc
+    result = fill.result
+    if result.filled:
+        bus.publish(epub_event(target.id))
+    return EpubVolumeFillResult(
+        source_url=fill.source_url,
+        chapters=result.chapters,
+        missing=result.missing,
+        filled=result.filled,
+        unassigned=result.unassigned,
+        failed=result.failed,
+        errors=result.errors,
+        overview=_overview(target, await _settled_state(target, db, settings, bus)),
+    )
 
 
 @router.get(

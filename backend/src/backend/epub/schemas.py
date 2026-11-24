@@ -103,3 +103,19 @@ class EpubExportAllResult(BaseModel):
     exported: int
     failed: int
     errors: list[str]
+
+
+class EpubVolumeFillResult(BaseModel):
+    """Outcome of filling missing chapter volumes from MangaDex."""
+
+    source_url: str
+    # Numbered chapters on disk, and how many of them had no volume.
+    chapters: int
+    missing: int
+    filled: int
+    # Missing chapters MangaDex has not put in a volume (yet).
+    unassigned: int
+    failed: int
+    errors: list[str]
+    # The series after the fill, so the packer can redraw without refetching.
+    overview: EpubOverview
