@@ -5,6 +5,7 @@ import type { Target } from "../api/types.gen";
 import type { LibraryLayout } from "../hooks/useLibraryLayout";
 import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 import { displayName } from "../lib/library";
+import { volumeSourceUrl } from "../lib/volumeFill";
 import { EpubPacker } from "./EpubPacker";
 import { ICON_SIZE, IconChevronDown } from "./Icons";
 import { SeriesHeader } from "./SeriesHeader";
@@ -49,7 +50,7 @@ export function SeriesDetail({
             <span className="app-section-kicker">EPUB books</span>
             <span className="lib-pane-title-name">{displayName(target)}</span>
           </div>
-          <EpubPacker key={target.id} targetId={target.id} />
+          <EpubPacker key={target.id} targetId={target.id} volumeSource={volumeSourceUrl(target)} />
         </section>
       </>
     );
@@ -117,7 +118,7 @@ function TabbedDetail({
           <SeriesSettings target={target} />
         </Tabs.Panel>
         <Tabs.Panel value="epub" className="lib-detail-packer">
-          <EpubPacker key={target.id} targetId={target.id} />
+          <EpubPacker key={target.id} targetId={target.id} volumeSource={volumeSourceUrl(target)} />
         </Tabs.Panel>
         <Tabs.Panel value="runs" className="lib-pane-scroll lib-details-body">
           <SeriesRuns targetId={target.id} onOpenJob={onOpenJob} />

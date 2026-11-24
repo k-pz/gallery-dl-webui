@@ -312,6 +312,24 @@ describe("MaintenancePanel", () => {
     });
   });
 
+  it("schedules a MangaDex volume fill job from the button", async () => {
+    const nextId = { value: 1 };
+    const jobs: Job[] = [];
+    const postedKinds: string[] = [];
+    const progress: Record<
+      number,
+      { status: string; total: number; done: number; lines: string[] }
+    > = {};
+    mockFetch(jobsHandler({ jobs, nextId, progress, postedKinds }));
+
+    renderWithProviders(<MaintenancePanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: /fill volumes from mangadex/i }));
+    await waitFor(() => {
+      expect(postedKinds).toContain("fill_mangadex_volumes");
+    });
+  });
+
   it("surfaces 'update available' banner with version delta when behind is true", async () => {
     const nextId = { value: 1 };
     const jobs: Job[] = [];

@@ -15,6 +15,7 @@ import { useMemo, useState } from "react";
 import {
   exportTargetEpubBookMutation,
   exportTargetEpubBooksMutation,
+  fillTargetEpubVolumesMutation,
   getTargetEpubOptions,
   getTargetEpubQueryKey,
   putTargetEpubBooksMutation,
@@ -43,6 +44,7 @@ import {
   toPayload,
   unnumberedChapters,
 } from "../lib/epubPacker";
+import { countMissingVolumes, volumeFillMessage } from "../lib/volumeFill";
 import { ChapterMap, type MapBook } from "./ChapterMap";
 import { ICON_SIZE, IconDownload, IconX } from "./Icons";
 import { Pill } from "./Pill";
@@ -64,7 +66,14 @@ type ListFilter = "all" | "todo" | "done";
  * chapters, so every numbered chapter is always in exactly one book; edits
  * are split points, with chapter and page counts updated before saving.
  */
-export function EpubPacker({ targetId }: { targetId: number }) {
+export function EpubPacker({
+  targetId,
+  volumeSource = null,
+}: {
+  targetId: number;
+  /** MangaDex page to fill missing chapter volumes from; null hides the action. */
+  volumeSource?: string | null;
+}) {
   const query = useQuery(getTargetEpubOptions({ path: { target_id: targetId } }));
   if (query.isLoading) {
     return (
@@ -90,10 +99,18 @@ export function EpubPacker({ targetId }: { targetId: number }) {
       </Text>
     );
   }
-  return <PackerBody targetId={targetId} data={query.data} />;
+  return <PackerBody targetId={targetId} data={query.data} volumeSource={volumeSource} />;
 }
 
-function PackerBody({ targetId, data }: { targetId: number; data: EpubOverview }) {
+function PackerBody({
+  targetId,
+  data,
+  volumeSource,
+}: {
+  targetId: number;
+  data: EpubOverview;
+  volumeSource: string | null;
+}) {
   const qc = useQueryClient();
   const queryKey = getTargetEpubQueryKey({ path: { target_id: targetId } });
   const [drafts, setDraftState] = useState<DraftBook[] | null>(
@@ -169,7 +186,45 @@ function PackerBody({ targetId, data }: { targetId: number; data: EpubOverview }
         color: "red",
       }),
   });
-  const busy = save.isPending || exportOne.isPending || exportAll.isPending;
+  const fillVolumes = useMutation({
+    ...fillTargetEpubVolumesMutation(),
+    onSuccess: (result) => {
+      qc.setQueryData(queryKey, result.overview);
+      notifications.show({
+        title: result.failed ? "Volume fill finished with errors" : "Volumes filled from MangaDex",
+        message: volumeFillMessage(result),
+        color: result.failed ? "yellow" : "green",
+      });
+    },
+    onError: (err) =>
+      notifications.show({
+        title: "Volume fill failed",
+        message: extractErrorMessage(err),
+        color: "red",
+      }),
+  });
+  const busy =
+    save.isPending || exportOne.isPending || exportAll.isPending || fillVolumes.isPending;
+  const missingVolumes = useMemo(() => countMissingVolumes(data.chapters), [data.chapters]);
+  const fillButton =
+    volumeSource && missingVolumes > 0 ? (
+      <Tooltip
+        label={`Read volumes for ${missingVolumes} chapter${missingVolumes === 1 ? "" : "s"} without one from ${volumeSource}`}
+        withArrow
+        multiline
+        maw={320}
+      >
+        <Button
+          size="compact-xs"
+          variant="light"
+          loading={fillVolumes.isPending}
+          disabled={busy}
+          onClick={() => fillVolumes.mutate({ path: { target_id: targetId } })}
+        >
+          Fill volumes from MangaDex
+        </Button>
+      </Tooltip>
+    ) : null;
 
   const starts = rows.map((d) => d.start);
   const selectedBook = selected !== null && rows.length > 0 ? bookIndex(selected, starts) : -1;
@@ -242,7 +297,9 @@ function PackerBody({ targetId, data }: { targetId: number; data: EpubOverview }
         <Text size="xs" c="dimmed" className="packer-toolbar-meta">
           {chapters.length} chapters
           {volumeStarts.length > 0 ? ` · ${volumeStarts.length} books by volume` : " · no volumes"}
+          {missingVolumes > 0 && volumeStarts.length > 0 ? ` · ${missingVolumes} without one` : ""}
         </Text>
+        {fillButton}
       </div>
 
       <div className="packer-map">

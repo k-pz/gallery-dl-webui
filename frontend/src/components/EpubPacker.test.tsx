@@ -220,3 +220,48 @@ describe("EpubPacker", () => {
     expect(await screen.findByText(/hasn't been downloaded yet/)).toBeInTheDocument();
   });
 });
+
+describe("EpubPacker volume fill", () => {
+  const MD = "https://mangadex.org/title/0aea9f43-d4a9-4bf7-bebc-550a512f9b95";
+
+  it("hides the action without a MangaDex source", async () => {
+    mockEpub(overview());
+    renderWithProviders(<EpubPacker targetId={1} />);
+    await screen.findByText(/4 chapters/);
+    expect(screen.queryByRole("button", { name: "Fill volumes from MangaDex" })).toBeNull();
+  });
+
+  it("fills missing volumes and redraws from the returned overview", async () => {
+    const filled = overview({
+      chapters: overview().chapters.map((c) => ({ ...c, volume: c.number === "4" ? "" : "1" })),
+      suggested_books: [
+        { title: null, chapter_start: 1 },
+        { title: null, chapter_start: 4 },
+      ],
+    });
+    const spy = mockFetch(async (input, init) => {
+      const url = urlOf(input);
+      if (url.endsWith("/epub/volumes/fill") && methodOf(input, init) === "POST") {
+        return jsonResponse({
+          source_url: MD,
+          chapters: 4,
+          missing: 2,
+          filled: 1,
+          unassigned: 1,
+          failed: 0,
+          errors: [],
+          overview: filled,
+        });
+      }
+      if (url.endsWith("/epub")) return jsonResponse(overview());
+      return jsonResponse({}, 404);
+    });
+    renderWithProviders(<EpubPacker targetId={1} volumeSource={MD} />);
+
+    expect(await screen.findByText(/2 without one/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Fill volumes from MangaDex" }));
+
+    expect(findCall(spy, (i) => urlOf(i).endsWith("/epub/volumes/fill"))).toBeDefined();
+    expect(await screen.findByText(/1 without one/)).toBeInTheDocument();
+  });
+});
