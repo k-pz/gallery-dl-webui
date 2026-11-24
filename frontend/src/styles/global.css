@@ -833,24 +833,6 @@ a {
   }
 }
 
-/* Phones: pagination page buttons become real touch targets, and the
-   number strip collapses to previous / current / next — seven 44px buttons
-   don't fit under 540px and wrap into a second row. The "X–Y of Z" text to
-   the left keeps absolute position visible. Prev/next are recognised by
-   their svg chevrons; numbers are text-only. */
-@media (--bp-phone) {
-  .list-pagination .mantine-Pagination-control {
-    min-width: 44px;
-    height: 44px;
-  }
-  .list-pagination .mantine-Pagination-dots {
-    display: none;
-  }
-  .list-pagination .mantine-Pagination-control:not([data-active]):not(:has(svg)) {
-    display: none;
-  }
-}
-
 /* ---- Screens (Screen, Pane, StackedView) --------------------------------
    Every tab is one screen sized to the viewport below the header, like the
    Library: panes side by side, each scrolling on its own. Tiers follow
@@ -1011,6 +993,210 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Jobs: list | detail; ultra-wide splits the list into running/queued and
+   the full history. */
+.screen[data-screen="jobs"] {
+  grid-template-columns: minmax(380px, 560px) minmax(0, 1fr);
+}
+.screen[data-screen="jobs"][data-layout="ultra"] {
+  grid-template-columns: 460px 640px minmax(0, 1fr);
+}
+
+/* Maintenance: actions | history over the selected job's log; ultra-wide
+   puts all three side by side. */
+.screen[data-screen="maintenance"] {
+  grid-template-columns: minmax(360px, 520px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 2fr) minmax(0, 3fr);
+}
+.screen[data-screen="maintenance"] > .maint-actions {
+  grid-row: 1 / span 2;
+}
+.screen[data-screen="maintenance"][data-layout="ultra"] {
+  grid-template-columns: 560px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.screen[data-screen="maintenance"][data-layout="ultra"] > .maint-actions {
+  grid-row: auto;
+}
+
+/* Config: section nav | form (kept to a readable measure). */
+.screen[data-screen="config"] {
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+.screen[data-screen="config"][data-layout="ultra"] {
+  grid-template-columns: 300px minmax(0, 1040px);
+  justify-content: center;
+}
+
+/* Config: section nav + form sections + pinned save bar. */
+.cfg-nav {
+  padding: 12px 8px 0;
+}
+.cfg-nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+.cfg-nav-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--app-text-muted);
+  text-decoration: none;
+  font-family: var(--app-serif);
+  font-size: 1rem;
+  font-weight: 500;
+  border-left: 2px solid transparent;
+}
+.cfg-nav-link:hover {
+  color: var(--app-text);
+  background: var(--app-surface-muted);
+}
+.cfg-nav-link[aria-current="true"] {
+  color: var(--app-text);
+  background: var(--app-surface-muted);
+  border-left-color: var(--app-accent);
+}
+.cfg-nav-link:focus-visible {
+  outline: none;
+  box-shadow: var(--app-ring);
+}
+.cfg-nav-kicker {
+  font-family: var(--app-mono);
+  font-size: 0.66rem;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--app-text-faint);
+}
+.cfg-nav-foot {
+  padding: 12px 8px;
+  border-top: 1px solid var(--app-border-subtle);
+}
+.cfg-section {
+  padding: 22px 28px 26px;
+  scroll-margin-top: 8px;
+}
+.cfg-section + .cfg-section {
+  border-top: 1px solid var(--app-border-subtle);
+}
+.cfg-known-dirs {
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border-subtle);
+  border-radius: var(--mantine-radius-md);
+  padding: 0.75rem 1rem;
+}
+.cfg-form .pane-foot {
+  justify-content: flex-end;
+  min-height: 56px;
+  box-sizing: border-box;
+}
+.cfg-save-status {
+  margin-right: auto;
+}
+.cfg-save-error {
+  flex: 1 1 100%;
+}
+
+/* Logs: the toolbar on top, the log filling the rest of the pane. */
+.logs-pane .pane-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px 16px;
+  overflow: hidden;
+}
+.logs-box {
+  flex: 1 1 auto;
+  min-height: 240px;
+}
+
+/* Maintenance: action buttons in a grid; the log fills its pane. */
+.maint-action-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.maint-log-pane .pane-scroll {
+  padding: 16px;
+}
+.maint-log-fill {
+  height: 100%;
+  min-height: 280px;
+}
+.maint-log-fill .maint-log-box {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Phones: config nav becomes a row of chips above the form; the form and
+   log flow with the page, the save bar sticks to the bottom. */
+@media (--bp-lib-stack) {
+  .screen[data-screen="config"] > .cfg-nav {
+    position: sticky;
+    top: var(--app-header-h);
+    z-index: 5;
+    padding: 6px;
+  }
+  .cfg-nav-list {
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .cfg-nav-link {
+    flex-direction: row;
+    white-space: nowrap;
+    border-left: 0;
+    min-height: 40px;
+    align-items: center;
+    padding: 0 12px;
+    font-size: 0.92rem;
+  }
+  .cfg-nav-kicker,
+  .cfg-nav-foot {
+    display: none;
+  }
+  .cfg-section {
+    padding: 18px 16px 20px;
+  }
+  .screen[data-screen="config"] .pane-foot {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  }
+  .screen[data-screen="config"] > .cfg-form {
+    overflow: visible;
+  }
+  .screen[data-layout="stack"] .logs-box {
+    flex: none;
+    height: 70vh;
+  }
+  .screen[data-layout="stack"] .logs-pane .pane-scroll {
+    overflow: visible;
+  }
+}
+
+/* Touch screens: list rows and pane controls become finger-sized. */
+@media (pointer: coarse) {
+  .pane .app-row {
+    min-height: 52px;
+  }
+  .cfg-nav-link {
+    min-height: 44px;
+  }
+  .maint-action-grid .mantine-Button-root {
+    min-height: 44px;
+  }
 }
 
 /* ---- Library (LibraryView) ---------------------------------------------
@@ -1891,96 +2077,6 @@ a {
   }
 }
 
-/* Master-detail layout for the Jobs tab. The grid is always present (one
-   stable root in JobsTabBody); it stays a single full-width column until a job
-   is selected, then splits master-detail on desktop. Below --bp-split it
-   collapses back to one column (running + recent, then the detail card). */
-.jobs-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 20px;
-  align-items: start;
-}
-.jobs-grid[data-has-selection="true"] {
-  grid-template-columns: 360px 1fr;
-}
-@media (--bp-split) {
-  .jobs-grid[data-has-selection="true"] {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Detail pane wrapper. On desktop it is simply the grid's second column.
-   Below --bp-split the single-column collapse would push the card under both
-   lists — selecting a job appeared to do nothing until you scrolled to the
-   bottom — so the wrapper becomes a fixed bottom sheet instead: scrim behind,
-   card scrolling inside, pinned to the bottom edge. Scrim tap and the card's
-   close button both clear the selection (JobsTabBody). The page behind stays
-   put without a JS body lock: touch-action on the scrim swallows drags and
-   overscroll-behavior on the sheet blocks scroll chaining. */
-.jobs-detail-scrim {
-  display: none;
-}
-@media (--bp-split) {
-  .jobs-detail {
-    position: fixed;
-    inset: 0;
-    /* Above the sticky header (60), below the nav drawer (80) and the
-       confirm-modal scrim (200). */
-    z-index: 70;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-  }
-  .jobs-detail-scrim {
-    display: block;
-    position: absolute;
-    inset: 0;
-    border: 0;
-    padding: 0;
-    cursor: pointer;
-    background: var(--app-scrim);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
-    touch-action: none;
-    -webkit-tap-highlight-color: transparent;
-    animation: jobs-sheet-fade 0.18s ease;
-  }
-  .jobs-detail-sheet {
-    position: relative;
-    max-height: 85dvh;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    background: var(--app-surface);
-    border-top: 1px solid var(--app-border);
-    border-radius: 14px 14px 0 0;
-    box-shadow: var(--app-shadow-lg);
-    /* Keep the card's last controls clear of the home-indicator inset. */
-    padding-bottom: env(safe-area-inset-bottom, 0);
-    animation: jobs-sheet-rise 0.22s ease;
-  }
-  /* The sheet owns the chrome — flatten the Card (the sheet's only child) so
-     its border, radius and shadow don't double up against the sheet's own.
-     Targets the internal `.app-surface` class our theme stamps on Card root,
-     same as the --bp-phone padding override below; the child combinator keeps
-     any future nested surfaces untouched. */
-  .jobs-detail-sheet > .app-surface {
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-  }
-}
-/* Short landscape phones: with ~400px of height, 85dvh plus the rounded
-   top edge leaves only a sliver of scrim — give the sheet the full height
-   and drop the sheet chrome so the card content gets the room instead. */
-@media (--bp-split) and (max-height: 480px) {
-  .jobs-detail-sheet {
-    max-height: 100dvh;
-    border-top: 0;
-    border-radius: 0;
-  }
-}
-
 @keyframes jobs-sheet-fade {
   from {
     opacity: 0;
@@ -2396,25 +2492,6 @@ a {
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--app-text-faint);
-}
-
-/* Phones: reclaim horizontal space. By default Container + Card + row each
-   add ~16px sides → ~100px of chrome eats into a 430px viewport before any
-   content shows. Trim the Container gutter and shrink Card padding. The
-   Card padding override targets
-   the internal `.app-surface` class our theme stamps on Card root, since
-   Card sets `padding` from the `padding` prop as an inline `--card-padding`
-   variable and CSS-variable overrides on the same element lose to inline. */
-@media (--bp-phone) {
-  .app-shell-body {
-    padding-top: var(--mantine-spacing-md);
-    padding-left: var(--mantine-spacing-sm);
-    padding-right: var(--mantine-spacing-sm);
-    /* Compose the inset with the phone-width vertical padding in case the
-       footnote is short/absent. (Mantine's inline `py="xl"` shadows this
-       padding-bottom, so .app-footnote is the guaranteed carrier — see E2.) */
-    padding-bottom: max(var(--mantine-spacing-md), env(safe-area-inset-bottom, 0));
-  }
 }
 
 /* Active job card — desktop shows Mantine's full Stepper with labels beside

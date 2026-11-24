@@ -1,23 +1,18 @@
-import { Container, Stack, Tabs } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
+import { Tabs } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { listDownloadsOptions } from "./api/@tanstack/react-query.gen";
-import { ActiveJobCard } from "./components/ActiveJobCard";
-import { AppVersion } from "./components/AppVersion";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { CountBadge } from "./components/CountBadge";
 import { HealthBadge } from "./components/HealthBadge";
+import { JobsView } from "./components/JobsView";
 import { LibraryView } from "./components/LibraryView";
 import { LogsPanel } from "./components/LogsPanel";
 import { MaintenancePanel } from "./components/MaintenancePanel";
 import { MobileMenuButton } from "./components/MobileMenuButton";
 import { MobileNavDrawer } from "./components/MobileNavDrawer";
-import { RecentList } from "./components/RecentList";
-import { RunningJobsPanel } from "./components/RunningJobsPanel";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { useAutoSelectJob } from "./hooks/useAutoSelectJob";
-import { useModalFocusTrap } from "./hooks/useModalFocusTrap";
 import { initialJobIdFromUrl, useSyncJobParam } from "./hooks/useRouteJob";
 import { useRouteTab } from "./hooks/useRouteTab";
 import { useEventStream } from "./lib/eventStream";
@@ -66,9 +61,8 @@ export default function App() {
   };
 
   // One Tabs root spans the header (where the tab list lives) and the body
-  // (the panels). The Library panel is full-bleed and sized to the viewport
-  // so its panes scroll on their own; the other tabs keep the centred
-  // reading-width container.
+  // (the panels). Every tab is one screen sized to the viewport below the
+  // header, with panes that scroll on their own (see Screen).
   return (
     <Tabs value={tab} onChange={setTab} keepMounted variant="default" className="app-tabs">
       <a href="#main" className="app-skip-link">
@@ -115,30 +109,22 @@ export default function App() {
           <LibraryView tab={tab} onOpenJob={openJob} />
         </Tabs.Panel>
         <Tabs.Panel value="jobs">
-          <PagePanel>
-            <JobsTabBody
-              selectedId={selectedId}
-              onSelect={selectJob}
-              hasAnyActive={running > 0 || scheduled > 0}
-            />
-          </PagePanel>
+          <JobsView
+            selectedId={selectedId}
+            isManualSelection={isManualSelection}
+            onSelect={selectJob}
+          />
         </Tabs.Panel>
         <Tabs.Panel value="config">
-          <PagePanel>
-            <ConfigPanel />
-          </PagePanel>
+          <ConfigPanel />
         </Tabs.Panel>
         <Tabs.Panel value="maintenance">
-          <PagePanel>
-            <MaintenancePanel />
-          </PagePanel>
+          <MaintenancePanel />
         </Tabs.Panel>
         <Tabs.Panel value="logs">
-          <PagePanel>
-            {/* Only mount when active so the SSE stream is opened on demand
-                and torn down when the user navigates away. */}
-            {tab === "logs" ? <LogsPanel /> : null}
-          </PagePanel>
+          {/* Only mount when active so the SSE stream is opened on demand
+              and torn down when the user navigates away. */}
+          {tab === "logs" ? <LogsPanel /> : null}
         </Tabs.Panel>
       </main>
       <MobileNavDrawer
@@ -149,96 +135,5 @@ export default function App() {
         onClose={() => setNavOpen(false)}
       />
     </Tabs>
-  );
-}
-
-/** Centred, reading-width body for every tab except the full-bleed Library. */
-function PagePanel({ children }: { children: React.ReactNode }) {
-  return (
-    <Container size="lg" py="xl" className="app-shell-body">
-      <Stack gap="xl">
-        {children}
-        <div className="app-footnote">
-          gallery-dl · webui · <AppVersion />
-        </div>
-      </Stack>
-    </Container>
-  );
-}
-
-/**
- * Two-column master-detail (Direction B) on the Jobs tab. The running panel and
- * the recent list live in the left column; the active job card fills the right.
- *
- * The grid is always rendered as one stable root: a selection just flips
- * `data-has-selection` (CSS reads it to switch to two columns) and mounts the
- * detail pane. Below --bp-split the grid collapses to a single column and CSS
- * restyles the detail wrapper into a fixed bottom sheet over the lists (see
- * .jobs-detail in global.css) — without it the card would render below both
- * lists, off-screen. The scrim, the Escape key, and the card's close button
- * all clear the selection; while the sheet is up, focus is trapped inside it
- * (see useModalFocusTrap). Because the root element never changes type, resizing the
- * window — or selecting/closing a job — never remounts the list or detail,
- * so their local state (search, sort, scroll position) survives.
- */
-// Mirrors `@custom-media --bp-split (max-width: 880px)` in global.css — the
-// width below which the detail pane becomes a modal bottom sheet. Keep in
-// sync (both are device px, so font scaling can't drift them apart).
-const SPLIT_QUERY = "(max-width: 880px)";
-
-export function JobsTabBody({
-  selectedId,
-  onSelect,
-  hasAnyActive,
-}: {
-  selectedId: number | null;
-  onSelect: (id: number | null) => void;
-  hasAnyActive: boolean;
-}) {
-  const hasSelection = selectedId !== null;
-  // The detail pane is only modal as a bottom sheet; in the two-column
-  // desktop layout it's an ordinary side panel, where trapping focus (or
-  // claiming aria-modal) would be wrong.
-  const isSheet = useMediaQuery(SPLIT_QUERY, false, { getInitialValueInEffect: false }) ?? false;
-  const sheetRef = useRef<HTMLDivElement | null>(null);
-  useModalFocusTrap({
-    active: hasSelection && isSheet,
-    rootRef: sheetRef,
-    onClose: () => onSelect(null),
-    lockScroll: true,
-  });
-  return (
-    <div className="jobs-grid" data-has-selection={hasSelection ? "true" : undefined}>
-      <Stack gap="md">
-        <RunningJobsPanel onSelect={onSelect} selectedId={selectedId} />
-        <RecentList
-          onSelect={onSelect}
-          selectedId={selectedId}
-          hideEmpty={!hasSelection && !hasAnyActive}
-        />
-      </Stack>
-      {hasSelection ? (
-        <div className="jobs-detail">
-          <button
-            type="button"
-            className="jobs-detail-scrim"
-            aria-label="Close job details"
-            onClick={() => onSelect(null)}
-          />
-          {/* role=dialog also holds for the desktop side panel (a non-modal
-              dialog); aria-modal is only claimed when the sheet really does
-              cover the page. */}
-          <div
-            className="jobs-detail-sheet"
-            ref={sheetRef}
-            role="dialog"
-            aria-modal={isSheet ? "true" : undefined}
-            aria-label="Job details"
-          >
-            <ActiveJobCard jobId={selectedId} onClose={() => onSelect(null)} />
-          </div>
-        </div>
-      ) : null}
-    </div>
   );
 }
