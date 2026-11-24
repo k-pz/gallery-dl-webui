@@ -23,15 +23,16 @@ from backend.comic_metadata import (
     normalize_tags,
 )
 from backend.downloads import postprocess, service
-from backend.downloads.gallery import Gallery, SkipChapterFn
+from backend.downloads.gallery import Gallery, MetadataResult, SkipChapterFn
 from backend.downloads.live_progress import LiveProgress
 from backend.downloads.outcomes import ChapterSeed, reconcile_outcomes
 from backend.downloads.postprocess import PackedChapterIndex, build_packed_chapter_index
 from backend.downloads.progress import count_present_chapters
 from backend.downloads.schemas import Download
-from backend.events import EventBus, downloads_event, progress_event
+from backend.events import EventBus, downloads_event, epub_event, progress_event
 from backend.targets import service as targets_service
 from backend.tasks import log_task_death
+from backend.volume_fill import service as volume_service
 
 logger = logging.getLogger(__name__)
 
@@ -214,9 +215,12 @@ class Worker:
         # the event loop (failure accounting). The set is only mutated from
         # the callback; the GIL covers it.
         chapters_seen: set[str] = set()
+        # Metadata passes run for this job, keyed by URL, so the volume fill
+        # after packing can reuse them instead of asking the source again.
+        lookups: dict[str, MetadataResult] = {}
         try:
             skip_chapter = await self._build_skip_chapter(job)
-            needed, discovered = await self._extract_metadata(job, skip_chapter)
+            needed, discovered = await self._extract_metadata(job, skip_chapter, lookups)
             if self._cancel_flags.get(job.id, False):
                 await service.mark_cancelled(self._db, job.id, 0)
                 self._publish(downloads_event("updated", id=job.id, status="cancelled"))
@@ -250,6 +254,7 @@ class Worker:
 
         if exit_code == 0 and not cancelled:
             await self._run_postprocess(job, records, self._gallery.downloads_dir)
+            await self._fill_volumes(job, lookups)
         # Settled — emit a final updated event so subscribers fetch the fresh row.
         self._publish(downloads_event("updated", id=job.id))
 
@@ -287,14 +292,18 @@ class Worker:
         return skip
 
     async def _extract_metadata(
-        self, job: Download, skip_chapter: SkipChapterFn | None
+        self,
+        job: Download,
+        skip_chapter: SkipChapterFn | None,
+        lookups: dict[str, MetadataResult],
     ) -> tuple[list[ChapterSeed], int]:
         """Metadata-only pull: discover the chapter list (+ release dates) and
         seed the target's series_name / status / tags. Returns the needed
         chapters (after skip-filtering) with their dates, plus the total
-        discovered count.
+        discovered count. Every metadata pass it runs is added to `lookups`.
         """
         meta = await asyncio.to_thread(self._gallery.extract_metadata, job.url)
+        lookups[job.url.strip()] = meta
         if job.target_id is not None and meta.series_name:
             await targets_service.set_name(self._db, job.target_id, meta.series_name)
             self._publish(downloads_event("target_named", id=job.target_id, name=meta.series_name))
@@ -309,11 +318,11 @@ class Worker:
         needed = await asyncio.to_thread(
             _filter_needed_chapters, meta.chapter_dates, meta.chapter_titles, skip_chapter
         )
-        needed = await self._fill_titles_from_metadata_source(job, needed)
+        needed = await self._fill_titles_from_metadata_source(job, needed, lookups)
         return needed, len(meta.chapter_dates)
 
     async def _fill_titles_from_metadata_source(
-        self, job: Download, needed: list[ChapterSeed]
+        self, job: Download, needed: list[ChapterSeed], lookups: dict[str, MetadataResult]
     ) -> list[ChapterSeed]:
         """Fill-only title lookup against the target's metadata_source_url.
 
@@ -339,6 +348,7 @@ class Worker:
                 exc_info=True,
             )
             return needed
+        lookups[target.metadata_source_url.strip()] = alt
         titles_by_chapter = {chapter: t for (_manga, chapter), t in alt.chapter_titles.items()}
         return [
             s if s.title else replace(s, title=titles_by_chapter.get(s.name, "")) for s in needed
@@ -478,6 +488,42 @@ class Worker:
             error=result.error_summary,
         )
         self._publish(downloads_event("postprocess", id=job.id, status=status))
+
+    async def _fill_volumes(self, job: Download, lookups: dict[str, MetadataResult]) -> None:
+        """Fill chapter volumes the series' CBZs lack from its MangaDex page.
+
+        Runs after every successful download, so chapters MangaDex has since
+        collected into a volume pick it up too. For a MangaDex series the
+        volumes come from this run's own metadata pass; otherwise (a MangaDex
+        metadata source URL) that page is read once more, and only when some
+        chapter on disk lacks a volume. Best-effort: a failure is logged and
+        never fails the download.
+        """
+        if job.target_id is None:
+            return
+        target = await targets_service.get(self._db, job.target_id)
+        if target is None:
+            return
+        try:
+            fill = await volume_service.fill_target_volumes(
+                self._db, self._gallery, target, known=lookups
+            )
+        except volume_service.NoVolumeSource:
+            return
+        except Exception:
+            logger.warning("volume fill failed for target %d", target.id, exc_info=True)
+            return
+        result = fill.result
+        if result.filled or result.failed:
+            logger.info(
+                "volume fill for target %d: %d filled, %d without a volume yet, %d failed",
+                target.id,
+                result.filled,
+                result.unassigned,
+                result.failed,
+            )
+        if result.filled:
+            self._publish(epub_event(target.id))
 
     async def _series_metadata_overrides(
         self, job: Download, cfg: dict[str, object]

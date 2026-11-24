@@ -855,3 +855,147 @@ async def test_worker_survives_failing_metadata_source_lookup(
         assert outcomes[0].title == ""
     finally:
         await worker.stop()
+
+
+MD_URL = "https://mangadex.org/title/0aea9f43-d4a9-4bf7-bebc-550a512f9b95"
+
+
+def _cbz_volume(path: Path) -> str | None:
+    import xml.etree.ElementTree as ET
+    import zipfile
+
+    with zipfile.ZipFile(path) as zf:
+        return ET.fromstring(zf.read("ComicInfo.xml")).findtext("Volume")
+
+
+async def _packing_library(db: aiosqlite.Connection, tmp_path: Path) -> Path:
+    root = tmp_path / "media"
+    default = root / "manga"
+    default.mkdir(parents=True)
+    await app_config_service.set_many(
+        db,
+        {
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": str(default),
+            "delete_raw_after_pack": True,
+        },
+    )
+    return default
+
+
+async def test_worker_fills_volumes_from_its_own_mangadex_pass(
+    settings: Settings, db: aiosqlite.Connection, tmp_path: Path
+) -> None:
+    from tests._helpers import write_chapter_cbz
+
+    default = await _packing_library(db, tmp_path)
+    # Chapter 1 was packed before MangaDex put it in a volume.
+    old = write_chapter_cbz(default / "S" / "S - c000.cbz", "S", "0")
+    config = FakeGalleryConfig()
+    config.manifest_for[MD_URL] = ["fake/S/c1/001.jpg"]
+    config.records_for[MD_URL] = _make_records_for_chapter(settings.downloads_dir, "S", "1")
+    config.chapter_dates_for[MD_URL] = {("S", "0"): "2026-01-01", ("S", "1"): "2026-01-08"}
+    config.chapter_volumes_for[MD_URL] = {("S", "0"): "1", ("S", "1"): "1"}
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await targets_service.upsert(db, MD_URL, "mangadex", None)
+        await targets_service.set_name(db, target.id, "S")
+        d = await downloads_service.insert_pending(db, MD_URL, "mangadex", target_id=target.id)
+        worker.notify()
+        new = default / "S" / "S - c001.cbz"
+
+        async def filled() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return (
+                row is not None
+                and row.postprocess_status == "completed"
+                and _cbz_volume(new) == "1"
+                and _cbz_volume(old) == "1"
+            )
+
+        await wait_for(filled)
+        # The volumes came from the download's own metadata pass.
+        assert gallery.metadata_calls == [MD_URL]
+    finally:
+        await worker.stop()
+
+
+async def test_worker_shares_the_metadata_source_pass_between_titles_and_volumes(
+    settings: Settings, db: aiosqlite.Connection, tmp_path: Path
+) -> None:
+    default = await _packing_library(db, tmp_path)
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]
+    config.records_for["https://example/x"] = _make_records_for_chapter(
+        settings.downloads_dir, "S", "1"
+    )
+    config.chapter_dates_for["https://example/x"] = {("S", "1"): "2026-01-01"}
+    config.chapter_titles_for[MD_URL] = {("S (MD)", "1"): "Intro"}
+    config.chapter_volumes_for[MD_URL] = {("S (MD)", "1"): "4"}
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await targets_service.upsert(db, "https://example/x", "fake", None)
+        await targets_service.set_name(db, target.id, "S")
+        await targets_service.update(db, target.id, metadata_source_url=MD_URL)
+        d = await downloads_service.insert_pending(
+            db, "https://example/x", "fake", target_id=target.id
+        )
+        worker.notify()
+        cbz = default / "S" / "S - c001.cbz"
+
+        async def filled() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return (
+                row is not None
+                and row.postprocess_status == "completed"
+                and (_cbz_volume(cbz) == "4")
+            )
+
+        await wait_for(filled)
+        assert gallery.metadata_calls.count(MD_URL) == 1
+    finally:
+        await worker.stop()
+
+
+async def test_worker_survives_a_failing_volume_lookup(
+    settings: Settings, db: aiosqlite.Connection, tmp_path: Path
+) -> None:
+    default = await _packing_library(db, tmp_path)
+    config = FakeGalleryConfig()
+    config.manifest_for["https://example/x"] = ["fake/S/c1/001.jpg"]
+    config.records_for["https://example/x"] = _make_records_for_chapter(
+        settings.downloads_dir, "S", "1"
+    )
+    config.chapter_dates_for["https://example/x"] = {("S", "1"): "2026-01-01"}
+    config.chapter_titles_for["https://example/x"] = {("S", "1"): "Has a title"}
+    config.metadata_error_for[MD_URL] = RuntimeError("MangaDex down")
+    gallery = FakeGallery(settings, config=config)
+    worker = Worker(db, gallery, LiveProgress())  # type: ignore[arg-type]
+    worker.start()
+    try:
+        target = await targets_service.upsert(db, "https://example/x", "fake", None)
+        await targets_service.set_name(db, target.id, "S")
+        await targets_service.update(db, target.id, metadata_source_url=MD_URL)
+        d = await downloads_service.insert_pending(
+            db, "https://example/x", "fake", target_id=target.id
+        )
+        worker.notify()
+
+        async def settled() -> bool:
+            row = await downloads_service.get(db, d.id)
+            return (
+                row is not None
+                and MD_URL in gallery.metadata_calls
+                and (row.postprocess_status == "completed")
+            )
+
+        await wait_for(settled)
+        row = await downloads_service.get(db, d.id)
+        assert row is not None and row.status == "completed"
+        assert _cbz_volume(default / "S" / "S - c001.cbz") is None
+    finally:
+        await worker.stop()
