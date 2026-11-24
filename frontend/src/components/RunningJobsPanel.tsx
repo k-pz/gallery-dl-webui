@@ -36,9 +36,12 @@ function progressLabel(item: Download): string {
 export function RunningJobsPanel({
   onSelect,
   selectedId,
+  showIdle = false,
 }: {
   onSelect: (id: number) => void;
   selectedId: number | null;
+  /** Say "nothing running" instead of rendering nothing when idle. */
+  showIdle?: boolean;
 }) {
   const { data } = useQuery({
     ...listDownloadsOptions(),
@@ -55,7 +58,19 @@ export function RunningJobsPanel({
     return { running: r, scheduledCount: s, cancellableIds: c };
   }, [data]);
 
-  if (running.length === 0 && scheduledCount === 0) return null;
+  if (running.length === 0 && scheduledCount === 0) {
+    if (!showIdle) return null;
+    return (
+      <Card>
+        <Stack gap={4}>
+          <span className="app-section-kicker">now</span>
+          <Text size="sm" c="dimmed">
+            Nothing running or queued.
+          </Text>
+        </Stack>
+      </Card>
+    );
+  }
 
   return (
     <Card>

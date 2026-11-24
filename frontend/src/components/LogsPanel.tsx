@@ -21,14 +21,15 @@ import {
   Group,
   NumberInput,
   Select,
-  Stack,
   Switch,
   Text,
   TextInput,
 } from "@mantine/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLogTail } from "../hooks/useLogTail";
+import { useScreenLayout } from "../hooks/useScreenLayout";
 import { ICON_SIZE, IconRefresh, IconSearch, IconTrash } from "./Icons";
+import { Pane, Screen } from "./Screen";
 
 const DEFAULT_LINES = 500;
 const MIN_LINES = 1;
@@ -70,6 +71,7 @@ function formatTs(ms: number | null): string {
 }
 
 export function LogsPanel() {
+  const layout = useScreenLayout();
   const [linesDraft, setLinesDraft] = useState<number | string>(DEFAULT_LINES);
   const [lines, setLines] = useState<number>(DEFAULT_LINES);
   const [filter, setFilter] = useState("");
@@ -156,161 +158,162 @@ export function LogsPanel() {
   })();
 
   return (
-    <Stack gap="md">
-      <Group justify="space-between" align="flex-end" wrap="wrap" gap="md">
-        <Group className="logs-filter-row" gap="xs" align="flex-end" wrap="wrap">
-          <NumberInput
-            label="Lines"
-            value={linesDraft}
-            onChange={(v) => setLinesDraft(v)}
-            onBlur={applyLines}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                applyLines();
-              }
-            }}
-            min={MIN_LINES}
-            max={MAX_LINES}
-            step={100}
-            clampBehavior="strict"
-            className="logs-filter-lines"
-            description="History on connect"
-          />
-          <Select
-            label="Level"
-            data={LEVEL_OPTIONS}
-            value={levelThreshold}
-            onChange={(v) => v && setLevelThreshold(v)}
-            allowDeselect={false}
-            className="logs-filter-level"
-          />
-          <TextInput
-            label="Filter"
-            value={filter}
-            onChange={(e) => setFilter(e.currentTarget.value)}
-            placeholder="substring match…"
-            leftSection={<IconSearch size={ICON_SIZE.sm} />}
-            className="logs-filter-search"
-          />
+    <Screen name="logs" layout={layout}>
+      <Pane label="Service log" className="logs-pane">
+        <Group justify="space-between" align="flex-end" wrap="wrap" gap="md">
+          <Group className="logs-filter-row" gap="xs" align="flex-end" wrap="wrap">
+            <NumberInput
+              label="Lines"
+              value={linesDraft}
+              onChange={(v) => setLinesDraft(v)}
+              onBlur={applyLines}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  applyLines();
+                }
+              }}
+              min={MIN_LINES}
+              max={MAX_LINES}
+              step={100}
+              clampBehavior="strict"
+              className="logs-filter-lines"
+              description="History on connect"
+            />
+            <Select
+              label="Level"
+              data={LEVEL_OPTIONS}
+              value={levelThreshold}
+              onChange={(v) => v && setLevelThreshold(v)}
+              allowDeselect={false}
+              className="logs-filter-level"
+            />
+            <TextInput
+              label="Filter"
+              value={filter}
+              onChange={(e) => setFilter(e.currentTarget.value)}
+              placeholder="substring match…"
+              leftSection={<IconSearch size={ICON_SIZE.sm} />}
+              className="logs-filter-search"
+            />
+          </Group>
+          <Group gap="xs" align="center">
+            {statusBadge}
+            <Text size="sm" c="dimmed" ff="monospace">
+              {visible.length} / {entries.length}
+            </Text>
+            <Switch
+              size="sm"
+              label="Follow latest"
+              checked={following}
+              onChange={(e) => toggleFollowing(e.currentTarget.checked)}
+              title="Auto-scroll to the newest entry. Turns off when you scroll up; turns on again when you scroll back to the bottom."
+            />
+            <Button
+              variant="default"
+              size="xs"
+              onClick={() => setPaused((p) => !p)}
+              aria-pressed={paused}
+            >
+              {paused ? "Resume" : "Pause"}
+            </Button>
+            <Button
+              variant="default"
+              size="xs"
+              leftSection={<IconRefresh size={ICON_SIZE.sm} />}
+              onClick={reconnect}
+              title="Reconnect"
+            >
+              Reconnect
+            </Button>
+            <Button
+              variant="default"
+              size="xs"
+              leftSection={<IconTrash size={ICON_SIZE.sm} />}
+              onClick={clear}
+            >
+              Clear
+            </Button>
+          </Group>
         </Group>
-        <Group gap="xs" align="center">
-          {statusBadge}
-          <Text size="sm" c="dimmed" ff="monospace">
-            {visible.length} / {entries.length}
-          </Text>
-          <Switch
-            size="sm"
-            label="Follow latest"
-            checked={following}
-            onChange={(e) => toggleFollowing(e.currentTarget.checked)}
-            title="Auto-scroll to the newest entry. Turns off when you scroll up; turns on again when you scroll back to the bottom."
-          />
-          <Button
-            variant="default"
-            size="xs"
-            onClick={() => setPaused((p) => !p)}
-            aria-pressed={paused}
-          >
-            {paused ? "Resume" : "Pause"}
-          </Button>
-          <Button
-            variant="default"
-            size="xs"
-            leftSection={<IconRefresh size={ICON_SIZE.sm} />}
-            onClick={reconnect}
-            title="Reconnect"
-          >
-            Reconnect
-          </Button>
-          <Button
-            variant="default"
-            size="xs"
-            leftSection={<IconTrash size={ICON_SIZE.sm} />}
-            onClick={clear}
-          >
-            Clear
-          </Button>
-        </Group>
-      </Group>
 
-      {errorMessage ? (
+        {errorMessage ? (
+          <Box
+            p="sm"
+            style={{
+              border: "1px solid var(--mantine-color-red-5)",
+              borderRadius: "var(--mantine-radius-md)",
+              background: "var(--mantine-color-red-0)",
+              color: "var(--mantine-color-red-9)",
+            }}
+          >
+            <Text size="sm">{errorMessage}</Text>
+          </Box>
+        ) : null}
+
         <Box
-          p="sm"
+          ref={scrollRef}
+          onScroll={onScroll}
+          data-testid="logs-scroll"
+          className="logs-box"
           style={{
-            border: "1px solid var(--mantine-color-red-5)",
+            border: "1px solid var(--app-border-subtle)",
             borderRadius: "var(--mantine-radius-md)",
-            background: "var(--mantine-color-red-0)",
-            color: "var(--mantine-color-red-9)",
+            background: "var(--app-surface-muted)",
+            overflowY: "auto",
+            fontFamily: "var(--app-mono)",
+            fontSize: "0.78rem",
+            lineHeight: 1.5,
           }}
         >
-          <Text size="sm">{errorMessage}</Text>
-        </Box>
-      ) : null}
-
-      <Box
-        ref={scrollRef}
-        onScroll={onScroll}
-        data-testid="logs-scroll"
-        style={{
-          border: "1px solid var(--app-border-subtle)",
-          borderRadius: "var(--mantine-radius-md)",
-          background: "var(--app-surface-muted)",
-          height: "70vh",
-          minHeight: 320,
-          overflowY: "auto",
-          fontFamily: "var(--app-mono)",
-          fontSize: "0.78rem",
-          lineHeight: 1.5,
-        }}
-      >
-        {visible.length === 0 ? (
-          <Box p="md">
-            <Text size="sm" c="dimmed">
-              {entries.length === 0
-                ? status === "error"
-                  ? "(no entries — see error above)"
-                  : "(waiting for log entries…)"
-                : "(no entries match the current filters)"}
-            </Text>
-          </Box>
-        ) : (
-          <Box component="ul" m={0} p={0} style={{ listStyle: "none" }}>
-            {visible.map((e) => (
-              <Box
-                component="li"
-                key={e.id}
-                px="sm"
-                py={2}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "auto auto 1fr",
-                  gap: 10,
-                  alignItems: "baseline",
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  borderBottom: "1px solid var(--app-border-subtle)",
-                }}
-              >
-                <Text component="span" size="xs" c="dimmed" ff="monospace">
-                  {formatTs(e.ts_ms)}
-                </Text>
-                <Badge
-                  size="xs"
-                  variant="light"
-                  color={LEVEL_COLOR[e.level] ?? "gray"}
-                  style={{ minWidth: 56, justifyContent: "center" }}
+          {visible.length === 0 ? (
+            <Box p="md">
+              <Text size="sm" c="dimmed">
+                {entries.length === 0
+                  ? status === "error"
+                    ? "(no entries — see error above)"
+                    : "(waiting for log entries…)"
+                  : "(no entries match the current filters)"}
+              </Text>
+            </Box>
+          ) : (
+            <Box component="ul" m={0} p={0} style={{ listStyle: "none" }}>
+              {visible.map((e) => (
+                <Box
+                  component="li"
+                  key={e.id}
+                  px="sm"
+                  py={2}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "auto auto 1fr",
+                    gap: 10,
+                    alignItems: "baseline",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    borderBottom: "1px solid var(--app-border-subtle)",
+                  }}
                 >
-                  {e.level}
-                </Badge>
-                <Text component="span" size="xs" ff="monospace">
-                  {e.message}
-                </Text>
-              </Box>
-            ))}
-          </Box>
-        )}
-      </Box>
-    </Stack>
+                  <Text component="span" size="xs" c="dimmed" ff="monospace">
+                    {formatTs(e.ts_ms)}
+                  </Text>
+                  <Badge
+                    size="xs"
+                    variant="light"
+                    color={LEVEL_COLOR[e.level] ?? "gray"}
+                    style={{ minWidth: 56, justifyContent: "center" }}
+                  >
+                    {e.level}
+                  </Badge>
+                  <Text component="span" size="xs" ff="monospace">
+                    {e.message}
+                  </Text>
+                </Box>
+              ))}
+            </Box>
+          )}
+        </Box>
+      </Pane>
+    </Screen>
   );
 }

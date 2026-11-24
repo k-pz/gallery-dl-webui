@@ -29,9 +29,13 @@ const STATUS_COLOR: Record<string, string> = {
 export function MaintenanceLog({
   jobId,
   startedAt,
+  fill = false,
 }: {
   jobId: number;
   startedAt: string | null | undefined;
+  /** Grow the log to the height of its container (a pane) instead of the
+      fixed box with an expand toggle. */
+  fill?: boolean;
 }) {
   const { data, isLoading, isError, error } = useQuery({
     ...getMaintenanceJobProgressOptions({ path: { job_id: jobId } }),
@@ -90,7 +94,7 @@ export function MaintenanceLog({
   else counter = `${data.done} / ${data.total}`;
 
   return (
-    <Stack gap="sm">
+    <Stack gap="sm" className={fill ? "maint-log-fill" : undefined}>
       <Group justify="space-between" align="center" wrap="wrap">
         <Group gap="xs" align="center">
           <span className="app-section-kicker">log</span>
@@ -105,23 +109,26 @@ export function MaintenanceLog({
           <Text size="sm" c="dimmed" ff="monospace">
             {counter}
           </Text>
-          <UnstyledButton
-            className="maint-log-toggle"
-            onClick={() => setExpanded((e) => !e)}
-            aria-expanded={expanded}
-            aria-label={expanded ? "Collapse job log" : "Expand job log"}
-            data-expanded={expanded ? "true" : undefined}
-          >
-            <Text size="xs" c="dimmed" ff="monospace">
-              {expanded ? "collapse" : "expand"}
-            </Text>
-            <IconChevronDown size={ICON_SIZE.sm} className="maint-log-toggle-chev" />
-          </UnstyledButton>
+          {!fill && (
+            <UnstyledButton
+              className="maint-log-toggle"
+              onClick={() => setExpanded((e) => !e)}
+              aria-expanded={expanded}
+              aria-label={expanded ? "Collapse job log" : "Expand job log"}
+              data-expanded={expanded ? "true" : undefined}
+            >
+              <Text size="xs" c="dimmed" ff="monospace">
+                {expanded ? "collapse" : "expand"}
+              </Text>
+              <IconChevronDown size={ICON_SIZE.sm} className="maint-log-toggle-chev" />
+            </UnstyledButton>
+          )}
         </Group>
       </Group>
       <Progress value={pct} size="md" radius="sm" striped={!terminal} animated={!terminal} />
       <Box
         ref={logBoxRef}
+        className="maint-log-box"
         style={{
           border: "1px solid var(--app-border-subtle)",
           borderRadius: "var(--mantine-radius-md)",
@@ -129,7 +136,7 @@ export function MaintenanceLog({
           overflow: "hidden",
         }}
       >
-        <ScrollArea h={expanded ? "70vh" : 240} type="auto">
+        <ScrollArea h={fill ? "100%" : expanded ? "70vh" : 240} type="auto">
           <Box
             component="pre"
             m={0}

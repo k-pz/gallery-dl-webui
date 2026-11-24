@@ -2,9 +2,7 @@ import {
   Alert,
   Box,
   Button,
-  Card,
   Code,
-  Divider,
   Group,
   Loader,
   type MantineColorScheme,
@@ -19,19 +17,65 @@ import {
   useMantineColorScheme,
 } from "@mantine/core";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { getConfigOptions, putConfigMutation } from "../api/@tanstack/react-query.gen";
+import { useScreenLayout } from "../hooks/useScreenLayout";
 import { extractErrorMessage } from "../lib/apiError";
 import { useDataInvalidators } from "../lib/invalidate";
 import { READING_DIRECTION_OPTIONS } from "../lib/readingDirection";
+import { AppVersion } from "./AppVersion";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { FormSection } from "./FormSection";
 import { LibraryBackup } from "./LibraryBackup";
+import { Pane, Screen } from "./Screen";
+
+/** Sections of the form, in order, for the section nav. */
+const CONFIG_SECTIONS = [
+  { id: "theme", kicker: "appearance", label: "Theme" },
+  { id: "packing", kicker: "postprocessing", label: "CBZ packing" },
+  { id: "polling", kicker: "watching", label: "Polling cadence" },
+  { id: "parallelism", kicker: "concurrency", label: "Parallelism" },
+  { id: "komga", kicker: "komga sync", label: "Komga" },
+  { id: "epub", kicker: "export", label: "EPUB export" },
+  { id: "dirs", kicker: "cache", label: "Output directories" },
+  { id: "backup", kicker: "library backup", label: "Export / import" },
+] as const;
+
+const sectionDomId = (id: string) => `config-${id}`;
+
+function ConfigSection({ id, children }: { id: string; children: ReactNode }) {
+  return (
+    <section id={sectionDomId(id)} data-section={id} className="cfg-section">
+      {children}
+    </section>
+  );
+}
 
 export function ConfigPanel() {
   const { data, isLoading } = useQuery(getConfigOptions());
   const invalidate = useDataInvalidators();
   const { colorScheme, setColorScheme } = useMantineColorScheme();
+  const layout = useScreenLayout();
+  const formRef = useRef<HTMLDivElement | null>(null);
+  const [activeSection, setActiveSection] = useState<string>(CONFIG_SECTIONS[0].id);
+  // Highlight the section nearest the top of the form pane in the nav.
+  // Skipped where IntersectionObserver is missing (tests, old browsers).
+  useEffect(() => {
+    const rootEl = layout === "stack" ? null : formRef.current;
+    if (typeof IntersectionObserver === "undefined" || !data) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const top = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        const id = top?.target.getAttribute("data-section");
+        if (id) setActiveSection(id);
+      },
+      { root: rootEl, rootMargin: "0px 0px -70% 0px" },
+    );
+    for (const el of document.querySelectorAll("[data-section]")) observer.observe(el);
+    return () => observer.disconnect();
+  }, [layout, data]);
 
   const [root, setRoot] = useState("");
   const [defaultDir, setDefaultDir] = useState<string | null>(null);
@@ -135,40 +179,96 @@ export function ConfigPanel() {
 
   if (isLoading || !data) {
     return (
-      <Card>
-        <Group>
-          <Loader size="sm" />
-          <Text>Loading configuration…</Text>
-        </Group>
-      </Card>
+      <Screen name="config" layout={layout}>
+        <Pane label="Configuration" className="pane-empty">
+          <Group>
+            <Loader size="sm" />
+            <Text>Loading configuration…</Text>
+          </Group>
+        </Pane>
+      </Screen>
     );
   }
 
   const hasRoot = Boolean(root.trim());
+  const sections = CONFIG_SECTIONS.filter(
+    (sec) => sec.id !== "dirs" || data.postprocess_known_output_dirs.length > 0,
+  );
+  const goTo = (id: string) => {
+    setActiveSection(id);
+    document.getElementById(sectionDomId(id))?.scrollIntoView({ block: "start" });
+  };
+
+  const saveBar = (
+    <>
+      {submitError && (
+        <Alert color="red" variant="light" className="cfg-save-error">
+          {submitError}
+        </Alert>
+      )}
+      <Text size="sm" c="dimmed" className="cfg-save-status">
+        {dirty
+          ? "Edited — save to apply"
+          : savedAt !== null && !submitError
+            ? "Saved."
+            : "No changes"}
+      </Text>
+      {(dirty || mutation.isPending) && (
+        <Button onClick={save} loading={mutation.isPending} disabled={!dirty}>
+          Save changes
+        </Button>
+      )}
+    </>
+  );
 
   return (
-    <Stack gap="lg">
-      <Card>
-        <FormSection
-          kicker="appearance"
-          title="Theme"
-          description="Auto follows your system preference."
-        >
-          <SegmentedControl
-            aria-label="Theme"
-            value={colorScheme}
-            onChange={(value) => setColorScheme(value as MantineColorScheme)}
-            data={[
-              { label: "Auto", value: "auto" },
-              { label: "Light", value: "light" },
-              { label: "Dark", value: "dark" },
-            ]}
-          />
-        </FormSection>
-      </Card>
+    <Screen name="config" layout={layout}>
+      <nav className="pane cfg-nav" aria-label="Config sections">
+        <ul className="cfg-nav-list">
+          {sections.map((sec) => (
+            <li key={sec.id}>
+              <a
+                href={`#${sectionDomId(sec.id)}`}
+                className="cfg-nav-link"
+                aria-current={activeSection === sec.id ? "true" : undefined}
+                onClick={(e) => {
+                  e.preventDefault();
+                  goTo(sec.id);
+                }}
+              >
+                <span className="cfg-nav-kicker">{sec.kicker}</span>
+                {sec.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+        <div className="app-footnote cfg-nav-foot">
+          gallery-dl · webui · <AppVersion />
+        </div>
+      </nav>
 
-      <Card>
-        <Stack gap="xl">
+      <Pane label="Configuration" className="cfg-form" footer={saveBar} bodyRef={formRef}>
+        <ConfigSection id="theme">
+          <FormSection
+            kicker="appearance"
+            title="Theme"
+            description="Auto follows your system preference."
+          >
+            <SegmentedControl
+              aria-label="Theme"
+              value={colorScheme}
+              onChange={(value) => setColorScheme(value as MantineColorScheme)}
+              data={[
+                { label: "Auto", value: "auto" },
+                { label: "Light", value: "light" },
+                { label: "Dark", value: "dark" },
+              ]}
+              maw={420}
+            />
+          </FormSection>
+        </ConfigSection>
+
+        <ConfigSection id="packing">
           <FormSection
             kicker="postprocessing"
             title="CBZ packing"
@@ -239,9 +339,9 @@ export function ConfigPanel() {
               styles={{ input: { fontFamily: "var(--app-mono)" } }}
             />
           </FormSection>
+        </ConfigSection>
 
-          <Divider />
-
+        <ConfigSection id="polling">
           <FormSection
             kicker="watching"
             title="Polling cadence"
@@ -258,9 +358,9 @@ export function ConfigPanel() {
               styles={{ input: { fontFamily: "var(--app-mono)" } }}
             />
           </FormSection>
+        </ConfigSection>
 
-          <Divider />
-
+        <ConfigSection id="parallelism">
           <FormSection
             kicker="concurrency"
             title="Parallelism"
@@ -277,9 +377,9 @@ export function ConfigPanel() {
               w={240}
             />
           </FormSection>
+        </ConfigSection>
 
-          <Divider />
-
+        <ConfigSection id="komga">
           <FormSection
             kicker="komga sync"
             title="Komga"
@@ -309,9 +409,9 @@ export function ConfigPanel() {
               styles={{ input: { fontFamily: "var(--app-mono)" } }}
             />
           </FormSection>
+        </ConfigSection>
 
-          <Divider />
-
+        <ConfigSection id="epub">
           <FormSection
             kicker="export"
             title="EPUB export"
@@ -332,64 +432,34 @@ export function ConfigPanel() {
               styles={{ input: { fontFamily: "var(--app-mono)" } }}
             />
           </FormSection>
+        </ConfigSection>
 
-          {(dirty || mutation.isPending || savedAt !== null || submitError) && (
-            <Stack gap="sm">
-              <Group>
-                {(dirty || mutation.isPending) && (
-                  <Button onClick={save} loading={mutation.isPending} disabled={!dirty}>
-                    Save changes
-                  </Button>
-                )}
-                {savedAt !== null && !dirty && !submitError && (
-                  <Text size="sm" c="green">
-                    Saved.
-                  </Text>
-                )}
-              </Group>
-              {submitError && (
-                <Alert color="red" variant="light">
-                  {submitError}
-                </Alert>
-              )}
-            </Stack>
-          )}
+        {data.postprocess_known_output_dirs.length > 0 && (
+          <ConfigSection id="dirs">
+            <FormSection kicker="cache" title="Remembered output directories">
+              <Box className="cfg-known-dirs">
+                <Stack gap={4}>
+                  {data.postprocess_known_output_dirs.map((dir) => (
+                    <Text key={dir} size="xs" c="dimmed" ff="monospace">
+                      {dir}
+                    </Text>
+                  ))}
+                </Stack>
+              </Box>
+            </FormSection>
+          </ConfigSection>
+        )}
 
-          {data.postprocess_known_output_dirs.length > 0 && (
-            <>
-              <Divider />
-              <FormSection kicker="cache" title="Remembered output directories">
-                <Box
-                  style={{
-                    background: "var(--app-surface-muted)",
-                    border: "1px solid var(--app-border-subtle)",
-                    borderRadius: "var(--mantine-radius-md)",
-                    padding: "0.75rem 1rem",
-                  }}
-                >
-                  <Stack gap={4}>
-                    {data.postprocess_known_output_dirs.map((dir) => (
-                      <Text key={dir} size="xs" c="dimmed" ff="monospace">
-                        {dir}
-                      </Text>
-                    ))}
-                  </Stack>
-                </Box>
-              </FormSection>
-            </>
-          )}
-        </Stack>
-      </Card>
-
-      <Card>
-        <FormSection
-          kicker="library backup"
-          title="Export / import"
-          description="Save and restore the library as a YAML file (URL, name, output dir, watch state)."
-        >
-          <LibraryBackup />
-        </FormSection>
-      </Card>
-    </Stack>
+        <ConfigSection id="backup">
+          <FormSection
+            kicker="library backup"
+            title="Export / import"
+            description="Save and restore the library as a YAML file (URL, name, output dir, watch state). Not part of the form above: it applies at once."
+          >
+            <LibraryBackup />
+          </FormSection>
+        </ConfigSection>
+      </Pane>
+    </Screen>
   );
 }

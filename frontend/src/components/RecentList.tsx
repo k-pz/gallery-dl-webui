@@ -6,13 +6,11 @@ import type { Download } from "../api/types.gen";
 import { useCancelDownload, useRequeueDownload } from "../lib/downloadActions";
 import { makeNeedleMatcher } from "../lib/listFilters";
 import { useOptimisticCancelMany } from "../lib/optimisticCancel";
-import { usePagination } from "../lib/pagination";
 import { REFETCH_LIST_MS } from "../lib/polling";
 import { isActive } from "../lib/status";
 import { EmptyState } from "./EmptyState";
 import { ICON_SIZE, IconActivity } from "./Icons";
 import { ListHeader } from "./ListHeader";
-import { ListPagination } from "./ListPagination";
 import { ListToolbar } from "./ListToolbar";
 import { RecentRow } from "./RecentRow";
 import { type SortDir, SortDirToggle } from "./SortDirToggle";
@@ -44,11 +42,9 @@ const QUEUE_RANK: Record<string, number> = {
 export function RecentList({
   onSelect,
   selectedId,
-  hideEmpty,
 }: {
   onSelect: (id: number) => void;
   selectedId: number | null;
-  hideEmpty?: boolean;
 }) {
   const { data, isLoading } = useQuery({
     ...listDownloadsOptions(),
@@ -120,8 +116,6 @@ export function RecentList({
   const totalCount = data?.length ?? 0;
   const filtersActive = search.trim().length > 0 || statusFilter !== "any";
 
-  const pagination = usePagination(visible, `${search}|${statusFilter}|${sortKey}|${sortDir}`);
-
   const kicker =
     statusFilter === "active" ? "queue" : statusFilter === "any" ? "all jobs" : "history";
 
@@ -185,7 +179,7 @@ export function RecentList({
             </Group>
           </ListToolbar>
         )}
-        {totalCount === 0 && !hideEmpty && (
+        {totalCount === 0 && !isLoading && (
           <EmptyState
             icon={<IconActivity size={ICON_SIZE.hero} />}
             title="No jobs yet"
@@ -197,7 +191,7 @@ export function RecentList({
         )}
         {visible.length > 0 && (
           <Stack gap={2}>
-            {pagination.pageItems.map((item) => (
+            {visible.map((item) => (
               <RecentRow
                 key={item.id}
                 item={item}
@@ -212,15 +206,6 @@ export function RecentList({
             ))}
           </Stack>
         )}
-        <ListPagination
-          page={pagination.page}
-          setPage={pagination.setPage}
-          totalPages={pagination.totalPages}
-          start={pagination.start}
-          end={pagination.end}
-          total={pagination.total}
-          ariaLabel="Jobs pagination"
-        />
       </Stack>
     </Card>
   );
