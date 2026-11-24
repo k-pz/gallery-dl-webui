@@ -13,7 +13,6 @@ import logging
 import zipfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
@@ -21,10 +20,6 @@ import aiosqlite
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse
 
-from backend.app_config import service as app_config_service
-from backend.app_config.constants import DEFAULT_READING_DIRECTION
-from backend.comic_metadata import SERIES_JSON_NAME, read_series_json_metadata, sanitize
-from backend.config import Settings
 from backend.dependencies import DbDep, EventBusDep, SettingsDep
 from backend.epub import service
 from backend.epub.builder import build_epub
@@ -35,18 +30,7 @@ from backend.epub.exceptions import (
     EpubExportFailed,
     EpubFileMissing,
 )
-from backend.epub.library import (
-    BookPlan,
-    BookRange,
-    DiskChapter,
-    StoredBook,
-    book_chapters,
-    build_series_context,
-    plan_books,
-    scan_series_chapters,
-    suggest_ranges_from_volumes,
-    validate_ranges,
-)
+from backend.epub.library import BookPlan, book_chapters, validate_starts
 from backend.epub.schemas import (
     EpubBookIn,
     EpubBookOut,
@@ -55,6 +39,7 @@ from backend.epub.schemas import (
     EpubExportAllResult,
     EpubOverview,
 )
+from backend.epub.state import SeriesState, load_state
 from backend.events import epub_event
 from backend.exceptions import BadRequestError
 from backend.targets.dependencies import TargetDep
@@ -78,64 +63,7 @@ def get_export_locks(request: Request) -> dict[int, asyncio.Lock]:
 ExportLocksDep = Annotated[dict[int, asyncio.Lock], Depends(get_export_locks)]
 
 
-@dataclass(frozen=True)
-class _SeriesState:
-    export_dir: Path
-    series_dir: Path | None
-    chapters: list[DiskChapter]
-    plans: list[BookPlan]
-    suggestions: list[BookRange]
-
-
-async def _load_state(target: Target, db: aiosqlite.Connection, settings: Settings) -> _SeriesState:
-    cfg = await app_config_service.get_all(db)
-    export_dir = app_config_service.epub_export_dir(cfg, settings.data_dir)
-    default_out = cfg.get("postprocess_default_output_dir")
-    output_dir = target.output_dir or (default_out if isinstance(default_out, str) else None)
-    series_dir = Path(output_dir) / sanitize(target.name) if output_dir and target.name else None
-    direction = cfg.get("default_reading_direction")
-    default_direction = direction if isinstance(direction, str) else DEFAULT_READING_DIRECTION
-    books = [b.to_stored() for b in await service.list_books(db, target.id)]
-    return await asyncio.to_thread(
-        _compute_state, target, series_dir, export_dir, books, default_direction
-    )
-
-
-def _compute_state(
-    target: Target,
-    series_dir: Path | None,
-    export_dir: Path,
-    books: list[StoredBook],
-    default_direction: str,
-) -> _SeriesState:
-    chapters: list[DiskChapter] = []
-    series_json: dict[str, object] = {}
-    if series_dir is not None and target.name:
-        chapters = scan_series_chapters(series_dir, target.name)
-        series_json = read_series_json_metadata(series_dir / SERIES_JSON_NAME) or {}
-    ctx = (
-        build_series_context(
-            name=target.name,
-            url=target.url,
-            series_json=series_json,
-            chapters=chapters,
-            target_tags=target.tags,
-            target_reading_direction=target.reading_direction,
-            default_reading_direction=default_direction,
-        )
-        if target.name
-        else None
-    )
-    return _SeriesState(
-        export_dir=export_dir,
-        series_dir=series_dir,
-        chapters=chapters,
-        plans=plan_books(ctx, books, chapters, export_dir),
-        suggestions=suggest_ranges_from_volumes(chapters),
-    )
-
-
-def _overview(target: Target, state: _SeriesState) -> EpubOverview:
+def _overview(target: Target, state: SeriesState) -> EpubOverview:
     position_by_path = {ch.path: plan.position for plan in state.plans for ch in plan.chapters}
     chapters = [
         EpubChapterOut(
@@ -154,8 +82,7 @@ def _overview(target: Target, state: _SeriesState) -> EpubOverview:
             position=plan.position,
             title=plan.title,
             custom_title=plan.custom_title,
-            chapter_start=plan.range.start,
-            chapter_end=plan.range.end,
+            chapter_start=plan.start,
             chapter_count=len(plan.chapters),
             page_count=sum(ch.pages for ch in plan.chapters),
             first_chapter=plan.chapters[0].number if plan.chapters else None,
@@ -176,9 +103,7 @@ def _overview(target: Target, state: _SeriesState) -> EpubOverview:
         chapters=chapters,
         books=books,
         unassigned=[ch.number for ch in chapters if ch.book_position is None],
-        suggested_books=[
-            EpubBookIn(chapter_start=r.start, chapter_end=r.end) for r in state.suggestions
-        ],
+        suggested_books=[EpubBookIn(chapter_start=start) for start in state.suggestions],
     )
 
 
@@ -201,7 +126,7 @@ def _remove_stale_export(path: Path, export_dir: Path) -> None:
 
 
 async def _export(
-    db: aiosqlite.Connection, target: Target, plan: BookPlan, state: _SeriesState
+    db: aiosqlite.Connection, target: Target, plan: BookPlan, state: SeriesState
 ) -> None:
     if plan.meta is None or plan.fingerprint is None or not plan.chapters:
         raise EpubBookEmpty()
@@ -221,7 +146,7 @@ async def _export(
 @router.get("/targets/{target_id}/epub", operation_id="getTargetEpub")
 async def get_target_epub(target: TargetDep, db: DbDep, settings: SettingsDep) -> EpubOverview:
     """The series' packed chapters, its books, and each book's export status."""
-    return _overview(target, await _load_state(target, db, settings))
+    return _overview(target, await load_state(target, db, settings))
 
 
 @router.put("/targets/{target_id}/epub/books", operation_id="putTargetEpubBooks")
@@ -234,19 +159,16 @@ async def put_target_epub_books(
 ) -> EpubOverview:
     """Replace the series' book list. Books are re-numbered in chapter order."""
     entries = sorted(
-        (
-            (BookRange(b.chapter_start, b.chapter_end), (b.title or "").strip() or None)
-            for b in body.books
-        ),
-        key=lambda e: e[0].start,
+        ((b.chapter_start, (b.title or "").strip() or None) for b in body.books),
+        key=lambda e: e[0],
     )
     try:
-        validate_ranges([rng for rng, _ in entries])
+        validate_starts([start for start, _ in entries])
     except ValueError as exc:
         raise BadRequestError(str(exc)) from exc
     await service.replace_books(db, target.id, entries)
     bus.publish(epub_event(target.id))
-    return _overview(target, await _load_state(target, db, settings))
+    return _overview(target, await load_state(target, db, settings))
 
 
 @router.post(
@@ -262,13 +184,13 @@ async def export_target_epub_book(
 ) -> EpubOverview:
     """(Re)build one book's EPUB into the export directory."""
     async with _exclusive(locks, target.id):
-        state = await _load_state(target, db, settings)
+        state = await load_state(target, db, settings)
         plan = next((p for p in state.plans if p.book_id == book_id), None)
         if plan is None:
             raise EpubBookNotFound()
         await _export(db, target, plan, state)
     bus.publish(epub_event(target.id))
-    return _overview(target, await _load_state(target, db, settings))
+    return _overview(target, await load_state(target, db, settings))
 
 
 @router.post("/targets/{target_id}/epub/export", operation_id="exportTargetEpubBooks")
@@ -286,7 +208,7 @@ async def export_target_epub_books(
     exported = 0
     errors: list[str] = []
     async with _exclusive(locks, target.id):
-        state = await _load_state(target, db, settings)
+        state = await load_state(target, db, settings)
         for plan in state.plans:
             if plan.status not in ("not_exported", "outdated"):
                 continue

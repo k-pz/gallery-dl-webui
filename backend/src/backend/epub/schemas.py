@@ -16,7 +16,6 @@ class EpubBook(BaseModel):
     position: int
     title: str | None
     chapter_start: float
-    chapter_end: float | None
     export_path: str | None
     export_fingerprint: str | None
     exported_at: str | None
@@ -31,7 +30,6 @@ class EpubBook(BaseModel):
             position=self.position,
             title=self.title,
             chapter_start=self.chapter_start,
-            chapter_end=self.chapter_end,
             export_path=self.export_path,
             export_fingerprint=self.export_fingerprint,
             exported_at=self.exported_at,
@@ -39,16 +37,17 @@ class EpubBook(BaseModel):
 
 
 class EpubBookIn(BaseModel):
-    """One book of a series: an inclusive chapter-number range.
+    """One book of a series, identified by the chapter it starts at.
 
-    `chapter_end` null leaves the book open-ended (only allowed for the last
-    book) so chapters downloaded later land in it. A blank `title` falls back
-    to "<Series>, Vol. <n>".
+    Books split the series' chapters: each runs from its start up to the
+    next book's start, the first one also takes any lower-numbered chapter
+    and the last one stays open so chapters downloaded later land in it.
+    Every numbered chapter therefore belongs to exactly one book. A blank
+    `title` falls back to "<Series>, Vol. <n>".
     """
 
     title: str | None = None
     chapter_start: float = Field(allow_inf_nan=False)
-    chapter_end: float | None = Field(default=None, allow_inf_nan=False)
 
 
 class EpubBooksIn(BaseModel):
@@ -72,7 +71,6 @@ class EpubBookOut(BaseModel):
     title: str
     custom_title: str | None
     chapter_start: float
-    chapter_end: float | None
     chapter_count: int
     page_count: int
     first_chapter: str | None
@@ -93,9 +91,10 @@ class EpubOverview(BaseModel):
     export_dir: str
     chapters: list[EpubChapterOut]
     books: list[EpubBookOut]
-    # Chapter numbers that fall in no book.
+    # Chapters that fall in no book: every chapter while no book exists,
+    # otherwise only those without a numeric number (e.g. "Extra").
     unassigned: list[str]
-    # Ranges derived from the chapters' Volume metadata; empty when the
+    # Books derived from the chapters' Volume metadata; empty when the
     # source exposes no (consistent) volumes.
     suggested_books: list[EpubBookIn]
 

@@ -7,7 +7,6 @@ from collections.abc import Sequence
 import aiosqlite
 
 from backend.database import now_iso, transaction
-from backend.epub.library import BookRange
 from backend.epub.schemas import EpubBook
 
 
@@ -30,31 +29,32 @@ async def get_book(db: aiosqlite.Connection, target_id: int, book_id: int) -> Ep
 async def replace_books(
     db: aiosqlite.Connection,
     target_id: int,
-    books: Sequence[tuple[BookRange, str | None]],
+    books: Sequence[tuple[float, str | None]],
 ) -> list[EpubBook]:
-    """Replace a series' book list with `books` (already validated + sorted).
+    """Replace a series' book list with `books` — (start chapter, title)
+    pairs, already validated and sorted.
 
-    Positions are reassigned 1..n in the given order. A new book whose range
-    matches an existing book's keeps that book's export record, so its status
-    is recomputed against the last export instead of resetting to "never
-    exported" on every save.
+    Positions are reassigned 1..n in the given order. A new book starting at
+    the same chapter as an existing one keeps that book's export record, so
+    its status is recomputed against the last export (and shows as outdated
+    if its chapters changed) instead of resetting to "never exported" on
+    every save.
     """
     async with transaction(db):
         async with db.execute("SELECT * FROM epub_books WHERE target_id = ?", (target_id,)) as cur:
             old = [EpubBook.from_row(r) for r in await cur.fetchall()]
-        by_range = {(b.chapter_start, b.chapter_end): b for b in old}
+        by_start = {b.chapter_start: b for b in old}
         await db.execute("DELETE FROM epub_books WHERE target_id = ?", (target_id,))
-        for position, (rng, title) in enumerate(books, start=1):
-            prev = by_range.get((rng.start, rng.end))
+        for position, (start, title) in enumerate(books, start=1):
+            prev = by_start.get(start)
             await db.execute(
-                "INSERT INTO epub_books(target_id, position, title, chapter_start, chapter_end, "
-                "export_path, export_fingerprint, exported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO epub_books(target_id, position, title, chapter_start, "
+                "export_path, export_fingerprint, exported_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     target_id,
                     position,
                     title,
-                    rng.start,
-                    rng.end,
+                    start,
                     prev.export_path if prev else None,
                     prev.export_fingerprint if prev else None,
                     prev.exported_at if prev else None,
