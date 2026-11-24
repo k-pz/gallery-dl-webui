@@ -310,10 +310,17 @@ function PackerBody({
           onSelect={setSelected}
         />
         <div className="packer-legend">
-          <Legend state="exported" label="Exported" count={counts.exported} />
-          <Legend state="outdated" label="Outdated" count={counts.outdated} />
-          <Legend state="not_exported" label="Not exported" count={counts.not_exported} />
+          {plan.length > 0 && (
+            <>
+              <Legend state="exported" label="Exported" count={counts.exported} />
+              <Legend state="outdated" label="Outdated" count={counts.outdated} />
+              <Legend state="not_exported" label="Not exported" count={counts.not_exported} />
+            </>
+          )}
           {counts.unsaved > 0 && <Legend state="unsaved" label="Unsaved" count={counts.unsaved} />}
+          {plan.length === 0 && chapters.length > 0 && (
+            <Legend state="loose" label="No book yet" count={chapters.length} />
+          )}
           {loose.length > 0 && (
             <Text size="xs" c="dimmed">
               Not numbered, so in no book: {loose.join(", ")}

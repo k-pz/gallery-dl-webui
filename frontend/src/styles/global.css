@@ -1485,7 +1485,8 @@ a {
 }
 .chmap-cell,
 .chmap-swatch {
-  background: var(--chmap-color, var(--app-border));
+  background: var(--chmap-fill, transparent);
+  box-shadow: inset 0 0 0 var(--chmap-ring-width, 0) var(--chmap-ring, transparent);
 }
 .chmap-swatch {
   display: inline-block;
@@ -1493,30 +1494,61 @@ a {
   height: 10px;
   border-radius: 2px;
 }
-/* Export states differ in lightness as well as hue (exported darkest,
-   not exported lightest) so they read without colour vision. */
-[data-state="exported"] {
-  --chmap-color: var(--tone-done);
+/* Map colours (--chmap-* in theme.ts) are tuned per colour scheme so every
+   state keeps at least 3:1 against the map background. States that sit
+   side by side never rely on hue alone: exported and outdated are solid
+   fills that also differ in lightness (about 2.3:1 in both schemes), not
+   exported is a hollow outline, and unsaved is striped. */
+.chmap-cell[data-state="exported"],
+.chmap-swatch[data-state="exported"] {
+  --chmap-fill: var(--chmap-exported);
 }
-[data-state="outdated"] {
-  --chmap-color: color-mix(in srgb, var(--tone-warn) 80%, white);
+.chmap-cell[data-state="outdated"],
+.chmap-swatch[data-state="outdated"] {
+  --chmap-fill: var(--chmap-outdated);
 }
-[data-state="not_exported"] {
-  --chmap-color: color-mix(in srgb, var(--tone-info) 45%, var(--app-surface));
+.chmap-cell[data-state="not_exported"],
+.chmap-swatch[data-state="not_exported"] {
+  --chmap-ring: var(--chmap-pending);
+  --chmap-ring-width: 1.5px;
 }
-[data-state="unsaved"] {
-  --chmap-color: var(--tone-active);
+.chmap-cell[data-state="unsaved"],
+.chmap-swatch[data-state="unsaved"] {
+  --chmap-fill: repeating-linear-gradient(
+    135deg,
+    var(--chmap-unsaved) 0 2px,
+    transparent 2px 3.5px
+  );
+  --chmap-ring: var(--chmap-unsaved);
+  --chmap-ring-width: 1px;
 }
-[data-state="empty"],
-[data-state="loose"] {
-  --chmap-color: var(--app-surface-sunken);
+.chmap-cell[data-state="empty"],
+.chmap-cell[data-state="loose"],
+.chmap-swatch[data-state="empty"],
+.chmap-swatch[data-state="loose"] {
+  --chmap-fill: var(--chmap-loose);
 }
+.chmap-cell {
+  position: relative;
+}
+.chmap-cell:hover {
+  z-index: 1;
+  outline: 1px solid var(--app-text-muted);
+  outline-offset: 1px;
+}
+/* The picked chapter: the strongest fill plus a ring, so it stands out
+   from any state in either scheme. */
 .chmap-cell[aria-pressed="true"] {
-  --chmap-color: var(--app-text);
-}
-.chmap-cell:focus-visible {
+  --chmap-fill: var(--app-text);
+  --chmap-ring-width: 0;
+  z-index: 1;
   outline: 2px solid var(--app-text);
   outline-offset: 1px;
+}
+.chmap-cell:focus-visible {
+  z-index: 2;
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
 }
 .packer-inspector {
   display: flex;
@@ -1576,6 +1608,12 @@ a {
 }
 .packer-row-title input {
   font-size: 0.85rem;
+}
+/* An untitled book shows its default title as the placeholder; it is the
+   book's real title, so it keeps body-text contrast (muted, not faint). */
+.packer-row-title input::placeholder {
+  color: var(--app-text-muted);
+  opacity: 1;
 }
 .packer-row-num {
   font-family: var(--app-mono);
