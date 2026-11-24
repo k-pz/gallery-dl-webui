@@ -1198,3 +1198,81 @@ def test_sync_komga_metadata_end_to_end(
     assert body["readingDirection"] == "RIGHT_TO_LEFT"
     assert body["tags"] == ["Seinen"]
     assert all(body[k] is True for k in body if k.endswith("Lock"))
+
+
+def test_fill_mangadex_volumes_job(client: TestClient, gallery_config, tmp_path: Path) -> None:
+    import xml.etree.ElementTree as ET
+
+    import yaml
+
+    from .._helpers import write_chapter_cbz
+
+    md_own = "https://mangadex.org/title/0aea9f43-d4a9-4bf7-bebc-550a512f9b95"
+    md_alt = "https://mangadex.org/title/11111111-2222-3333-4444-555555555555"
+    root = tmp_path / "media"
+    out = root / "manga"
+    resp = client.put(
+        "/api/config",
+        json={
+            "postprocess_root": str(root),
+            "postprocess_default_output_dir": str(out),
+            "delete_raw_after_pack": True,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    library = {
+        "version": 1,
+        "series": [
+            {"url": md_own, "name": "Own"},
+            {"url": "https://example/alt", "name": "Alt"},
+            {"url": "https://example/complete", "name": "Complete"},
+            {"url": "https://example/plain", "name": "Plain"},
+        ],
+    }
+    resp = client.post(
+        "/api/library/import",
+        content=yaml.safe_dump(library),
+        headers={"content-type": "application/yaml"},
+    )
+    assert resp.status_code == 200, resp.text
+    by_url = {t["url"]: t["id"] for t in client.get("/api/targets").json()}
+    client.patch(
+        f"/api/targets/{by_url['https://example/alt']}", json={"metadata_source_url": md_alt}
+    )
+    client.patch(
+        f"/api/targets/{by_url['https://example/complete']}", json={"metadata_source_url": md_alt}
+    )
+    base = out.resolve()
+    write_chapter_cbz(base / "Own" / "Own - c1.cbz", "Own", "1")
+    write_chapter_cbz(base / "Alt" / "Alt - c1.cbz", "Alt", "1")
+    write_chapter_cbz(base / "Alt" / "Alt - c2.cbz", "Alt", "2")
+    write_chapter_cbz(base / "Complete" / "Complete - c1.cbz", "Complete", "1", volume="1")
+    write_chapter_cbz(base / "Plain" / "Plain - c1.cbz", "Plain", "1")
+    gallery_config.chapter_volumes_for[md_own] = {("Own", "1"): "1"}
+    gallery_config.chapter_volumes_for[md_alt] = {("X", "1"): "3"}
+
+    created = client.post("/api/maintenance/jobs", json={"kind": "fill_mangadex_volumes"})
+    assert created.status_code == 200, created.json()
+    done = _wait_for_completion(client, created.json()["id"])
+
+    assert done["status"] == "completed", done
+    assert done["result"] == {
+        "series": 3,
+        "series_updated": 2,
+        "filled": 2,
+        "unassigned": 1,
+        "failed": 0,
+        "lookups_failed": 0,
+    }
+
+    def volume(path: Path) -> str | None:
+        with zipfile.ZipFile(path) as zf:
+            return ET.fromstring(zf.read("ComicInfo.xml")).findtext("Volume")
+
+    assert volume(base / "Own" / "Own - c1.cbz") == "1"
+    assert volume(base / "Alt" / "Alt - c1.cbz") == "3"
+    assert volume(base / "Alt" / "Alt - c2.cbz") is None
+    assert volume(base / "Plain" / "Plain - c1.cbz") is None
+    gallery = client.app.state.gallery
+    # "Complete" lacked nothing, so its metadata source was looked up only for "Alt".
+    assert gallery.metadata_calls.count(md_alt) == 1
