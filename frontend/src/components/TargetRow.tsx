@@ -29,7 +29,7 @@ import { formatAbs, formatDate, formatRel } from "../lib/time";
 import { useNotifyingMutation } from "../lib/useNotifyingMutation";
 import { CopyIconButton } from "./CopyIconButton";
 import { DetailField } from "./DetailField";
-import { EpubBooksPanel } from "./EpubBooksPanel";
+import { EpubPacker } from "./EpubPacker";
 import {
   ICON_SIZE,
   IconArrowUpRight,
@@ -394,7 +394,9 @@ export function TargetRow({
             </Anchor>
             <CopyIconButton value={target.url} label="Copy URL" />
           </Group>
-          <EpubBooksPanel targetId={target.id} />
+          <section className="epub-panel" aria-label="EPUB books">
+            <EpubPacker targetId={target.id} />
+          </section>
         </div>
       )}
     </article>
