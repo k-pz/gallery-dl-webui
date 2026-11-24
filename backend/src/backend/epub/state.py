@@ -16,7 +16,7 @@ import aiosqlite
 
 from backend.app_config import service as app_config_service
 from backend.app_config.constants import DEFAULT_READING_DIRECTION
-from backend.comic_metadata import SERIES_JSON_NAME, read_series_json_metadata, sanitize
+from backend.comic_metadata import SERIES_JSON_NAME, read_series_json_metadata
 from backend.config import Settings
 from backend.epub import service
 from backend.epub.library import (
@@ -28,6 +28,7 @@ from backend.epub.library import (
     scan_series_chapters,
     suggest_starts_from_volumes,
 )
+from backend.targets.paths import target_series_dir
 from backend.targets.schemas import Target
 
 
@@ -43,9 +44,7 @@ class SeriesState:
 async def load_state(target: Target, db: aiosqlite.Connection, settings: Settings) -> SeriesState:
     cfg = await app_config_service.get_all(db)
     export_dir = app_config_service.epub_export_dir(cfg, settings.data_dir)
-    default_out = cfg.get("postprocess_default_output_dir")
-    output_dir = target.output_dir or (default_out if isinstance(default_out, str) else None)
-    series_dir = Path(output_dir) / sanitize(target.name) if output_dir and target.name else None
+    series_dir = target_series_dir(target, cfg)
     direction = cfg.get("default_reading_direction")
     default_direction = direction if isinstance(direction, str) else DEFAULT_READING_DIRECTION
     books = [b.to_stored() for b in await service.list_books(db, target.id)]
