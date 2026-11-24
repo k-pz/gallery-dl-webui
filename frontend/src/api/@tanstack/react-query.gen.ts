@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { cancelDownload, cancelMaintenanceJob, checkForUpdates, createDownload, createOutputDir, deleteTarget, downloadTargetEpubBook, exportLibrary, exportTargetEpubBook, exportTargetEpubBooks, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, getTargetEpub, getUpdatePreviewRef, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, pollWatchedTargets, putConfig, putTargetEpubBooks, requeueDownload, scheduleMaintenanceJob, setUpdatePreviewRef, tailLogsApiLogsTailGet, updateTarget } from '../sdk.gen';
-import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CancelMaintenanceJobData, CancelMaintenanceJobError, CancelMaintenanceJobResponse, CheckForUpdatesData, CheckForUpdatesError, CheckForUpdatesResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, DownloadTargetEpubBookData, DownloadTargetEpubBookError, ExportLibraryData, ExportLibraryResponse, ExportTargetEpubBookData, ExportTargetEpubBookError, ExportTargetEpubBookResponse, ExportTargetEpubBooksData, ExportTargetEpubBooksError, ExportTargetEpubBooksResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetEpubData, GetTargetEpubError, GetTargetEpubResponse, GetTargetError, GetTargetResponse, GetUpdatePreviewRefData, GetUpdatePreviewRefResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PollWatchedTargetsData, PollWatchedTargetsResponse, PutConfigData, PutConfigError, PutConfigResponse, PutTargetEpubBooksData, PutTargetEpubBooksError, PutTargetEpubBooksResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, SetUpdatePreviewRefData, SetUpdatePreviewRefError, SetUpdatePreviewRefResponse, TailLogsApiLogsTailGetData, TailLogsApiLogsTailGetError, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
+import { cancelDownload, cancelMaintenanceJob, checkForUpdates, createDownload, createOutputDir, deleteTarget, downloadTargetEpubBook, exportLibrary, exportTargetEpubBook, exportTargetEpubBooks, fillTargetEpubVolumes, getConfig, getDownload, getDownloadProgress, getHealth, getMaintenanceJobProgress, getTarget, getTargetEpub, getUpdatePreviewRef, importLibrary, listDownloads, listMaintenanceJobs, listOutputDirs, listTargets, type Options, pollTarget, pollWatchedTargets, putConfig, putTargetEpubBooks, requeueDownload, scheduleMaintenanceJob, setUpdatePreviewRef, tailLogsApiLogsTailGet, updateTarget } from '../sdk.gen';
+import type { CancelDownloadData, CancelDownloadError, CancelDownloadResponse, CancelMaintenanceJobData, CancelMaintenanceJobError, CancelMaintenanceJobResponse, CheckForUpdatesData, CheckForUpdatesError, CheckForUpdatesResponse, CreateDownloadData, CreateDownloadError, CreateDownloadResponse, CreateOutputDirData, CreateOutputDirError, CreateOutputDirResponse, DeleteTargetData, DeleteTargetError, DeleteTargetResponse, DownloadTargetEpubBookData, DownloadTargetEpubBookError, ExportLibraryData, ExportLibraryResponse, ExportTargetEpubBookData, ExportTargetEpubBookError, ExportTargetEpubBookResponse, ExportTargetEpubBooksData, ExportTargetEpubBooksError, ExportTargetEpubBooksResponse, FillTargetEpubVolumesData, FillTargetEpubVolumesError, FillTargetEpubVolumesResponse, GetConfigData, GetConfigResponse, GetDownloadData, GetDownloadError, GetDownloadProgressData, GetDownloadProgressError, GetDownloadProgressResponse, GetDownloadResponse, GetHealthData, GetHealthResponse, GetMaintenanceJobProgressData, GetMaintenanceJobProgressError, GetMaintenanceJobProgressResponse, GetTargetData, GetTargetEpubData, GetTargetEpubError, GetTargetEpubResponse, GetTargetError, GetTargetResponse, GetUpdatePreviewRefData, GetUpdatePreviewRefResponse, ImportLibraryData, ImportLibraryResponse, ListDownloadsData, ListDownloadsResponse, ListMaintenanceJobsData, ListMaintenanceJobsResponse, ListOutputDirsData, ListOutputDirsResponse, ListTargetsData, ListTargetsResponse, PollTargetData, PollTargetError, PollTargetResponse, PollWatchedTargetsData, PollWatchedTargetsResponse, PutConfigData, PutConfigError, PutConfigResponse, PutTargetEpubBooksData, PutTargetEpubBooksError, PutTargetEpubBooksResponse, RequeueDownloadData, RequeueDownloadError, RequeueDownloadResponse, ScheduleMaintenanceJobData, ScheduleMaintenanceJobError, ScheduleMaintenanceJobResponse, SetUpdatePreviewRefData, SetUpdatePreviewRefError, SetUpdatePreviewRefResponse, TailLogsApiLogsTailGetData, TailLogsApiLogsTailGetError, UpdateTargetData, UpdateTargetError, UpdateTargetResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -341,6 +341,29 @@ export const exportTargetEpubBooksMutation = (options?: Partial<Options<ExportTa
     const mutationOptions: UseMutationOptions<ExportTargetEpubBooksResponse, ExportTargetEpubBooksError, Options<ExportTargetEpubBooksData>> = {
         mutationFn: async (fnOptions) => {
             const { data } = await exportTargetEpubBooks({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Fill Target Epub Volumes
+ *
+ * Write volume numbers from the series' MangaDex page into the CBZs whose
+ * ComicInfo has none, so "one book per volume" can use them.
+ *
+ * The MangaDex page is the series URL when it is one, else its metadata
+ * source URL. Chapters that already have a volume are left alone.
+ */
+export const fillTargetEpubVolumesMutation = (options?: Partial<Options<FillTargetEpubVolumesData>>): UseMutationOptions<FillTargetEpubVolumesResponse, FillTargetEpubVolumesError, Options<FillTargetEpubVolumesData>> => {
+    const mutationOptions: UseMutationOptions<FillTargetEpubVolumesResponse, FillTargetEpubVolumesError, Options<FillTargetEpubVolumesData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await fillTargetEpubVolumes({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
