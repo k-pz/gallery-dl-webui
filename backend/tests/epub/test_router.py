@@ -329,3 +329,22 @@ def test_mutations_emit_epub_events(client: TestClient, library: Path) -> None:
     book_id = resp.json()["books"][0]["id"]
     resp = client.post(f"/api/targets/{tid}/epub/books/{book_id}/export")
     assert expected in json.loads(resp.headers["x-events"])
+
+
+def test_epub_endpoints_update_library_list_stats(client: TestClient, library: Path) -> None:
+    _write_chapters(library, ["1", "2", "3"])
+    tid = _target_id(client)
+    resp = _put_books(client, [{"chapter_start": 1}, {"chapter_start": 3}])
+    assert {"topic": "targets", "type": "stats", "data": {"id": tid}} in json.loads(
+        resp.headers["x-events"]
+    )
+    listed = next(t for t in client.get("/api/targets").json() if t["id"] == tid)
+    assert (listed["chapter_count"], listed["epub_book_count"], listed["epub_pending_count"]) == (
+        3,
+        2,
+        2,
+    )
+
+    client.post(f"/api/targets/{tid}/epub/export")
+    listed = next(t for t in client.get("/api/targets").json() if t["id"] == tid)
+    assert listed["epub_pending_count"] == 0

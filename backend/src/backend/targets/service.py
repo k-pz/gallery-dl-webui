@@ -27,17 +27,22 @@ def _encode_tags(tags: list[str] | None) -> str | None:
 # `list_watched` and the upsert refetch.
 _BARE_SELECT = "SELECT * FROM targets"
 
-# Target columns plus the latest-download summary join (last_*, count).
-# Used by `list_all` and `get_summary`; the result row Pydantic-validates
-# back into Target with the summary fields populated.
+# Target columns plus the latest-download summary join (last_*, count) and
+# the cached disk stats (NULL until the series was first scanned). Used by
+# `list_all` and `get_summary`; the result row Pydantic-validates back into
+# Target with the summary fields populated.
 _SUMMARY_SELECT = """
 SELECT t.*,
        d.id AS last_download_id,
        d.status AS last_status,
        d.finished_at AS last_finished_at,
        d.created_at AS last_created_at,
-       (SELECT COUNT(*) FROM downloads WHERE target_id = t.id) AS download_count
+       (SELECT COUNT(*) FROM downloads WHERE target_id = t.id) AS download_count,
+       s.chapter_count AS chapter_count,
+       s.epub_book_count AS epub_book_count,
+       s.epub_pending_count AS epub_pending_count
 FROM targets t
+LEFT JOIN series_stats s ON s.target_id = t.id
 LEFT JOIN downloads d ON d.id = (
     SELECT id FROM downloads
     WHERE target_id = t.id

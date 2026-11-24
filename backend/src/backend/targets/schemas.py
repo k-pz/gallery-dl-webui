@@ -42,6 +42,12 @@ class Target(BaseModel):
     last_finished_at: str | None = None
     last_created_at: str | None = None
     download_count: int = 0
+    # Cached disk stats (see backend.series_stats); None until the series'
+    # directory has been scanned once.
+    chapter_count: int | None = None
+    epub_book_count: int | None = None
+    # EPUB books never exported or whose export is outdated.
+    epub_pending_count: int | None = None
 
     @field_validator("tags", mode="before")
     @classmethod

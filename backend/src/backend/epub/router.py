@@ -20,6 +20,7 @@ import aiosqlite
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse
 
+from backend.config import Settings
 from backend.dependencies import DbDep, EventBusDep, SettingsDep
 from backend.epub import service
 from backend.epub.builder import build_epub
@@ -40,8 +41,9 @@ from backend.epub.schemas import (
     EpubOverview,
 )
 from backend.epub.state import SeriesState, load_state
-from backend.events import epub_event
+from backend.events import EventBus, epub_event, targets_event
 from backend.exceptions import BadRequestError
+from backend.series_stats import service as stats_service
 from backend.targets.dependencies import TargetDep
 from backend.targets.schemas import Target
 
@@ -143,10 +145,23 @@ async def _export(
     await service.mark_exported(db, target.id, plan.book_id, str(plan.path), plan.fingerprint)
 
 
+async def _settled_state(
+    target: Target, db: aiosqlite.Connection, settings: Settings, bus: EventBus
+) -> SeriesState:
+    """Load the series' state and update its cached library-list stats from
+    it, so the list reflects what this response shows."""
+    state = await load_state(target, db, settings)
+    if await stats_service.save(db, target.id, stats_service.stats_from_state(state)):
+        bus.publish(targets_event("stats", id=target.id))
+    return state
+
+
 @router.get("/targets/{target_id}/epub", operation_id="getTargetEpub")
-async def get_target_epub(target: TargetDep, db: DbDep, settings: SettingsDep) -> EpubOverview:
+async def get_target_epub(
+    target: TargetDep, db: DbDep, settings: SettingsDep, bus: EventBusDep
+) -> EpubOverview:
     """The series' packed chapters, its books, and each book's export status."""
-    return _overview(target, await load_state(target, db, settings))
+    return _overview(target, await _settled_state(target, db, settings, bus))
 
 
 @router.put("/targets/{target_id}/epub/books", operation_id="putTargetEpubBooks")
@@ -168,7 +183,7 @@ async def put_target_epub_books(
         raise BadRequestError(str(exc)) from exc
     await service.replace_books(db, target.id, entries)
     bus.publish(epub_event(target.id))
-    return _overview(target, await load_state(target, db, settings))
+    return _overview(target, await _settled_state(target, db, settings, bus))
 
 
 @router.post(
@@ -190,7 +205,7 @@ async def export_target_epub_book(
             raise EpubBookNotFound()
         await _export(db, target, plan, state)
     bus.publish(epub_event(target.id))
-    return _overview(target, await load_state(target, db, settings))
+    return _overview(target, await _settled_state(target, db, settings, bus))
 
 
 @router.post("/targets/{target_id}/epub/export", operation_id="exportTargetEpubBooks")
@@ -220,6 +235,7 @@ async def export_target_epub_books(
                 exported += 1
     if exported or errors:
         bus.publish(epub_event(target.id))
+        await _settled_state(target, db, settings, bus)
     return EpubExportAllResult(exported=exported, failed=len(errors), errors=errors)
 
 
