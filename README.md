@@ -35,6 +35,7 @@ backend/                ← FastAPI app (uv project, src-layout)
                           gallery, postprocess, live_progress, progress)
     targets/            ← watched targets (router, service, poller, durations)
     epub/               ← per-series EPUB books (CBZ → fixed-layout EPUB3)
+    volume_fill/        ← fill missing ComicInfo volumes from MangaDex
     series_stats/       ← cached per-series chapter / EPUB counts for the
                           library list (refreshed in the background)
     maintenance/        ← maintenance jobs (rebuild library, Komga push,
@@ -159,14 +160,38 @@ screens 2400px wide or more it sits beside the series details):
   not yet collected in a volume. Chapters without a volume that sit between
   two volumes (extras, `x.5` chapters) end up in the earlier one.
   **Every N chapters** splits at a fixed size.
-- The chapter map shows every chapter as a block, coloured by its book's
-  export state. Click a chapter (or move with the arrow keys) to start a new
-  book there or merge its book with a neighbour; chapter and page counts
-  update before you save.
+- The chapter map shows every chapter as a block, marked by its book's
+  export state: solid green for exported, solid orange for outdated,
+  hollow for not exported, striped for unsaved changes. Click a chapter (or
+  move with the arrow keys) to start a new book there or merge its book with
+  a neighbour; chapter and page counts update before you save.
 - **Export** writes a book; **Export N pending** writes every book that was
   never exported or is outdated (new chapters, re-packed CBZs, renumbered
   books, or changed metadata). **Download** serves the exported file through
   the browser.
+
+#### Filling volumes from MangaDex
+
+Chapters from sources without volume data, or MangaDex chapters downloaded
+before MangaDex put them in a volume, have no ComicInfo `Volume`, so
+**By volume** can't place them. When a series' URL, or its **Metadata source
+URL**, is a MangaDex title page (`https://mangadex.org/title/<uuid>`), the
+volumes are filled from MangaDex's chapter list:
+
+- automatically after every successful download of the series;
+- with **Fill volumes from MangaDex** in the EPUB books toolbar (shown while
+  some chapter lacks a volume);
+- for the whole library with the **Fill volumes from MangaDex** maintenance
+  job.
+
+Only chapters without a volume (missing, empty or `0`) are changed, and only
+their `Volume` element: each CBZ is rebuilt beside the original with every
+other file copied as-is, then renamed over it. Chapters match by number, so
+a metadata source with a differently named series still lines up. MangaDex
+is only asked when some chapter on disk lacks a volume; for a MangaDex
+series the download's own metadata pass is reused. The lookup goes through
+gallery-dl, so its MangaDex settings (language, login) apply. Rewritten CBZs
+make the EPUB books that contain them show as outdated.
 
 Exports go to `<export-dir>/<Series>/<Series> - Vol. NN.epub`. The export dir
 is set in **Config → EPUB export** and defaults to `epub/` inside
