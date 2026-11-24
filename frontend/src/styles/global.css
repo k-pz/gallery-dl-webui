@@ -943,22 +943,269 @@ a {
   padding-top: 12px;
   border-top: 1px solid var(--app-border-subtle);
 }
-.epub-book-row {
-  padding: 8px 10px;
-  background: var(--app-surface);
-  border: 1px solid var(--app-border-subtle);
-  border-radius: 6px;
-}
-.epub-book-index {
-  min-width: 28px;
-  padding-bottom: 6px;
-}
 .lib-row-chev {
   transition: transform 0.18s ease;
   color: var(--app-text-muted);
 }
 .lib-row[data-expanded="true"] .lib-row-chev {
   transform: rotate(180deg);
+}
+
+/* ---- EPUB packer (EpubPacker + ChapterMap) ----------------------------- */
+.packer {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.packer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+.packer-toolbar-meta {
+  margin-left: auto;
+  font-family: var(--app-mono);
+}
+.packer-map {
+  padding: 12px 20px 6px;
+}
+.packer-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--app-text-muted);
+}
+.packer-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.packer-legend-count {
+  font-family: var(--app-mono);
+  color: var(--app-text);
+}
+.chmap {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 8px 6px 5px 8px;
+  background: var(--app-bg);
+  border-radius: 8px;
+}
+.chmap-book {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  max-width: 100%;
+  padding: 2px;
+  margin: 0 3px 3px 0;
+  border-radius: 3px;
+}
+.chmap-book[data-selected="true"] {
+  box-shadow: 0 0 0 1.5px var(--app-text);
+}
+.chmap-cell {
+  width: 7px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 1.5px;
+  cursor: pointer;
+}
+.chmap-cell,
+.chmap-swatch {
+  background: var(--chmap-color, var(--app-border));
+}
+.chmap-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+/* Export states differ in lightness as well as hue (exported darkest,
+   not exported lightest) so they read without colour vision. */
+[data-state="exported"] {
+  --chmap-color: var(--tone-done);
+}
+[data-state="outdated"] {
+  --chmap-color: color-mix(in srgb, var(--tone-warn) 80%, white);
+}
+[data-state="not_exported"] {
+  --chmap-color: color-mix(in srgb, var(--tone-info) 45%, var(--app-surface));
+}
+[data-state="unsaved"] {
+  --chmap-color: var(--tone-active);
+}
+[data-state="empty"],
+[data-state="loose"] {
+  --chmap-color: var(--app-surface-sunken);
+}
+.chmap-cell[aria-pressed="true"] {
+  --chmap-color: var(--app-text);
+}
+.chmap-cell:focus-visible {
+  outline: 2px solid var(--app-text);
+  outline-offset: 1px;
+}
+.packer-inspector {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 42px;
+  margin: 4px 20px 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 8px;
+  background: var(--app-bg-elevated);
+}
+.packer-inspector-text {
+  min-width: 0;
+}
+.packer-inspector-actions {
+  margin-left: auto;
+}
+.packer-dim {
+  color: var(--app-text-muted);
+}
+.packer-listhead {
+  padding: 0 20px 6px;
+}
+.packer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--app-border-subtle);
+}
+.packer-row {
+  display: grid;
+  grid-template-columns: 48px minmax(120px, 1fr) minmax(110px, auto) 56px 72px 120px 128px;
+  gap: 10px;
+  align-items: center;
+  min-height: 38px;
+  padding: 2px 20px;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+.packer-row[data-selected="true"] {
+  background: var(--app-surface-muted);
+}
+.packer-row-pos {
+  padding: 4px 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text-muted);
+  font: 500 0.8rem var(--app-mono);
+  text-align: left;
+  cursor: pointer;
+}
+.packer-row-title input {
+  font-size: 0.85rem;
+}
+.packer-row-num {
+  font-family: var(--app-mono);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.packer-row-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+.packer-row-dl-slot {
+  display: inline-block;
+  width: 26px;
+}
+.packer-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+}
+.packer-error {
+  margin: 8px 20px 0;
+}
+.packer-foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--app-border);
+  background: var(--app-bg-elevated);
+}
+.packer-foot-path {
+  min-width: 0;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.packer-foot-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.packer-unsaved {
+  color: var(--tone-warn);
+}
+
+/* Narrow packer (tablet tab, phone): drop the page count, let the title
+   wrap under the number. */
+@media (max-width: 1279px) {
+  .packer-row {
+    grid-template-columns: 44px minmax(0, 1fr) auto auto;
+    row-gap: 2px;
+    padding: 6px 16px;
+  }
+  .packer-row-title {
+    grid-column: 2 / -1;
+  }
+  .packer-row > .packer-row-num:nth-of-type(1) {
+    grid-column: 2;
+  }
+  .packer-row > .packer-row-num.packer-dim {
+    display: none;
+  }
+}
+
+/* Touch screens: map cells and row controls become finger-sized. */
+@media (pointer: coarse) {
+  .chmap-cell {
+    width: 10px;
+    height: 24px;
+  }
+  .chmap {
+    max-height: 230px;
+  }
+  .packer-row {
+    min-height: 52px;
+  }
+  .packer-row-actions .mantine-Button-root,
+  .packer-row-actions .icon-btn {
+    min-height: 40px;
+    min-width: 40px;
+  }
 }
 
 /* Master-detail layout for the Jobs tab. The grid is always present (one
