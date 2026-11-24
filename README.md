@@ -35,6 +35,8 @@ backend/                ← FastAPI app (uv project, src-layout)
                           gallery, postprocess, live_progress, progress)
     targets/            ← watched targets (router, service, poller, durations)
     epub/               ← per-series EPUB books (CBZ → fixed-layout EPUB3)
+    series_stats/       ← cached per-series chapter / EPUB counts for the
+                          library list (refreshed in the background)
     maintenance/        ← maintenance jobs (rebuild library, Komga push,
                           LXC update, …) + worker + live progress
     realtime/           ← websocket fan-out of EventBus events
@@ -143,19 +145,28 @@ matching archive row first.
 ### EPUB export (Calibre)
 
 Packed chapters can be bundled into EPUB books, e.g. to import into
-Calibre. In the **Library** tab, expand a series and open **EPUB books**:
+Calibre. Select a series in the **Library** and open **EPUB books** (on
+screens 2400px wide or more it sits beside the series details):
 
-- Each book is a chapter range (`From chapter` – `To chapter`, inclusive,
-  decimals allowed). Leave `To chapter` empty on the last book to keep it
-  open, so chapters downloaded later land in it. Books are numbered in
-  chapter order; that number is the book's series index.
-- **Use volumes** pre-fills one book per ComicInfo `Volume`, plus an open
-  book for chapters not yet collected in a volume. Chapters without a volume
-  that sit between two volumes (extras, `x.5` chapters) join the earlier one.
-- Chapters that fall in no book are listed under the books.
+- Books split the series at their start chapters: a book holds every chapter
+  from its start up to the next book's start. The first book also takes any
+  earlier chapter, and the last book stays open so chapters downloaded later
+  land in it. Every numbered chapter is therefore in exactly one book; only
+  chapters without a numeric number (e.g. `Extra`) are left out, and are
+  listed under the map. Books are numbered in chapter order; that number is
+  the book's series index.
+- **By volume** makes one book per ComicInfo `Volume`, plus one for chapters
+  not yet collected in a volume. Chapters without a volume that sit between
+  two volumes (extras, `x.5` chapters) end up in the earlier one.
+  **Every N chapters** splits at a fixed size.
+- The chapter map shows every chapter as a block, coloured by its book's
+  export state. Click a chapter (or move with the arrow keys) to start a new
+  book there or merge its book with a neighbour; chapter and page counts
+  update before you save.
 - **Export** writes a book; **Export N pending** writes every book that was
-  never exported or is outdated (new chapters, re-packed CBZs, or changed
-  metadata). **Download** serves the exported file through the browser.
+  never exported or is outdated (new chapters, re-packed CBZs, renumbered
+  books, or changed metadata). **Download** serves the exported file through
+  the browser.
 
 Exports go to `<export-dir>/<Series>/<Series> - Vol. NN.epub`. The export dir
 is set in **Config → EPUB export** and defaults to `epub/` inside
