@@ -32,6 +32,7 @@ SUPPORTED_KINDS = {
     "sync_komga_metadata",
     "update_lxc",
     "unwatch_ended_series",
+    "fill_mangadex_volumes",
 }
 
 # Kinds that talk to Komga and therefore need credentials in app_config.

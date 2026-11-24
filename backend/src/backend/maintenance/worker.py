@@ -26,7 +26,13 @@ from backend.comic_metadata import (
     sanitize,
 )
 from backend.downloads import service as downloads_service
-from backend.events import EventBus, maintenance_event, maintenance_progress_event, targets_event
+from backend.events import (
+    EventBus,
+    epub_event,
+    maintenance_event,
+    maintenance_progress_event,
+    targets_event,
+)
 from backend.maintenance import library_ops, service
 from backend.maintenance.komga import (
     KomgaPushResult,
@@ -41,6 +47,8 @@ from backend.maintenance.library_ops import MaintenanceCancelled
 from backend.maintenance.live_progress import MaintenanceLiveProgress
 from backend.targets import service as targets_service
 from backend.tasks import log_task_death
+from backend.volume_fill import service as volume_service
+from backend.volume_fill.library import volume_source_url
 
 if TYPE_CHECKING:
     from backend.config import Settings
@@ -207,14 +215,19 @@ class _JobProgressSink:
         self._bus = bus
         self._loop = loop
 
-    def total(self, n: int) -> None:
+    def total(self, n: int, noun: str = "archive(s)") -> None:
         self._live.set_total(self._job_id, n)
-        line = f"scanning… found {n} archive(s)"
+        line = f"scanning… found {n} {noun}"
         self._live.record(self._job_id, line)
         self._publish(total=n, line=line)
 
     def step(self, line: str) -> None:
         self._live.increment_done(self._job_id)
+        self._live.record(self._job_id, line)
+        self._publish(line=line)
+
+    def note(self, line: str) -> None:
+        """A log line that doesn't count towards the job's done/total."""
         self._live.record(self._job_id, line)
         self._publish(line=line)
 
@@ -349,6 +362,7 @@ class MaintenanceWorker:
         "sync_komga_metadata": "_run_sync_komga_metadata",
         "update_lxc": "_run_update_lxc",
         "unwatch_ended_series": "_run_unwatch_ended_series",
+        "fill_mangadex_volumes": "_run_fill_mangadex_volumes",
     }
 
     async def _execute(self, kind: str, job_id: int) -> dict[str, Any]:
@@ -753,6 +767,72 @@ class MaintenanceWorker:
             if self._bus is not None:
                 self._bus.publish(targets_event("updated", id=target_id))
         return {"unwatched": len(ids)}
+
+    async def _run_fill_mangadex_volumes(self, job_id: int) -> dict[str, int]:
+        """Fill missing chapter volumes for every series with a MangaDex URL
+        (its own or its metadata source URL).
+
+        MangaDex is only asked for series where some chapter on disk lacks a
+        volume. A failed lookup is logged and the job moves on to the next
+        series; per-archive failures are counted.
+        """
+        if self._gallery is None:
+            raise ValueError("volume fill needs the gallery-dl wrapper")
+        gallery = self._gallery
+        sink = _JobProgressSink(self._live, job_id, self._bus, self._loop)
+        targets = [
+            t
+            for t in await targets_service.list_all(self._db)
+            if volume_source_url(t.url, t.metadata_source_url)
+        ]
+        sink.total(len(targets), "series with a MangaDex URL")
+        totals = {
+            "series": len(targets),
+            "series_updated": 0,
+            "filled": 0,
+            "unassigned": 0,
+            "failed": 0,
+            "lookups_failed": 0,
+        }
+        for target in targets:
+            if self._should_cancel():
+                raise MaintenanceCancelled(dict(totals))
+            label = target.name or target.url
+
+            def note(line: str, label: str = label) -> None:
+                sink.note(f"{label}: {line}")
+
+            try:
+                fill = await volume_service.fill_target_volumes(
+                    self._db,
+                    gallery,
+                    target,
+                    should_cancel=self._should_cancel,
+                    on_step=note,
+                )
+            except volume_service.VolumeLookupFailed as exc:
+                logger.warning("volume lookup failed for target %d", target.id, exc_info=True)
+                totals["lookups_failed"] += 1
+                sink.step(f"lookup failed: {label}: {exc.__cause__!r}")
+                continue
+            result = fill.result
+            totals["filled"] += result.filled
+            totals["unassigned"] += result.unassigned
+            totals["failed"] += result.failed
+            if result.filled:
+                totals["series_updated"] += 1
+                if self._bus is not None:
+                    self._bus.publish(epub_event(target.id))
+            if result.cancelled:
+                raise MaintenanceCancelled(dict(totals))
+            if not fill.looked_up:
+                sink.step(f"nothing missing: {label}")
+            else:
+                sink.step(
+                    f"{label}: {result.filled} filled, "
+                    f"{result.unassigned} not in a volume yet, {result.failed} failed"
+                )
+        return totals
 
     async def _run_update_lxc(self, job_id: int) -> dict[str, str]:
         """Kick off an in-place LXC update by dropping a trigger file in DATA_DIR.
