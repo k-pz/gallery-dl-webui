@@ -112,6 +112,17 @@ CREATE TABLE IF NOT EXISTS epub_books (
     exported_at TEXT,
     UNIQUE (target_id, position)
 );
+
+-- Per-series figures read from disk, cached so the library list needn't scan
+-- every series directory: packed chapters, EPUB books, and books still to
+-- export. Refreshed in the background (series_stats/refresher.py).
+CREATE TABLE IF NOT EXISTS series_stats (
+    target_id INTEGER PRIMARY KEY REFERENCES targets(id) ON DELETE CASCADE,
+    chapter_count INTEGER NOT NULL,
+    epub_book_count INTEGER NOT NULL,
+    epub_pending_count INTEGER NOT NULL,
+    scanned_at TEXT NOT NULL
+);
 """
 
 

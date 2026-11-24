@@ -28,6 +28,7 @@ from backend.maintenance.worker import MaintenanceWorker
 from backend.middleware import request_event_collector_middleware
 from backend.output_dirs.router import router as output_dirs_router
 from backend.realtime.router import router as realtime_router
+from backend.series_stats.refresher import SeriesStatsRefresher
 from backend.targets.poller import Poller
 from backend.targets.router import router as targets_router
 
@@ -85,6 +86,8 @@ def create_app(
         maintenance_worker.start()
         poller = Poller(db, worker, event_bus=event_bus)
         poller.start()
+        series_stats = SeriesStatsRefresher(db, settings, event_bus)
+        series_stats.start()
 
         app.state.settings = settings
         app.state.db = db
@@ -95,13 +98,20 @@ def create_app(
         app.state.maintenance_worker = maintenance_worker
         app.state.maintenance_live = maintenance_live
         app.state.event_bus = event_bus
+        app.state.series_stats = series_stats
 
         try:
             yield
         finally:
             # Each step must run even if an earlier one fails — a stuck
             # poller must not keep the db open, etc.
-            for shutdown_step in (poller.stop, maintenance_worker.stop, worker.stop, db.close):
+            for shutdown_step in (
+                series_stats.stop,
+                poller.stop,
+                maintenance_worker.stop,
+                worker.stop,
+                db.close,
+            ):
                 try:
                     await shutdown_step()
                 except Exception:
