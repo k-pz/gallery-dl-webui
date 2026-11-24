@@ -336,11 +336,13 @@ export type DownloadCreate = {
 /**
  * EpubBookIn
  *
- * One book of a series: an inclusive chapter-number range.
+ * One book of a series, identified by the chapter it starts at.
  *
- * `chapter_end` null leaves the book open-ended (only allowed for the last
- * book) so chapters downloaded later land in it. A blank `title` falls back
- * to "<Series>, Vol. <n>".
+ * Books split the series' chapters: each runs from its start up to the
+ * next book's start, the first one also takes any lower-numbered chapter
+ * and the last one stays open so chapters downloaded later land in it.
+ * Every numbered chapter therefore belongs to exactly one book. A blank
+ * `title` falls back to "<Series>, Vol. <n>".
  */
 export type EpubBookIn = {
     /**
@@ -351,10 +353,6 @@ export type EpubBookIn = {
      * Chapter Start
      */
     chapter_start: number;
-    /**
-     * Chapter End
-     */
-    chapter_end?: number | null;
 };
 
 /**
@@ -381,10 +379,6 @@ export type EpubBookOut = {
      * Chapter Start
      */
     chapter_start: number;
-    /**
-     * Chapter End
-     */
-    chapter_end: number | null;
     /**
      * Chapter Count
      */
@@ -763,6 +757,18 @@ export type Target = {
      * Download Count
      */
     download_count?: number;
+    /**
+     * Chapter Count
+     */
+    chapter_count?: number | null;
+    /**
+     * Epub Book Count
+     */
+    epub_book_count?: number | null;
+    /**
+     * Epub Pending Count
+     */
+    epub_pending_count?: number | null;
 };
 
 /**
