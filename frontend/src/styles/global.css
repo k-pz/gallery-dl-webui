@@ -851,6 +851,168 @@ a {
   }
 }
 
+/* ---- Screens (Screen, Pane, StackedView) --------------------------------
+   Every tab is one screen sized to the viewport below the header, like the
+   Library: panes side by side, each scrolling on its own. Tiers follow
+   --bp-lib-* (see hooks/useScreenLayout.ts):
+     ultra  every pane side by side
+     split  a list pane beside one detail pane
+     stack  panes flow with the page; a picked item opens full screen */
+.screen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 16px;
+  height: calc(100dvh - var(--app-header-h));
+  min-height: 520px;
+  padding: 16px 24px;
+  box-sizing: border-box;
+}
+.screen[data-layout="stack"] {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: auto;
+  min-height: 0;
+  padding: 12px 12px max(16px, env(safe-area-inset-bottom, 0px));
+}
+.pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  box-shadow: var(--app-shadow);
+  overflow: hidden;
+}
+.pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px 10px;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+.pane-head-text {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.pane-title {
+  margin: 0;
+  font-family: var(--app-serif);
+  font-size: 1.1rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pane-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.pane-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.pane-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--app-border-subtle);
+  background: var(--app-bg-elevated);
+}
+/* Phones: shrink Card padding to reclaim width on a 390px screen. Targets
+   the `.app-surface` class our theme stamps on Card root, since Card sets
+   its padding as an inline `--card-padding` variable. */
+@media (--bp-phone) {
+  .app-surface.mantine-Card-root {
+    padding: 14px;
+  }
+}
+/* Cards inside a pane are sections of it: the pane owns the border, so
+   they drop theirs and are separated by a hairline instead. */
+.pane .app-surface.mantine-Card-root {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.pane .app-surface.mantine-Card-root + .app-surface.mantine-Card-root {
+  border-top: 1px solid var(--app-border-subtle);
+}
+.pane-empty .pane-scroll {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pane-back {
+  display: none;
+}
+/* Phones: panes flow with the page instead of scrolling inside it. */
+.screen[data-layout="stack"] > .pane .pane-scroll {
+  overflow: visible;
+}
+.pane-stacked {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  border: 0;
+  border-radius: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  animation: jobs-sheet-fade 0.15s ease;
+}
+.pane-stacked .pane-back {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: calc(4px + env(safe-area-inset-top, 0px)) 8px 4px;
+  background: var(--app-surface);
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+.pane-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--app-text);
+  cursor: pointer;
+}
+.pane-back-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--app-ring);
+}
+.pane-back-icon {
+  transform: rotate(90deg);
+}
+.pane-back-title {
+  font-family: var(--app-serif);
+  font-size: 1.05rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---- Library (LibraryView) ---------------------------------------------
    One screen sized to the viewport below the header; each pane scrolls on
    its own. Columns per tier (see --bp-lib-* and useLibraryLayout):
@@ -2252,9 +2414,6 @@ a {
        footnote is short/absent. (Mantine's inline `py="xl"` shadows this
        padding-bottom, so .app-footnote is the guaranteed carrier — see E2.) */
     padding-bottom: max(var(--mantine-spacing-md), env(safe-area-inset-bottom, 0));
-  }
-  .app-surface.mantine-Card-root {
-    padding: 14px;
   }
 }
 
